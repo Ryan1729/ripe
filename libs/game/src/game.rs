@@ -2,40 +2,53 @@ use models::{Card, gen_card};
 use platform_types::{command, unscaled};
 use xs::{Xs, Seed};
 
+type TileSprite = u8;
+
 #[derive(Clone, Default)]
-pub struct Splat {
-    pub kind: Card,
-    pub x: unscaled::X,
-    pub y: unscaled::Y,
+pub struct Tile {
+    pub sprite: TileSprite,
+}
+
+pub type SegmentWidth = usize;
+
+#[derive(Clone, Default)]
+pub struct WorldSegment {
+    pub width: SegmentWidth,
+    pub tiles: Vec<Tile>,
 }
 
 #[derive(Clone, Default)]
 pub struct State {
     pub rng: Xs,
-    pub splats: Vec<Splat>,
+    pub segment: WorldSegment,
 }
 
 impl State {
     pub fn new(seed: Seed) -> State {
-        let rng = xs::from_seed(seed);
+        let mut rng = xs::from_seed(seed);
+
+        let width = xs::range(&mut rng, 2..9) as SegmentWidth;
+
+        let height = xs::range(&mut rng, 2..9) as usize;
+
+        let len = width * height;
+        let mut tiles = Vec::with_capacity(len);
+
+        for _ in 0..len {
+            tiles.push(Tile {
+                sprite: xs::range(&mut rng, 0..2) as TileSprite,
+            });
+        }
+
+        let segment = WorldSegment {
+            width,
+            tiles,
+        };
 
         State {
             rng,
+            segment,
             .. <_>::default()
         }
-    }
-
-    pub fn add_splat(&mut self) {
-        let rng = &mut self.rng;
-
-        let kind: Card = gen_card(rng);
-        let x = unscaled::X(xs::range(rng, 0..command::WIDTH as u32) as command::Inner);
-        let y = unscaled::Y(xs::range(rng, 0..command::HEIGHT as u32) as command::Inner);
-
-        self.splats.push(Splat {
-            kind,
-            x,
-            y,
-        });
     }
 }

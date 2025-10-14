@@ -1,4 +1,3 @@
-use game::Splat;
 use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
@@ -66,24 +65,26 @@ impl platform_types::State for State {
 
 fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
     if input.gamepad != <_>::default() {
-        state.add_splat();
         speaker.request_sfx(SFX::CardPlace);
     }
 }
 
 #[inline]
 fn render(commands: &mut Commands, state: &game::State) {
-    for &Splat { kind, x, y } in &state.splats {
-        commands.draw_card(kind, x, y);
+    // TODO pull these 16s into named constant(s).
+    for i in 0..state.segment.tiles.len() {
+        let x = unscaled::X(((i % state.segment.width) * 16) as _);
+        let y = unscaled::Y(((i / state.segment.width) * 16) as _);
+        let sprite = state.segment.tiles[i].sprite as sprite::Inner;
 
         commands.sspr(
             sprite::XY {
-                x: sprite::X(0),
+                x: sprite::X(sprite * 16),
                 y: sprite::Y(64),
             },
             command::Rect::from_unscaled(unscaled::Rect {
-                x: x.saturating_sub(unscaled::W(16)),
-                y: y.saturating_sub(unscaled::H(16)),
+                x: x.saturating_add(unscaled::W(16)),
+                y: y.saturating_add(unscaled::H(16)),
                 w: unscaled::W(16),
                 h: unscaled::H(16),
             })
