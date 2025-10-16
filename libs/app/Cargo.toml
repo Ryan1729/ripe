@@ -7,7 +7,8 @@ edition = "2021"
 [lib]
 path = "src/app.rs"
 
-[dependencies]
+[dependencies.config]
+path = "../config"
 
 [dependencies.game]
 path = "../game"

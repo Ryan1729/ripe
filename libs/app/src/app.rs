@@ -20,8 +20,17 @@ impl State {
         // not the macro.
         features::log(&format!("{:?}", seed));
 
+        // TODO: Should this error bubble up instead? Or maybe have the app display an error message?
+        let config = match config::parse("") {
+            Ok(c) => c,
+            Err(err) => {
+                features::log(&format!("{:?}", err));
+
+                game::Config{}
+            }
+        };
+
         let mut game_state = game::State::new(seed);
-        //game_state.add_splat();
 
         Self {
             game_state,

@@ -1,5 +1,5 @@
 [workspace]
-members = [
+members = [ "libs/config",
     "ripe",
     "run-wasm"
 ]
