@@ -20,17 +20,37 @@ impl State {
         // not the macro.
         features::log(&format!("{:?}", seed));
 
+        const HARDCODED_CONFIG: &str = "
+        const W = 0; // Wall
+        const F = 1; // Floor
+
+        #{
+            segments: [
+                #{
+                    width: 5,
+                    tiles: [
+                        W, W, F, W, W,
+                        W, F, F, F, W,
+                        F, F, W, F, F,
+                        W, F, F, F, W,
+                        W, W, F, W, W,
+                    ]
+                }
+            ]
+        }
+        ";
+
         // TODO: Should this error bubble up instead? Or maybe have the app display an error message?
-        let config = match config::parse("") {
+        let config = match config::parse(HARDCODED_CONFIG) {
             Ok(c) => c,
             Err(err) => {
                 features::log(&format!("{:?}", err));
 
-                game::Config{}
+                game::Config::default()
             }
         };
 
-        let mut game_state = game::State::new(seed);
+        let mut game_state = game::State::new(seed, config);
 
         Self {
             game_state,
@@ -81,10 +101,10 @@ fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
 #[inline]
 fn render(commands: &mut Commands, state: &game::State) {
     // TODO pull these 16s into named constant(s).
-    for i in 0..state.segment.tiles.len() {
-        let x = unscaled::X(((i % state.segment.width) * 16) as _);
-        let y = unscaled::Y(((i / state.segment.width) * 16) as _);
-        let sprite = state.segment.tiles[i].sprite as sprite::Inner;
+    for i in 0..state.world.segment.tiles.len() {
+        let x = unscaled::X(((i % state.world.segment.width) * 16) as _);
+        let y = unscaled::Y(((i / state.world.segment.width) * 16) as _);
+        let sprite = state.world.segment.tiles[i].sprite as sprite::Inner;
 
         commands.sspr(
             sprite::XY {
