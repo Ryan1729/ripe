@@ -26,3 +26,4 @@ path = "../platform_types"
 default = []
 invariant-checking = ["features/invariant-checking"]
 logging = ["features/logging"]
+wasm = ["config/wasm"]

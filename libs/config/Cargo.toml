@@ -6,5 +6,13 @@ edition = "2024"
 [lib]
 path = "src/config.rs"
 
+[features]
+default = []
+wasm = ["rhai/wasm-bindgen", "getrandom/wasm_js"]
+
+[dependencies]
+rhai = { version = "1.23.4" }
+getrandom = { version = "0.3"}
+
 [dependencies.game]
 path = "../game"

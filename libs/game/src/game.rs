@@ -124,6 +124,10 @@ pub struct State {
 // https://www.youtube.com/watch?v=VyxbfbfXzQM&t=764s
 // So like we want a way to arbitrarily glue attributes onto a thing, with the config file
 
+// Things to add eventually:
+// * A tutorial.
+// * A curated list of settings for people to pick for their first several runs.
+
 impl State {
     pub fn new(seed: Seed, config: Config) -> State {
         let mut rng = xs::from_seed(seed);
@@ -153,7 +157,7 @@ impl State {
             }
         } else {
             // TODO? Cap the number of segments, or just be okay with the first room never being in the 5 billions, etc?
-            let index = xs::range(&mut rng, (0..config.segments.len() as u32)) as usize;
+            let index = xs::range(&mut rng, 0..config.segments.len() as u32) as usize;
 
             World {
                 segment: config.segments[index].clone(),

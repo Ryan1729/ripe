@@ -121,13 +121,25 @@ fn main() {
     } else {
         cargo_args.extend(["--package", &args.name]);
     }
-    if let Some(features) = &args.features {
-        cargo_args.extend(["--features", features]);
+    // Some of our dependency crates have features that need to be turned on only in wasm builds.
+    // This feature lets us control them, and thus avoid enabling them in non-wasm builds, which 
+    // don't use this binary crate at all, by just leaving it out.
+    let mut features = format!("wasm");
+
+    if let Some(fs) = &args.features {
+        features += ",";
+        features += fs;
     }
+
+    cargo_args.extend(["--features", &features]);
+
     if args.release {
         cargo_args.push("--release");
     }
     let status = Command::new(&cargo)
+        // The cfg is for getrandom, which is currently a Rhai dep.
+        // For some reason, settign that makes us not compile in with target-feature=simd128, so we add that as well
+        .env("RUSTFLAGS", "-C target-feature=+simd128 --cfg getrandom_backend=\"wasm_js\"")
         .current_dir(&project_root)
         .args(&cargo_args)
         .status()
