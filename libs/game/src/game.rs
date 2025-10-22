@@ -1,4 +1,4 @@
-use models::{Card, gen_card};
+use models::{Entity, TileSprite, XY, xy};
 use platform_types::{command, unscaled};
 use xs::{Xs, Seed};
 
@@ -25,11 +25,13 @@ impl Default for Config {
     }
 }
 
-type TileSprite = u8;
-
 #[derive(Clone, Default)]
 pub struct Tile {
     pub sprite: TileSprite,
+}
+
+fn is_passable(tile: &Tile) -> bool {
+    tile.sprite == models::FLOOR_SPRITE
 }
 
 pub type SegmentWidth = usize;
@@ -37,8 +39,35 @@ pub type SegmentWidth = usize;
 #[derive(Clone, Default)]
 pub struct WorldSegment {
     pub width: SegmentWidth,
-    // TODO Nonempty Vec?
+    // TODO? Nonempty Vec?
+    // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that rsstriction clear, so we
+    // can't have like PC only worlds that beak in weird ways online. Probably no one will ever need that
+    // many tiles per segment. Plus, then xs conversions go away.
     pub tiles: Vec<Tile>,
+}
+
+fn random_passable_tile(rng: &mut Xs, segment: &WorldSegment) -> Option<XY> {
+    // TODO? Cap tiles length or accept this giving a messed up probabilty for large segments?
+    let len = segment.tiles.len();
+    let offset = xs::range(rng, 0..len as u32) as usize;
+    for index in 0..len {
+        let i = (index + offset) % len;
+
+        let tile = &segment.tiles[i];
+
+        if is_passable(tile) {
+            return Some(i_to_xy(segment, i));
+        }
+    }
+
+    return None;
+}
+
+fn i_to_xy(segment: &WorldSegment, index: usize) -> XY {
+    XY {
+        x: xy::x((index % segment.width) as _),
+        y: xy::y((index / segment.width) as _),
+    }
 }
 
 #[derive(Clone, Default)]
@@ -52,6 +81,7 @@ pub struct State {
     pub rng: Xs,
     pub config: Config,
     pub world: World,
+    pub player: Entity,
 }
 
 // Proposed Steps
@@ -108,8 +138,9 @@ pub struct State {
 //        * Not sure why I thought this should be required, other than yes validation will need to ensure that there is at least one floor tile. I imagine that most times starting at a random point will be fine, until it isn't
 //            * Further, each tile definition should probably be a set of flags, for like is_passable, is_entrance, is_item_spawn_point, is_npc_spawn_point, etc.
 // * Embed a string of that format in the program for now. ✔
-// * Parse that string into the definition of the tiles
+// * Parse that string into the definition of the tiles ✔
 //    * Leave room for a validate step after the parsing. Validation errors should eventually all contain custom error messages including why the given thing is needed.
+//        * This can be done inside the parse function
 // * Implement the player walking around on those tiles
 // * Define the person and the item to be in the room
 //     * I think that maybe each of those things should only be optional to define in any given room. Like a room that can only have stuff or only has people should be allowed.
@@ -128,8 +159,13 @@ pub struct State {
 // * A tutorial.
 // * A curated list of settings for people to pick for their first several runs.
 
+#[derive(Debug)]
+pub enum Error {
+    CannotPlacePlayer,
+}
+
 impl State {
-    pub fn new(seed: Seed, config: Config) -> State {
+    pub fn new(seed: Seed, config: Config) -> Result<State, Error> {
         let mut rng = xs::from_seed(seed);
 
         // TODO a way to enable random rooms in the config
@@ -164,10 +200,23 @@ impl State {
             }
         };
 
-        State {
+        let first_segment = &world.segment;
+
+        let mut player = Entity {
+            sprite: models::PLAYER_SPRITE,
+            ..<_>::default()
+        };
+
+        let xy = random_passable_tile(&mut rng, first_segment)
+            .ok_or(Error::CannotPlacePlayer)?;
+        player.x = xy.x;
+        player.y = xy.y;
+
+        Ok(State {
             rng,
             world,
+            player,
             .. <_>::default()
-        }
+        })
     }
 }

@@ -2,8 +2,15 @@ use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
 
+#[derive(Debug)]
+pub enum Error {
+    Game(game::Error),
+}
+
+type GameState = Result<game::State, Error>;
+
 pub struct State {
-    pub game_state: game::State,
+    pub game_state: GameState,
     pub commands: Commands,
     pub input: Input,
     pub speaker: Speaker,
@@ -50,7 +57,8 @@ impl State {
             }
         };
 
-        let mut game_state = game::State::new(seed, config);
+        let mut game_state = game::State::new(seed, config)
+            .map_err(Error::Game);
 
         Self {
             game_state,
@@ -92,14 +100,14 @@ impl platform_types::State for State {
     }
 }
 
-fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
+fn game_update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
     if input.gamepad != <_>::default() {
         speaker.request_sfx(SFX::CardPlace);
     }
 }
 
 #[inline]
-fn render(commands: &mut Commands, state: &game::State) {
+fn game_render(commands: &mut Commands, state: &game::State) {
     // TODO pull these 16s into named constant(s).
     for i in 0..state.world.segment.tiles.len() {
         let x = unscaled::X(((i % state.world.segment.width) * 16) as _);
@@ -119,15 +127,76 @@ fn render(commands: &mut Commands, state: &game::State) {
             })
         );
     }
+
+    // TODO make a convenient way to draw a tile/sprite at tile boundaries, since we do it multiple times 
+    let x = unscaled::X(((state.player.x.get()) * 16) as _);
+    let y = unscaled::Y(((state.player.y.get()) * 16) as _);
+    let sprite = state.player.sprite as sprite::Inner;
+
+    commands.sspr(
+        sprite::XY {
+            x: sprite::X(sprite * 16),
+            y: sprite::Y(64),
+        },
+        command::Rect::from_unscaled(unscaled::Rect {
+            x: x.saturating_add(unscaled::W(16)),
+            y: y.saturating_add(unscaled::H(16)),
+            w: unscaled::W(16),
+            h: unscaled::H(16),
+        })
+    );
 }
 
 #[inline]
 fn update_and_render(
     commands: &mut Commands,
-    state: &mut game::State,
+    game_state: &mut GameState,
     input: Input,
     speaker: &mut Speaker,
 ) {
-    update(state, input, speaker);
-    render(commands, state);
+    match game_state {
+        Ok(state) => {
+            game_update(state, input, speaker);
+            game_render(commands, state);
+        },
+        Err(err) => {
+            // TODO? A way to restart within the app?
+            err_render(commands, err);
+        }
+    }
+
+}
+
+#[inline]
+fn err_render(commands: &mut Commands, error: &Error) {
+    let width = 64;
+    for i in 0..(width * width) {
+        let x = unscaled::X(((i % width) * 16) as _);
+        let y = unscaled::Y(((i / width) * 16) as _);
+        let sprite = models::FLOOR_SPRITE as sprite::Inner;
+
+        commands.sspr(
+            sprite::XY {
+                x: sprite::X(sprite * 16),
+                y: sprite::Y(64),
+            },
+            command::Rect::from_unscaled(unscaled::Rect {
+                x: x.saturating_add(unscaled::W(16)),
+                y: y.saturating_add(unscaled::H(16)),
+                w: unscaled::W(16),
+                h: unscaled::H(16),
+            })
+        );
+    }
+
+    // TODO allow scrolling the text by allowing changing this.
+    let top_index_with_offset = 0;
+
+    commands.print_lines(
+        <_>::default(),
+        top_index_with_offset,
+        // TODO? Maybe cache this so we aren't allocating every frame?
+        format!("{error:?}").as_bytes(),
+        6,
+    );
 }
