@@ -16,7 +16,7 @@ pub struct Entity {
 pub mod xy {
     use super::*;
 
-    pub type Inner = i16;
+    pub type Inner = u16;
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct X(Inner);
@@ -179,12 +179,23 @@ pub mod xy {
         ($($name: ident)+) => {
             $(
                 impl $name {
-                    pub const MINUS_ONE: Self = Self(-1);
                     pub const ZERO: Self = Self(0);
                     pub const ONE: Self = Self(1);
 
                     pub fn get(self) -> Inner {
                         self.0
+                    }
+
+                    pub fn dec(self) -> Self {
+                        Self(self.0.saturating_sub(1))
+                    }
+
+                    pub fn inc(self) -> Self {
+                        Self(self.0.saturating_add(1))
+                    }
+
+                    pub fn usize(self) -> usize {
+                        self.0.into()
                     }
 
                     pub fn halve(self) -> Self {

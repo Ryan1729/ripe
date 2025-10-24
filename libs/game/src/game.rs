@@ -1,4 +1,4 @@
-use models::{Entity, TileSprite, XY, xy};
+use models::{Entity, TileSprite, X, Y, XY, xy};
 use platform_types::{command, unscaled};
 use xs::{Xs, Seed};
 
@@ -63,7 +63,13 @@ fn random_passable_tile(rng: &mut Xs, segment: &WorldSegment) -> Option<XY> {
     return None;
 }
 
-fn i_to_xy(segment: &WorldSegment, index: usize) -> XY {
+type Index = usize;
+
+fn xy_to_i(segment: &WorldSegment, x: X, y: Y) -> Index {
+    y.usize() * segment.width + x.usize()
+}
+
+fn i_to_xy(segment: &WorldSegment, index: Index) -> XY {
     XY {
         x: xy::x((index % segment.width) as _),
         y: xy::y((index / segment.width) as _),
@@ -74,6 +80,17 @@ fn i_to_xy(segment: &WorldSegment, index: usize) -> XY {
 pub struct World {
     // TODO a graph structure of `WorldSegment`s instead of just one
     pub segment: WorldSegment,
+}
+
+fn can_walk_onto(world: &World, x: X, y: Y) -> bool {
+    if let Some(tile) = &world.segment.tiles.get(xy_to_i(&world.segment, x, y)) {
+        // TODO check for other entities
+        if is_passable(tile) {
+            return true;
+        }
+    }
+
+    false
 }
 
 #[derive(Clone, Default)]
@@ -141,7 +158,7 @@ pub struct State {
 // * Parse that string into the definition of the tiles ✔
 //    * Leave room for a validate step after the parsing. Validation errors should eventually all contain custom error messages including why the given thing is needed.
 //        * This can be done inside the parse function
-// * Implement the player walking around on those tiles
+// * Implement the player walking around on those tiles ✔
 // * Define the person and the item to be in the room
 //     * I think that maybe each of those things should only be optional to define in any given room. Like a room that can only have stuff or only has people should be allowed.
 // * Implement picking up the item upon walking over the item
@@ -218,5 +235,42 @@ impl State {
             player,
             .. <_>::default()
         })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Dir {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+impl State {
+    pub fn walk(&mut self, dir: Dir) {
+        let entity = &mut self.player;
+
+        use Dir::*;
+        let (new_x, new_y) = match dir {
+            Left => (entity.x.dec(), entity.y),
+            Right => (entity.x.inc(), entity.y),
+            Up => (entity.x, entity.y.dec()),
+            Down => (entity.x, entity.y.inc()),
+        };
+
+        // This can happen due to saturation
+        if new_x == entity.x 
+        && new_y == entity.y {
+            return
+        }
+
+        if can_walk_onto(&self.world, new_x, new_y) {
+           entity.x = new_x;
+           entity.y = new_y;
+        }
+    }
+
+    pub fn interact(&mut self, dir: Dir) {
+        // TODO
     }
 }

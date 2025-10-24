@@ -1,6 +1,7 @@
 use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
+use game::Dir;
 
 #[derive(Debug)]
 pub enum Error {
@@ -103,6 +104,30 @@ impl platform_types::State for State {
 fn game_update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
     if input.gamepad != <_>::default() {
         speaker.request_sfx(SFX::CardPlace);
+    }
+
+    if input.pressed_this_frame(Button::UP) {
+        state.walk(Dir::Up);
+    } else if input.pressed_this_frame(Button::DOWN) {
+        state.walk(Dir::Down);
+    } else if input.pressed_this_frame(Button::LEFT) {
+        state.walk(Dir::Left);
+    } else if input.pressed_this_frame(Button::RIGHT) {
+        state.walk(Dir::Right);
+    } else {
+        // Nothing to do
+    };
+
+    if input.pressed_this_frame(Button::A) {
+        if input.gamepad.contains(Button::UP) {
+            state.interact(Dir::Up)
+        } else if input.gamepad.contains(Button::DOWN) {
+            state.interact(Dir::Down)
+        } else if input.gamepad.contains(Button::LEFT) {
+            state.interact(Dir::Left)
+        } else if input.gamepad.contains(Button::RIGHT) {
+            state.interact(Dir::Right)
+        }
     }
 }
 
