@@ -28,25 +28,30 @@ impl State {
         // not the macro.
         features::log(&format!("{:?}", seed));
 
-        const HARDCODED_CONFIG: &str = "
-        const W = 0; // Wall
-        const F = 1; // Floor
+        const HARDCODED_CONFIG: &str = r#"
+        import "tile_flags" as TF;
+        const W = TF::WALL;
+        const F = TF::FLOOR | TF::PLAYER_START;
+        const B = TF::FLOOR; // Bare Floor
+        const I = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
 
         #{
             segments: [
                 #{
-                    width: 5,
+                    width: 7,
                     tiles: [
-                        W, W, F, W, W,
-                        W, F, F, F, W,
-                        F, F, W, F, F,
-                        W, F, F, F, W,
-                        W, W, F, W, W,
+                        F, F, F, F, F, F, F,
+                        F, W, W, F, W, W, F,
+                        F, W, B, I, B, W, F,
+                        F, F, I, W, I, F, F,
+                        F, W, B, I, B, W, F,
+                        F, W, W, I, W, W, F,
+                        F, F, F, F, F, F, F,
                     ]
                 }
             ]
         }
-        ";
+        "#;
 
         // TODO: Should this error bubble up instead? Or maybe have the app display an error message?
         let config = match config::parse(HARDCODED_CONFIG) {

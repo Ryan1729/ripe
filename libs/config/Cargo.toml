@@ -11,7 +11,7 @@ default = []
 wasm = ["rhai/wasm-bindgen", "getrandom/wasm_js"]
 
 [dependencies]
-rhai = { version = "1.23.4" }
+rhai = { version = "1.23.4", features = ["sync"] }
 getrandom = { version = "0.3"}
 
 [dependencies.game]

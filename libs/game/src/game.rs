@@ -65,8 +65,17 @@ fn random_passable_tile(rng: &mut Xs, segment: &WorldSegment) -> Option<XY> {
 
 type Index = usize;
 
-fn xy_to_i(segment: &WorldSegment, x: X, y: Y) -> Index {
-    y.usize() * segment.width + x.usize()
+enum XYToIError {
+    XPastWidth
+}
+
+fn xy_to_i(segment: &WorldSegment, x: X, y: Y) -> Result<Index, XYToIError> {
+    let x_usize = x.usize();
+    if x_usize >= segment.width {
+        return Err(XYToIError::XPastWidth);
+    }
+    
+    Ok(y.usize() * segment.width + x_usize)
 }
 
 fn i_to_xy(segment: &WorldSegment, index: Index) -> XY {
@@ -83,7 +92,11 @@ pub struct World {
 }
 
 fn can_walk_onto(world: &World, x: X, y: Y) -> bool {
-    if let Some(tile) = &world.segment.tiles.get(xy_to_i(&world.segment, x, y)) {
+    let Ok(i) = xy_to_i(&world.segment, x, y) else {
+        return false;
+    };
+
+    if let Some(tile) = &world.segment.tiles.get(i) {
         // TODO check for other entities
         if is_passable(tile) {
             return true;

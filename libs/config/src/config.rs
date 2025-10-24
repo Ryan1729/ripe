@@ -1,6 +1,8 @@
 
 use rhai::{Engine, EvalAltResult};
 
+use std::sync::LazyLock;
+
 use game::{Config, Tile, WorldSegment};
 
 #[derive(Clone, Copy, Debug)]
@@ -49,11 +51,36 @@ impl From<Box<EvalAltResult>> for Error {
     }
 }
 
-pub fn parse(code: &str) -> Result<Config, Error> {
-    // TODO? Worth avoiding initing this every parse? Would need either add a param, or use a mutex.
-    let engine = Engine::new();
+static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
+    use rhai::{Module, Scope};
+    use rhai::module_resolvers::StaticModuleResolver;
 
-    let map: rhai::Map = engine.eval(code)?;
+    let mut engine = Engine::new();
+
+    const TILE_FLAGS: &str = r#"
+        export const WALL = 0; // Can't be anything but a blocker
+        export const FLOOR = 1 << 0;
+        export const PLAYER_START = 1 << 2;
+        export const ITEM_START = 1 << 3;
+        export const NPC_START = 1 << 4;
+    "#;
+
+    let tile_flags_ast = engine.compile(TILE_FLAGS)
+        .expect("TILE_FLAGS should compile");
+    let tile_flags_module = Module::eval_ast_as_new(Scope::new(), &tile_flags_ast, &engine)
+        .expect("TILE_FLAGS should eval as a module");
+
+    let mut resolver = StaticModuleResolver::new();
+    
+    resolver.insert("tile_flags", tile_flags_module);
+
+    engine.set_module_resolver(resolver);
+
+    engine
+});
+
+pub fn parse(code: &str) -> Result<Config, Error> {
+    let map: rhai::Map = ENGINE.eval(code)?;
 
     let segments = {
         let key = "segments";
@@ -92,7 +119,7 @@ pub fn parse(code: &str) -> Result<Config, Error> {
                 let tile = match raw_tiles[i]
                     .as_int().map_err(|got| Error::TypeMismatch{ key: ik!(key, i), expected: "int", got })? {
                     0 => Tile { sprite: 0 },
-                    1 => Tile { sprite: 1 },
+                    1..31 => Tile { sprite: 1 },
                     got => { return Err(Error::UnexpectedTileKind { index: i, got, }); },
                 };
 
