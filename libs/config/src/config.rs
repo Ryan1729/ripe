@@ -3,7 +3,9 @@ use rhai::{Engine, EvalAltResult};
 
 use std::sync::LazyLock;
 
-use game::{Config, Tile, WorldSegment};
+use game::{Config, Tile};
+
+use game::config::{ALL_TILE_FLAGS, TileFlags, WorldSegment};
 
 #[derive(Clone, Copy, Debug)]
 pub struct IndexableKey {
@@ -57,18 +59,18 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 
     let mut engine = Engine::new();
 
-    const TILE_FLAGS: &str = r#"
-        export const WALL = 0; // Can't be anything but a blocker
-        export const FLOOR = 1 << 0;
-        export const PLAYER_START = 1 << 2;
-        export const ITEM_START = 1 << 3;
-        export const NPC_START = 1 << 4;
-    "#;
+    let mut tile_flags_string = String::with_capacity(128);
 
-    let tile_flags_ast = engine.compile(TILE_FLAGS)
-        .expect("TILE_FLAGS should compile");
+    for (name, value) in ALL_TILE_FLAGS {
+        tile_flags_string += &format!("export const {name} = {value};\n");
+    }
+
+    let tile_flags: &str = &tile_flags_string;
+
+    let tile_flags_ast = engine.compile(tile_flags)
+        .expect("tile_flags should compile");
     let tile_flags_module = Module::eval_ast_as_new(Scope::new(), &tile_flags_ast, &engine)
-        .expect("TILE_FLAGS should eval as a module");
+        .expect("tile_flags should eval as a module");
 
     let mut resolver = StaticModuleResolver::new();
     
@@ -113,17 +115,18 @@ pub fn parse(code: &str) -> Result<Config, Error> {
                 .ok_or(Error::FieldMissing{ key, parent_key, })?
                 .as_array_ref().map_err(|got| Error::TypeMismatch{ key: ik!(key), expected: "array", got })?;
 
-            let mut tiles: Vec<game::Tile> = Vec::with_capacity(raw_tiles.len());
+            let mut tiles: Vec<TileFlags> = Vec::with_capacity(raw_tiles.len());
 
             for i in 0..raw_tiles.len() {
-                let tile = match raw_tiles[i]
-                    .as_int().map_err(|got| Error::TypeMismatch{ key: ik!(key, i), expected: "int", got })? {
-                    0 => Tile { sprite: 0 },
-                    1..31 => Tile { sprite: 1 },
-                    got => { return Err(Error::UnexpectedTileKind { index: i, got, }); },
+                let got = raw_tiles[i]
+                    .as_int().map_err(|got| Error::TypeMismatch{ key: ik!(key, i), expected: "int", got })?;
+
+                let tile_flags = match TileFlags::try_from(got) {
+                    Ok(tf) => tf,
+                    Err(_) => { return Err(Error::UnexpectedTileKind { index: i, got }); },
                 };
 
-                tiles.push(tile);
+                tiles.push(tile_flags);
             }
 
             tiles

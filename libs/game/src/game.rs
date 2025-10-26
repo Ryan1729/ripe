@@ -1,29 +1,74 @@
-use models::{Entity, TileSprite, X, Y, XY, xy};
+use models::{Entity, TileSprite, X, Y, XY, xy, SegmentWidth};
 use platform_types::{command, unscaled};
 use xs::{Xs, Seed};
 
-#[derive(Clone)]
-pub struct Config {
-    // TODO Nonempty Vec
-    pub segments: Vec<WorldSegment>,
-}
+use std::collections::{BTreeMap};
 
-impl Default for Config {
-    fn default() -> Config {
-        Config {
-            segments: vec![
-                WorldSegment {
-                    width: 1,
-                    tiles: vec![
-                        Tile {
-                            sprite: 1,
-                        }
-                    ],
-                }
-            ],
+pub mod config {
+    use models::{SegmentWidth};
+    pub type TileFlags = u32;
+
+    macro_rules! flags_def {
+        (
+            $($name: ident = $value: expr),+ $(,)?
+        ) => {
+            pub const ALL_TILE_FLAGS: [(&str, TileFlags); 5] = [
+                $(
+                    (stringify!($name), $value),
+                )+
+            ];
+
+            $(
+                pub const $name: TileFlags = $value;
+            )+
+        };
+    }
+
+    flags_def!{
+        // Can't be anything but a blocker
+        WALL = 0,
+        FLOOR = 1 << 0,
+        PLAYER_START = 1 << 2,
+        ITEM_START = 1 << 3,
+        NPC_START = 1 << 4,
+    }
+
+    /// A configuration WorldSegment that can be used to contruct game::WorldSegments later.
+    #[derive(Clone)]
+    pub struct WorldSegment {
+        pub width: SegmentWidth,
+        // TODO? Nonempty Vec?
+        // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that rsstriction clear, so we
+        // can't have like PC only worlds that break in weird ways online. Probably no one will ever need that
+        // many tiles per segment. Plus, then xs conversions go away.
+        pub tiles: Vec<TileFlags>,
+    }
+
+    #[derive(Clone)]
+    pub struct Config {
+        // TODO Nonempty Vec
+        pub segments: Vec<WorldSegment>,
+    }
+
+    impl Default for Config {
+        fn default() -> Config {
+            const FLOOR: TileFlags = ALL_TILE_FLAGS[1].1;
+            const PLAYER_START: TileFlags = ALL_TILE_FLAGS[2].1;
+
+            Config {
+                segments: vec![
+                    WorldSegment {
+                        width: 1,
+                        tiles: vec![
+                            FLOOR | PLAYER_START
+                        ],
+                    }
+                ],
+            }
         }
     }
 }
+pub use config::{Config, TileFlags};
 
 #[derive(Clone, Default)]
 pub struct Tile {
@@ -34,14 +79,16 @@ fn is_passable(tile: &Tile) -> bool {
     tile.sprite == models::FLOOR_SPRITE
 }
 
-pub type SegmentWidth = usize;
+/// 64k world segments ought to be enough for anybody!
+pub type SegmentId = u16;
 
 #[derive(Clone, Default)]
 pub struct WorldSegment {
+    pub id: SegmentId,
     pub width: SegmentWidth,
     // TODO? Nonempty Vec?
     // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that rsstriction clear, so we
-    // can't have like PC only worlds that beak in weird ways online. Probably no one will ever need that
+    // can't have like PC only worlds that break in weird ways online. Probably no one will ever need that
     // many tiles per segment. Plus, then xs conversions go away.
     pub tiles: Vec<Tile>,
 }
@@ -56,11 +103,49 @@ fn random_passable_tile(rng: &mut Xs, segment: &WorldSegment) -> Option<XY> {
         let tile = &segment.tiles[i];
 
         if is_passable(tile) {
-            return Some(i_to_xy(segment, i));
+            return Some(i_to_xy(segment.width, i));
         }
     }
 
-    return None;
+    None
+}
+
+fn random_tile_matching_flags_besides(
+    rng: &mut Xs,
+    segment: &config::WorldSegment,
+    needle_flags: TileFlags,
+    filter_out: &[XY],
+) -> Option<XY> {
+    // TODO? Cap tiles length or accept this giving a messed up probabilty for large segments?
+    let len = segment.tiles.len();
+    let offset = xs::range(rng, 0..len as u32) as usize;
+    for index in 0..len {
+        let i = (index + offset) % len;
+
+        let current_tile_flags = &segment.tiles[i];
+
+        if current_tile_flags & needle_flags == needle_flags {
+            let current_xy = i_to_xy(segment.width, i);
+            if !filter_out.iter().any(|&xy| current_xy == xy) {
+                return Some(current_xy);
+            }
+        }
+    }
+
+    None
+}
+
+fn random_tile_matching_flags(
+    rng: &mut Xs,
+    segment: &config::WorldSegment,
+    needle_flags: TileFlags
+) -> Option<XY> {
+    random_tile_matching_flags_besides(
+        rng,
+        segment,
+        needle_flags,
+        &[],
+    )
 }
 
 type Index = usize;
@@ -74,21 +159,90 @@ fn xy_to_i(segment: &WorldSegment, x: X, y: Y) -> Result<Index, XYToIError> {
     if x_usize >= segment.width {
         return Err(XYToIError::XPastWidth);
     }
-    
+
     Ok(y.usize() * segment.width + x_usize)
 }
 
-fn i_to_xy(segment: &WorldSegment, index: Index) -> XY {
+fn i_to_xy(segment_width: SegmentWidth, index: Index) -> XY {
     XY {
-        x: xy::x((index % segment.width) as _),
-        y: xy::y((index / segment.width) as _),
+        x: xy::x((index % segment_width) as _),
+        y: xy::y((index / segment_width) as _),
     }
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct EntityKey {
+    pub id: SegmentId,
+    pub xy: XY
+}
+
+pub fn entity_key(id: SegmentId, x: X, y: Y) -> EntityKey {
+    EntityKey {
+        id,
+        xy: XY{x, y}
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct Entities {
+    map: BTreeMap<EntityKey, Entity>,
+}
+
+impl Entities {
+    pub fn insert(&mut self, id: SegmentId, entity: Entity) -> Option<Entity> {
+        self.map.insert(entity_key(id, entity.x, entity.y), entity)
+    }
+
+    pub fn for_id(&self, id: SegmentId) -> impl Iterator<Item=(&EntityKey, &Entity)> {
+        self.map.range(entity_key(id, X::MIN, Y::MIN)..=entity_key(id, X::MAX, Y::MAX))
+    }
+}
+
+#[cfg(test)]
+mod entities_works {
+    use super::*;
+
+    #[test]
+    fn when_pulling_out_this_range() {
+        let mut entities = Entities::default();
+
+        let id = 0;
+
+        let mut a = Entity::default();
+        a.x = x(1);
+        a.y = y(2);
+
+        let mut b = Entity::default();
+        b.x = x(3);
+        b.y = y(3);
+
+        let mut c = Entity::default();
+        c.x = x(1);
+        c.y = y(2);
+
+        entities.insert(id, a);
+        entities.insert(id, b);
+        entities.insert(id + 1, c);
+
+        let mut actual = vec![];
+
+        for (_, v) in entities.for_id(id) {
+            actual.push(v.clone());
+        }
+
+        let expected = vec![a, b];
+
+        assert_eq!(actual, expected);
+    }
+}
+
 
 #[derive(Clone, Default)]
 pub struct World {
     // TODO a graph structure of `WorldSegment`s instead of just one
     pub segment: WorldSegment,
+    pub items: Entities,
+    pub mobs: Entities,
 }
 
 fn can_walk_onto(world: &World, x: X, y: Y) -> bool {
@@ -112,6 +266,7 @@ pub struct State {
     pub config: Config,
     pub world: World,
     pub player: Entity,
+    pub segment_id: SegmentId,
 }
 
 // Proposed Steps
@@ -196,38 +351,40 @@ pub enum Error {
 
 impl State {
     pub fn new(seed: Seed, config: Config) -> Result<State, Error> {
+        use config::{FLOOR, PLAYER_START, NPC_START, ITEM_START};
+
+        let mut next_free_segment_id = 0;
+
         let mut rng = xs::from_seed(seed);
 
-        // TODO a way to enable random rooms in the config
-        let world = if false {
-            let width = xs::range(&mut rng, 2..9) as SegmentWidth;
+        // TODO? Cap the number of segments, or just be okay with the first room never being in the 5 billions, etc?
+        let index = xs::range(&mut rng, 0..config.segments.len() as u32) as usize;
 
-            let height = xs::range(&mut rng, 2..9) as usize;
+        let config_segment = &config.segments[index];
 
-            let len = width * height;
-            let mut tiles = Vec::with_capacity(len);
-
-            for _ in 0..len {
-                tiles.push(Tile {
-                    sprite: xs::range(&mut rng, 0..2) as TileSprite,
-                });
+        let tiles = config_segment.tiles.iter().map(
+            |tile_flags| {
+                Tile {
+                    sprite: if tile_flags & FLOOR != 0 {
+                        models::FLOOR_SPRITE
+                    } else {
+                        models::WALL_SPRITE
+                    },
+                }
             }
+        ).collect();
 
-            let segment = WorldSegment {
-                width,
-                tiles,
-            };
+        let segment = WorldSegment {
+            id: next_free_segment_id,
+            width: config_segment.width,
+            tiles,
+        };
+        next_free_segment_id += 1;
 
-            World {
-                segment,
-            }
-        } else {
-            // TODO? Cap the number of segments, or just be okay with the first room never being in the 5 billions, etc?
-            let index = xs::range(&mut rng, 0..config.segments.len() as u32) as usize;
-
-            World {
-                segment: config.segments[index].clone(),
-            }
+        let mut world = World {
+            segment,
+            items: <_>::default(),
+            mobs: <_>::default(),
         };
 
         let first_segment = &world.segment;
@@ -237,10 +394,43 @@ impl State {
             ..<_>::default()
         };
 
-        let xy = random_passable_tile(&mut rng, first_segment)
+        let p_xy = random_tile_matching_flags(&mut rng, &config_segment, PLAYER_START)
+            .or_else(|| random_passable_tile(&mut rng, first_segment))
             .ok_or(Error::CannotPlacePlayer)?;
-        player.x = xy.x;
-        player.y = xy.y;
+        player.x = p_xy.x;
+        player.y = p_xy.y;
+
+        if let Some(npc_xy) = random_tile_matching_flags_besides(
+            &mut rng,
+            &config_segment,
+            ITEM_START,
+            &[p_xy],
+        ) {
+            world.mobs.insert(
+                first_segment.id,
+                Entity {
+                    x: npc_xy.x,
+                    y: npc_xy.y,
+                    sprite: models::NPC_SPRITE,
+                }
+            );
+
+            if let Some(item_xy) = random_tile_matching_flags_besides(
+                &mut rng,
+                &config_segment,
+                NPC_START,
+                &[p_xy, npc_xy],
+            ) {
+                world.mobs.insert(
+                    first_segment.id,
+                    Entity {
+                        x: item_xy.x,
+                        y: item_xy.y,
+                        sprite: models::ITEM_SPRITE,
+                    }
+                );
+            }
+        }
 
         Ok(State {
             rng,
@@ -272,7 +462,7 @@ impl State {
         };
 
         // This can happen due to saturation
-        if new_x == entity.x 
+        if new_x == entity.x
         && new_y == entity.y {
             return
         }

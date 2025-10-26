@@ -1,9 +1,12 @@
-use xs::Xs;
+pub type SegmentWidth = usize;
 
 pub type TileSprite = u8;
 
+pub const WALL_SPRITE: TileSprite = 0;
 pub const FLOOR_SPRITE: TileSprite = 1;
 pub const PLAYER_SPRITE: TileSprite = 2;
+pub const NPC_SPRITE: TileSprite = 3;
+pub const ITEM_SPRITE: TileSprite = 4;
 
 // Fat-struct for entities! Fat-struct for entities!
 #[derive(Clone, Default)]
@@ -179,6 +182,9 @@ pub mod xy {
         ($($name: ident)+) => {
             $(
                 impl $name {
+                    pub const MIN: Self = Self(Inner::MIN);
+                    pub const MAX: Self = Self(Inner::MAX);
+
                     pub const ZERO: Self = Self(0);
                     pub const ONE: Self = Self(1);
 

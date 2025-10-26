@@ -2,6 +2,7 @@ use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
 use game::Dir;
+use models::Entity;
 
 #[derive(Debug)]
 pub enum Error {
@@ -158,23 +159,35 @@ fn game_render(commands: &mut Commands, state: &game::State) {
         );
     }
 
-    // TODO make a convenient way to draw a tile/sprite at tile boundaries, since we do it multiple times 
-    let x = unscaled::X(((state.player.x.get()) * 16) as _);
-    let y = unscaled::Y(((state.player.y.get()) * 16) as _);
-    let sprite = state.player.sprite as sprite::Inner;
+    // TODO make a convenient way to draw a tile/sprite at tile boundaries, since we do it multiple times.
+    fn draw_entity(commands: &mut Commands, entity: &Entity) {
+        let x = unscaled::X(((entity.x.get()) * 16) as _);
+        let y = unscaled::Y(((entity.y.get()) * 16) as _);
+        let sprite = entity.sprite as sprite::Inner;
 
-    commands.sspr(
-        sprite::XY {
-            x: sprite::X(sprite * 16),
-            y: sprite::Y(64),
-        },
-        command::Rect::from_unscaled(unscaled::Rect {
-            x: x.saturating_add(unscaled::W(16)),
-            y: y.saturating_add(unscaled::H(16)),
-            w: unscaled::W(16),
-            h: unscaled::H(16),
-        })
-    );
+        commands.sspr(
+            sprite::XY {
+                x: sprite::X(sprite * 16),
+                y: sprite::Y(64),
+            },
+            command::Rect::from_unscaled(unscaled::Rect {
+                x: x.saturating_add(unscaled::W(16)),
+                y: y.saturating_add(unscaled::H(16)),
+                w: unscaled::W(16),
+                h: unscaled::H(16),
+            })
+        );
+    }
+
+    for (_, item) in state.world.items.for_id(state.segment_id) {
+        draw_entity(commands, item);
+    }
+
+    for (_, mob) in state.world.mobs.for_id(state.segment_id) {
+        draw_entity(commands, mob);
+    }
+
+    draw_entity(commands, &state.player);
 }
 
 #[inline]
