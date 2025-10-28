@@ -108,10 +108,6 @@ impl platform_types::State for State {
 }
 
 fn game_update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
-    if input.gamepad != <_>::default() {
-        speaker.request_sfx(SFX::CardPlace);
-    }
-
     if input.pressed_this_frame(Button::UP) {
         state.walk(Dir::Up);
     } else if input.pressed_this_frame(Button::DOWN) {

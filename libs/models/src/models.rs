@@ -1,5 +1,8 @@
 pub type SegmentWidth = usize;
 
+/// 64k world segments ought to be enough for anybody!
+pub type SegmentId = u16;
+
 pub type TileSprite = u8;
 
 pub const WALL_SPRITE: TileSprite = 0;
@@ -9,7 +12,7 @@ pub const NPC_SPRITE: TileSprite = 3;
 pub const ITEM_SPRITE: TileSprite = 4;
 
 // Fat-struct for entities! Fat-struct for entities!
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Entity {
     pub x: X,
     pub y: Y,

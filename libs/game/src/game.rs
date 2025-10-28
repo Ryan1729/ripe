@@ -1,8 +1,6 @@
-use models::{Entity, TileSprite, X, Y, XY, xy, SegmentWidth};
+use models::{Entity, TileSprite, X, Y, XY, xy, SegmentId, SegmentWidth};
 use platform_types::{command, unscaled};
 use xs::{Xs, Seed};
-
-use std::collections::{BTreeMap};
 
 pub mod config {
     use models::{SegmentWidth};
@@ -78,9 +76,6 @@ pub struct Tile {
 fn is_passable(tile: &Tile) -> bool {
     tile.sprite == models::FLOOR_SPRITE
 }
-
-/// 64k world segments ought to be enough for anybody!
-pub type SegmentId = u16;
 
 #[derive(Clone, Default)]
 pub struct WorldSegment {
@@ -170,72 +165,82 @@ fn i_to_xy(segment_width: SegmentWidth, index: Index) -> XY {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct EntityKey {
-    pub id: SegmentId,
-    pub xy: XY
-}
+mod entities {
+    use models::{Entity, X, Y, XY, SegmentId};
 
-pub fn entity_key(id: SegmentId, x: X, y: Y) -> EntityKey {
-    EntityKey {
-        id,
-        xy: XY{x, y}
+    use std::collections::{BTreeMap};
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct Key {
+        pub id: SegmentId,
+        pub xy: XY
     }
-}
-
-#[derive(Clone, Default)]
-pub struct Entities {
-    map: BTreeMap<EntityKey, Entity>,
-}
-
-impl Entities {
-    pub fn insert(&mut self, id: SegmentId, entity: Entity) -> Option<Entity> {
-        self.map.insert(entity_key(id, entity.x, entity.y), entity)
+    
+    pub fn entity_key(id: SegmentId, x: X, y: Y) -> Key {
+        Key {
+            id,
+            xy: XY{x, y}
+        }
     }
 
-    pub fn for_id(&self, id: SegmentId) -> impl Iterator<Item=(&EntityKey, &Entity)> {
-        self.map.range(entity_key(id, X::MIN, Y::MIN)..=entity_key(id, X::MAX, Y::MAX))
+    #[derive(Clone, Debug, Default)]
+    pub struct Entities {
+        map: BTreeMap<Key, Entity>,
     }
-}
-
-#[cfg(test)]
-mod entities_works {
-    use super::*;
-
-    #[test]
-    fn when_pulling_out_this_range() {
-        let mut entities = Entities::default();
-
-        let id = 0;
-
-        let mut a = Entity::default();
-        a.x = x(1);
-        a.y = y(2);
-
-        let mut b = Entity::default();
-        b.x = x(3);
-        b.y = y(3);
-
-        let mut c = Entity::default();
-        c.x = x(1);
-        c.y = y(2);
-
-        entities.insert(id, a);
-        entities.insert(id, b);
-        entities.insert(id + 1, c);
-
-        let mut actual = vec![];
-
-        for (_, v) in entities.for_id(id) {
-            actual.push(v.clone());
+    
+    impl Entities {
+        pub fn insert(&mut self, id: SegmentId, entity: Entity) -> Option<Entity> {
+            self.map.insert(entity_key(id, entity.x, entity.y), entity)
+        }
+    
+        pub fn for_id(&self, id: SegmentId) -> impl Iterator<Item=(&Key, &Entity)> {
+            self.map.range(entity_key(id, X::MIN, Y::MIN)..=entity_key(id, X::MAX, Y::MAX))
         }
 
-        let expected = vec![a, b];
+        pub fn remove(&mut self, key: Key) -> Option<Entity> {
+            self.map.remove(&key)
+        }
+    }
 
-        assert_eq!(actual, expected);
+    #[cfg(test)]
+    mod entities_works {
+        use super::*;
+    
+        #[test]
+        fn when_pulling_out_this_range() {
+            let mut entities = Entities::default();
+    
+            let id = 0;
+    
+            let mut a = Entity::default();
+            a.x = x(1);
+            a.y = y(2);
+    
+            let mut b = Entity::default();
+            b.x = x(3);
+            b.y = y(3);
+    
+            let mut c = Entity::default();
+            c.x = x(1);
+            c.y = y(2);
+    
+            entities.insert(id, a);
+            entities.insert(id, b);
+            entities.insert(id + 1, c);
+    
+            let mut actual = vec![];
+    
+            for (_, v) in entities.for_id(id) {
+                actual.push(v.clone());
+            }
+    
+            let expected = vec![a, b];
+    
+            assert_eq!(actual, expected);
+        }
     }
 }
-
+use entities::{Entities, entity_key};
 
 #[derive(Clone, Default)]
 pub struct World {
@@ -260,12 +265,15 @@ fn can_walk_onto(world: &World, x: X, y: Y) -> bool {
     false
 }
 
+pub type Inventory = Vec<Entity>;
+
 #[derive(Clone, Default)]
 pub struct State {
     pub rng: Xs,
     pub config: Config,
     pub world: World,
     pub player: Entity,
+    pub player_inventory: Inventory,
     pub segment_id: SegmentId,
 }
 
@@ -327,7 +335,7 @@ pub struct State {
 //    * Leave room for a validate step after the parsing. Validation errors should eventually all contain custom error messages including why the given thing is needed.
 //        * This can be done inside the parse function
 // * Implement the player walking around on those tiles ✔
-// * Define the person and the item to be in the room
+// * Define the person and the item to be in the room ✔
 //     * I think that maybe each of those things should only be optional to define in any given room. Like a room that can only have stuff or only has people should be allowed.
 // * Implement picking up the item upon walking over the item
 //     * We can implement opening chests later on. If an idea for a generic "thingy" graphic comes up, feel free to replace it, keeping a copy of the chest graphic for later.
@@ -343,6 +351,10 @@ pub struct State {
 // Things to add eventually:
 // * A tutorial.
 // * A curated list of settings for people to pick for their first several runs.
+// * Sources of inspiration for mechanics to throw in the pot:
+//    * DROD
+//    * All the standard Roguelike things
+//    * The standard set of "here's a how to make a game tutorial" easy genres
 
 #[derive(Debug)]
 pub enum Error {
@@ -421,7 +433,7 @@ impl State {
                 NPC_START,
                 &[p_xy, npc_xy],
             ) {
-                world.mobs.insert(
+                world.items.insert(
                     first_segment.id,
                     Entity {
                         x: item_xy.x,
@@ -468,8 +480,14 @@ impl State {
         }
 
         if can_walk_onto(&self.world, new_x, new_y) {
-           entity.x = new_x;
-           entity.y = new_y;
+            entity.x = new_x;
+            entity.y = new_y;
+
+            let key = entity_key(self.segment_id, entity.x, entity.y);
+
+            if let Some(item) = self.world.items.remove(key) {
+                self.player_inventory.push(item);
+            }
         }
     }
 
