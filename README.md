@@ -78,6 +78,36 @@ Enables additional generic logging. With this feature disabled, the logs will be
 
 Enables sound when not building for the web. On by default.
 
+##### reload
+
+Enables hot reloading of certain parts of the code, which is only relevant if you are making changes to the code. Off by default. Only useful on Desktop, and currently only tested on Linux.
+
+###### Getting hot reloading working
+
+(Assumes that the environment is set up for normal Desktop builds already.)
+
+1.  In one terminal run
+```
+cargo run --release --bin ripe --features reload
+```
+to build and run the version of the main exe that will do the hot reloading.
+
+2. In a second terminal run
+```
+cargo build --release --package app --features reload
+```
+after each change to the reloadable part of the code (things called from the `app` crate).
+
+Optionally, an automated way of doing this, such as via cargo-watch can be used, like so:
+
+```
+cargo watch -w libs/app/ -x 'build --release --package app --features reload'
+```
+
+It is possible to run both commands in one terminal, and in parallel, at least on Linux, using GNU Parallel.
+
+See https://github.com/rksm/hot-lib-reloader-rs for exampels of the GNU Parallel version, more details on limitations, etc.
+
 ___
 
 licensed under Apache or MIT, at your option.

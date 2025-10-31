@@ -10,6 +10,7 @@ path = "src/platform.rs"
 [dependencies]
 softbuffer = "0.1.1"
 winit = "0.26.1"
+hot-lib-reloader = { version = "0.8.2", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3.77"
@@ -21,6 +22,9 @@ rodio = { version = "0.15.0", features=["vorbis"], default-features = false }
 spin_sleep = "1.1.1"
 xs = { path = "../xs" }
 
+[dependencies.app]
+path = "../app"
+
 [dependencies.platform_types]
 path = "../platform_types"
 
@@ -30,3 +34,4 @@ path = "../render"
 [features]
 default = []
 non-web-sound = []
+reload = ["app/reload", "dep:hot-lib-reloader"]

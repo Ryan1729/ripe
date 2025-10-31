@@ -1,5 +1,4 @@
 use platform_types::{
-    State,
     StateParams,
 };
 
@@ -13,7 +12,23 @@ use winit::{
 
 use render::{clip, FrameBuffer, NeedsRedraw};
 
-pub fn run<S: State + 'static>(mut state: S) {
+#[cfg(feature = "reload")]
+use hot_app::*;
+#[cfg(not(feature = "reload"))]
+use app::*;
+
+#[cfg(feature = "reload")]
+#[hot_lib_reloader::hot_module(
+    dylib = "app",
+    lib_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/release")
+)]
+mod hot_app {
+    use platform_types::SFX;
+    pub use app::State;
+    hot_functions_from_file!("libs/app/src/app.rs");
+}
+
+pub fn run(mut state: app::State) {
     let event_loop = EventLoop::new();
 
     let builder = WindowBuilder::new()
@@ -87,8 +102,8 @@ pub fn run<S: State + 'static>(mut state: S) {
                 };
 
                 match element_state {
-                    ElementState::Pressed => state.press(button),
-                    ElementState::Released => state.release(button),
+                    ElementState::Pressed => app::press(&mut state, button),
+                    ElementState::Released => app::release(&mut state, button),
                 }
             }
             Event::WindowEvent {
@@ -98,7 +113,8 @@ pub fn run<S: State + 'static>(mut state: S) {
                 just_gained_focus = true;
             }
             Event::MainEventsCleared => {
-                let (commands, sounds) = state.frame();
+                // `frame` comes from the `app` crate.
+                let (commands, sounds) = frame(&mut state);
 
                 handle_sounds(&mut sound_handler, sounds);
 

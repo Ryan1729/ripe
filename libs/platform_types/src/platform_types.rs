@@ -1072,14 +1072,6 @@ pub type Logger = Option<fn(&str) -> ()>;
 
 pub type StateParams = ([u8; 16], Logger, Logger);
 
-pub trait State {
-    fn frame(&mut self) -> (&[Command], &[SFX]);
-
-    fn press(&mut self, button: Button);
-
-    fn release(&mut self, button: Button);
-}
-
 // reportedly colourblind friendly colours
 // https://twitter.com/ea_accessible/status/968595073184092160
 pub mod colours {

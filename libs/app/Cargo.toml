@@ -6,6 +6,7 @@ edition = "2021"
 
 [lib]
 path = "src/app.rs"
+crate-type = ["rlib", "dylib"]
 
 [dependencies.config]
 path = "../config"
@@ -30,3 +31,4 @@ default = []
 invariant-checking = ["features/invariant-checking"]
 logging = ["features/logging"]
 wasm = ["config/wasm"]
+reload = []

@@ -76,35 +76,34 @@ impl State {
     }
 }
 
-impl platform_types::State for State {
-    fn frame(&mut self) -> (&[platform_types::Command], &[SFX]) {
-        self.commands.clear();
-        self.speaker.clear();
-        update_and_render(
-            &mut self.commands,
-            &mut self.game_state,
-            self.input,
-            &mut self.speaker,
-        );
+#[cfg_attr(feature = "reload", unsafe(no_mangle))]
+pub fn frame(state: &mut State) -> (&[platform_types::Command], &[SFX]) {
+    state.commands.clear();
+    state.speaker.clear();
+    update_and_render(
+        &mut state.commands,
+        &mut state.game_state,
+        state.input,
+        &mut state.speaker,
+    );
 
-        self.input.previous_gamepad = self.input.gamepad;
+    state.input.previous_gamepad = state.input.gamepad;
 
-        (self.commands.slice(), self.speaker.slice())
+    (state.commands.slice(), state.speaker.slice())
+}
+
+pub fn press(state: &mut State, button: Button) {
+    if state.input.previous_gamepad.contains(button) {
+        //This is meant to pass along the key repeat, if any.
+        //Not sure if rewriting history is the best way to do this.
+        state.input.previous_gamepad.remove(button);
     }
 
-    fn press(&mut self, button: Button) {
-        if self.input.previous_gamepad.contains(button) {
-            //This is meant to pass along the key repeat, if any.
-            //Not sure if rewriting history is the best way to do this.
-            self.input.previous_gamepad.remove(button);
-        }
+    state.input.gamepad.insert(button);
+}
 
-        self.input.gamepad.insert(button);
-    }
-
-    fn release(&mut self, button: Button) {
-        self.input.gamepad.remove(button);
-    }
+pub fn release(state: &mut State, button: Button) {
+    state.input.gamepad.remove(button);
 }
 
 fn game_update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
