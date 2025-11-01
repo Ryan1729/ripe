@@ -12,11 +12,17 @@ pub const NPC_SPRITE: TileSprite = 3;
 pub const ITEM_SPRITE: TileSprite = 4;
 
 // Fat-struct for entities! Fat-struct for entities!
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Entity {
     pub x: X,
     pub y: Y,
     pub sprite: TileSprite,
+}
+
+impl Entity {
+    pub fn xy(&self) -> XY {
+        XY { x: self.x, y: self.y }
+    }
 }
 
 pub mod xy {
@@ -253,3 +259,45 @@ pub mod xy {
 
 }
 pub use xy::{X, Y, W, H, Rect, XY};
+
+#[derive(Clone, Default)]
+pub struct Tile {
+    pub sprite: TileSprite,
+}
+
+pub fn is_passable(tile: &Tile) -> bool {
+    tile.sprite == FLOOR_SPRITE
+}
+
+#[derive(Clone, Default)]
+pub struct WorldSegment {
+    pub id: SegmentId,
+    pub width: SegmentWidth,
+    // TODO? Nonempty Vec?
+    // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that rsstriction clear, so we
+    // can't have like PC only worlds that break in weird ways online. Probably no one will ever need that
+    // many tiles per segment. Plus, then xs conversions go away.
+    pub tiles: Vec<Tile>,
+}
+
+pub type Index = usize;
+
+pub enum XYToIError {
+    XPastWidth
+}
+
+pub fn xy_to_i(segment: &WorldSegment, x: X, y: Y) -> Result<Index, XYToIError> {
+    let x_usize = x.usize();
+    if x_usize >= segment.width {
+        return Err(XYToIError::XPastWidth);
+    }
+
+    Ok(y.usize() * segment.width + x_usize)
+}
+
+pub fn i_to_xy(segment_width: SegmentWidth, index: Index) -> XY {
+    XY {
+        x: xy::x((index % segment_width) as _),
+        y: xy::y((index / segment_width) as _),
+    }
+}

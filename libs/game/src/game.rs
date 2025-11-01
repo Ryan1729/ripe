@@ -1,5 +1,13 @@
-use models::{Entity, TileSprite, X, Y, XY, xy, SegmentId, SegmentWidth};
-use platform_types::{command, unscaled};
+use models::{
+    Entity,
+    Tile,
+    X,
+    Y,
+    SegmentId,
+    WorldSegment,
+    is_passable,
+    xy_to_i,
+};
 use xs::{Xs, Seed};
 
 pub mod config {
@@ -68,100 +76,70 @@ pub mod config {
 }
 pub use config::{Config, TileFlags};
 
-#[derive(Clone, Default)]
-pub struct Tile {
-    pub sprite: TileSprite,
-}
+mod random {
+    use xs::{Xs};
+    use crate::config::{self, TileFlags};
 
-fn is_passable(tile: &Tile) -> bool {
-    tile.sprite == models::FLOOR_SPRITE
-}
+    use models::{
+        XY,
+        i_to_xy,
+        is_passable,
+        WorldSegment,
+    };
 
-#[derive(Clone, Default)]
-pub struct WorldSegment {
-    pub id: SegmentId,
-    pub width: SegmentWidth,
-    // TODO? Nonempty Vec?
-    // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that rsstriction clear, so we
-    // can't have like PC only worlds that break in weird ways online. Probably no one will ever need that
-    // many tiles per segment. Plus, then xs conversions go away.
-    pub tiles: Vec<Tile>,
-}
-
-fn random_passable_tile(rng: &mut Xs, segment: &WorldSegment) -> Option<XY> {
-    // TODO? Cap tiles length or accept this giving a messed up probabilty for large segments?
-    let len = segment.tiles.len();
-    let offset = xs::range(rng, 0..len as u32) as usize;
-    for index in 0..len {
-        let i = (index + offset) % len;
-
-        let tile = &segment.tiles[i];
-
-        if is_passable(tile) {
-            return Some(i_to_xy(segment.width, i));
-        }
-    }
-
-    None
-}
-
-fn random_tile_matching_flags_besides(
-    rng: &mut Xs,
-    segment: &config::WorldSegment,
-    needle_flags: TileFlags,
-    filter_out: &[XY],
-) -> Option<XY> {
-    // TODO? Cap tiles length or accept this giving a messed up probabilty for large segments?
-    let len = segment.tiles.len();
-    let offset = xs::range(rng, 0..len as u32) as usize;
-    for index in 0..len {
-        let i = (index + offset) % len;
-
-        let current_tile_flags = &segment.tiles[i];
-
-        if current_tile_flags & needle_flags == needle_flags {
-            let current_xy = i_to_xy(segment.width, i);
-            if !filter_out.iter().any(|&xy| current_xy == xy) {
-                return Some(current_xy);
+    pub fn passable_tile(rng: &mut Xs, segment: &WorldSegment) -> Option<XY> {
+        // TODO? Cap tiles length or accept this giving a messed up probabilty for large segments?
+        let len = segment.tiles.len();
+        let offset = xs::range(rng, 0..len as u32) as usize;
+        for index in 0..len {
+            let i = (index + offset) % len;
+    
+            let tile = &segment.tiles[i];
+    
+            if is_passable(tile) {
+                return Some(i_to_xy(segment.width, i));
             }
         }
+    
+        None
     }
 
-    None
-}
-
-fn random_tile_matching_flags(
-    rng: &mut Xs,
-    segment: &config::WorldSegment,
-    needle_flags: TileFlags
-) -> Option<XY> {
-    random_tile_matching_flags_besides(
-        rng,
-        segment,
-        needle_flags,
-        &[],
-    )
-}
-
-type Index = usize;
-
-enum XYToIError {
-    XPastWidth
-}
-
-fn xy_to_i(segment: &WorldSegment, x: X, y: Y) -> Result<Index, XYToIError> {
-    let x_usize = x.usize();
-    if x_usize >= segment.width {
-        return Err(XYToIError::XPastWidth);
+    pub fn tile_matching_flags_besides(
+        rng: &mut Xs,
+        segment: &config::WorldSegment,
+        needle_flags: TileFlags,
+        filter_out: &[XY],
+    ) -> Option<XY> {
+        // TODO? Cap tiles length or accept this giving a messed up probabilty for large segments?
+        let len = segment.tiles.len();
+        let offset = xs::range(rng, 0..len as u32) as usize;
+        for index in 0..len {
+            let i = (index + offset) % len;
+    
+            let current_tile_flags = &segment.tiles[i];
+    
+            if current_tile_flags & needle_flags == needle_flags {
+                let current_xy = i_to_xy(segment.width, i);
+                if !filter_out.iter().any(|&xy| current_xy == xy) {
+                    return Some(current_xy);
+                }
+            }
+        }
+    
+        None
     }
 
-    Ok(y.usize() * segment.width + x_usize)
-}
-
-fn i_to_xy(segment_width: SegmentWidth, index: Index) -> XY {
-    XY {
-        x: xy::x((index % segment_width) as _),
-        y: xy::y((index / segment_width) as _),
+    pub fn tile_matching_flags(
+        rng: &mut Xs,
+        segment: &config::WorldSegment,
+        needle_flags: TileFlags
+    ) -> Option<XY> {
+        tile_matching_flags_besides(
+            rng,
+            segment,
+            needle_flags,
+            &[],
+        )
     }
 }
 
@@ -204,6 +182,7 @@ mod entities {
 
     #[cfg(test)]
     mod entities_works {
+        use models::{xy::{x, y}};
         use super::*;
     
         #[test]
@@ -224,8 +203,8 @@ mod entities {
             c.x = x(1);
             c.y = y(2);
     
-            entities.insert(id, a);
-            entities.insert(id, b);
+            entities.insert(id, a.clone());
+            entities.insert(id, b.clone());
             entities.insert(id + 1, c);
     
             let mut actual = vec![];
@@ -268,6 +247,13 @@ fn can_walk_onto(world: &World, x: X, y: Y) -> bool {
 pub type Inventory = Vec<Entity>;
 
 #[derive(Clone, Default)]
+pub enum Mode {
+    #[default]
+    Walking,
+    Inventory {}
+}
+
+#[derive(Clone, Default)]
 pub struct State {
     pub rng: Xs,
     pub config: Config,
@@ -275,6 +261,7 @@ pub struct State {
     pub player: Entity,
     pub player_inventory: Inventory,
     pub segment_id: SegmentId,
+    pub mode: Mode,
 }
 
 // Proposed Steps
@@ -337,10 +324,21 @@ pub struct State {
 // * Implement the player walking around on those tiles ✔
 // * Define the person and the item to be in the room ✔
 //     * I think that maybe each of those things should only be optional to define in any given room. Like a room that can only have stuff or only has people should be allowed.
-// * Implement picking up the item upon walking over the item
+// * Implement picking up the item upon walking over the item ✔
 //     * We can implement opening chests later on. If an idea for a generic "thingy" graphic comes up, feel free to replace it, keeping a copy of the chest graphic for later.
 //         * An open sack?
 // * Is now a good time for an inventory menu?
+//    * How should the inventory work?
+//        * A grid, with a little description along the bottom?
+//            * Implies either like carefully fitting the description into a given space, or some way to scroll. 
+//                * Automatic scrolling is an established thing, and we can make the scroll speed adjustable if needed.
+//    * Given items are entities, we'd need to support a way to show any entity in the inventory
+//        * Maybe they shouldn't be? Or is what we use to display them on the map enough already?
+//            * Different items should have a distinct graphic eventually
+//    * Let's do a bare bones version of a grid/list and leave stuff like scrolling until later
+//        * Press start to bring up the menu, which can be a nine slice box drawn over top of everything
+//            * Or maybe just the center tile for it, and we let the edges be ugly for now?
+//        * Render the item's tile sprite in a grid, or maybe just a vertical list for now
 // * Implement turning in the item and at least like a print when it happens.
 
 // A note about eventual design:
@@ -406,13 +404,13 @@ impl State {
             ..<_>::default()
         };
 
-        let p_xy = random_tile_matching_flags(&mut rng, &config_segment, PLAYER_START)
-            .or_else(|| random_passable_tile(&mut rng, first_segment))
+        let p_xy = random::tile_matching_flags(&mut rng, &config_segment, PLAYER_START)
+            .or_else(|| random::passable_tile(&mut rng, first_segment))
             .ok_or(Error::CannotPlacePlayer)?;
         player.x = p_xy.x;
         player.y = p_xy.y;
 
-        if let Some(npc_xy) = random_tile_matching_flags_besides(
+        if let Some(npc_xy) = random::tile_matching_flags_besides(
             &mut rng,
             &config_segment,
             ITEM_START,
@@ -427,7 +425,7 @@ impl State {
                 }
             );
 
-            if let Some(item_xy) = random_tile_matching_flags_besides(
+            if let Some(item_xy) = random::tile_matching_flags_besides(
                 &mut rng,
                 &config_segment,
                 NPC_START,
@@ -491,7 +489,7 @@ impl State {
         }
     }
 
-    pub fn interact(&mut self, dir: Dir) {
+    pub fn interact(&mut self, _dir: Dir) {
         // TODO
     }
 }

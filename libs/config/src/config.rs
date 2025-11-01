@@ -3,8 +3,8 @@ use rhai::{Engine, EvalAltResult};
 
 use std::sync::LazyLock;
 
-use game::{Config, Tile};
-
+use models::{Tile};
+use game::{Config};
 use game::config::{ALL_TILE_FLAGS, TileFlags, WorldSegment};
 
 #[derive(Clone, Copy, Debug)]

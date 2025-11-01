@@ -978,7 +978,7 @@ pub mod command {
         assert_eq!(expected, actual);
     }
 
-    #[derive(Clone, Copy, Debug, Default)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct Command {
         pub rect: Rect,
         pub sprite_xy: sprite::XY,

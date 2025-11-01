@@ -234,6 +234,7 @@ version = "0.1.0"
 dependencies = [
  "game",
  "getrandom 0.3.3",
+ "models",
  "rhai",
 ]
 

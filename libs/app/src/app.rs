@@ -1,8 +1,8 @@
 use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
-use game::Dir;
-use models::Entity;
+use game::{Dir, Mode};
+use models::{Entity, XY, i_to_xy};
 
 #[derive(Debug)]
 pub enum Error {
@@ -64,7 +64,7 @@ impl State {
             }
         };
 
-        let mut game_state = game::State::new(seed, config)
+        let game_state = game::State::new(seed, config)
             .map_err(Error::Game);
 
         Self {
@@ -106,71 +106,93 @@ pub fn release(state: &mut State, button: Button) {
     state.input.gamepad.remove(button);
 }
 
-fn game_update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
-    if input.pressed_this_frame(Button::UP) {
-        state.walk(Dir::Up);
-    } else if input.pressed_this_frame(Button::DOWN) {
-        state.walk(Dir::Down);
-    } else if input.pressed_this_frame(Button::LEFT) {
-        state.walk(Dir::Left);
-    } else if input.pressed_this_frame(Button::RIGHT) {
-        state.walk(Dir::Right);
-    } else {
-        // Nothing to do
-    };
-
-    if input.pressed_this_frame(Button::A) {
-        if input.gamepad.contains(Button::UP) {
-            state.interact(Dir::Up)
-        } else if input.gamepad.contains(Button::DOWN) {
-            state.interact(Dir::Down)
-        } else if input.gamepad.contains(Button::LEFT) {
-            state.interact(Dir::Left)
-        } else if input.gamepad.contains(Button::RIGHT) {
-            state.interact(Dir::Right)
-        }
+fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
+    match &mut state.mode {
+        Mode::Walking => {
+            if input.pressed_this_frame(Button::START) {
+                state.mode = Mode::Inventory {};
+                return
+            }
+        
+            if input.pressed_this_frame(Button::UP) {
+                state.walk(Dir::Up);
+            } else if input.pressed_this_frame(Button::DOWN) {
+                state.walk(Dir::Down);
+            } else if input.pressed_this_frame(Button::LEFT) {
+                state.walk(Dir::Left);
+            } else if input.pressed_this_frame(Button::RIGHT) {
+                state.walk(Dir::Right);
+            } else {
+                // Nothing to do
+            };
+        
+            if input.pressed_this_frame(Button::A) {
+                if input.gamepad.contains(Button::UP) {
+                    state.interact(Dir::Up)
+                } else if input.gamepad.contains(Button::DOWN) {
+                    state.interact(Dir::Down)
+                } else if input.gamepad.contains(Button::LEFT) {
+                    state.interact(Dir::Left)
+                } else if input.gamepad.contains(Button::RIGHT) {
+                    state.interact(Dir::Right)
+                }
+            }
+        },
+        Mode::Inventory {} => {
+            if input.pressed_this_frame(Button::START) {
+                state.mode = Mode::Walking;
+                return
+            }
+        },
     }
 }
 
+const TILE_W: unscaled::W = unscaled::W(16);
+const TILE_H: unscaled::H = unscaled::H(16);
+
+fn tile_xy_to_rect(xy: XY) -> command::Rect {
+    let x = unscaled::X(xy.x.get() * TILE_W.get());
+    let y = unscaled::Y(xy.y.get() * TILE_H.get());
+
+    command::Rect::from_unscaled(unscaled::Rect {
+        x: x.saturating_add(TILE_W),
+        y: y.saturating_add(TILE_H),
+        w: TILE_W,
+        h: TILE_H,
+    })
+}
+
+/// Where the tiles start on the spreadsheet.
+const TILES_Y: sprite::Y = sprite::Y(64);
+
 #[inline]
 fn game_render(commands: &mut Commands, state: &game::State) {
-    // TODO pull these 16s into named constant(s).
+    //
+    // Render World
+    //
+
     for i in 0..state.world.segment.tiles.len() {
-        let x = unscaled::X(((i % state.world.segment.width) * 16) as _);
-        let y = unscaled::Y(((i / state.world.segment.width) * 16) as _);
         let sprite = state.world.segment.tiles[i].sprite as sprite::Inner;
 
         commands.sspr(
             sprite::XY {
-                x: sprite::X(sprite * 16),
-                y: sprite::Y(64),
+                x: sprite::X(sprite * TILE_W.get()),
+                y: TILES_Y,
             },
-            command::Rect::from_unscaled(unscaled::Rect {
-                x: x.saturating_add(unscaled::W(16)),
-                y: y.saturating_add(unscaled::H(16)),
-                w: unscaled::W(16),
-                h: unscaled::H(16),
-            })
+            tile_xy_to_rect(i_to_xy(state.world.segment.width, i)),
         );
     }
 
     // TODO make a convenient way to draw a tile/sprite at tile boundaries, since we do it multiple times.
     fn draw_entity(commands: &mut Commands, entity: &Entity) {
-        let x = unscaled::X(((entity.x.get()) * 16) as _);
-        let y = unscaled::Y(((entity.y.get()) * 16) as _);
         let sprite = entity.sprite as sprite::Inner;
 
         commands.sspr(
             sprite::XY {
-                x: sprite::X(sprite * 16),
-                y: sprite::Y(64),
+                x: sprite::X(sprite * TILE_W.get()),
+                y: TILES_Y,
             },
-            command::Rect::from_unscaled(unscaled::Rect {
-                x: x.saturating_add(unscaled::W(16)),
-                y: y.saturating_add(unscaled::H(16)),
-                w: unscaled::W(16),
-                h: unscaled::H(16),
-            })
+            tile_xy_to_rect(entity.xy())
         );
     }
 
@@ -183,6 +205,26 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     }
 
     draw_entity(commands, &state.player);
+
+    //
+    // Conditional rendering
+    //
+
+    match state.mode {
+        Mode::Walking => {
+            
+        },
+        Mode::Inventory {} => {
+            const SPACING: unscaled::Inner = 20;
+
+            commands.nine_slice(
+                unscaled::X(SPACING),
+                unscaled::Y(SPACING),
+                unscaled::W(platform_types::command::WIDTH - (SPACING * 2)),
+                unscaled::H(platform_types::command::HEIGHT - 120),
+            );
+        },
+    }
 }
 
 #[inline]

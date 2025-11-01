@@ -1,0 +1,1 @@
+cargo watch -w libs/app/ -w libs/game -w libs/gfx -w libs/config -x 'build --release --package app --features reload'
