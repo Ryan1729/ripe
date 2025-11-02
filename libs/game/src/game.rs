@@ -336,7 +336,7 @@ pub struct State {
 //        * Maybe they shouldn't be? Or is what we use to display them on the map enough already?
 //            * Different items should have a distinct graphic eventually
 //    * Let's do a bare bones version of a grid/list and leave stuff like scrolling until later
-//        * Press start to bring up the menu, which can be a nine slice box drawn over top of everything
+//        * Press start to bring up the menu, which can be a nine slice box drawn over top of everything ✔
 //            * Or maybe just the center tile for it, and we let the edges be ugly for now?
 //        * Render the item's tile sprite in a grid, or maybe just a vertical list for now
 // * Implement turning in the item and at least like a print when it happens.

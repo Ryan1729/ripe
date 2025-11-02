@@ -158,187 +158,8 @@ impl Commands {
         bytes.split(|&b| b == b'\n')
     }
 
-    pub fn nine_slice(&mut self, x: unscaled::X, y: unscaled::Y, w: unscaled::W, h: unscaled::H) {
-        // Top left point on the rect that makes up the top left corner of the sprite.
-        const TOP_LEFT: sprite::XY = sprite::XY {
-            x: sprite::X(0),
-            y: sprite::Y(32),
-        };
-
-        // Top left point on the rect that makes up the top right corner of the sprite.
-        const TOP_RIGHT: sprite::XY = sprite::XY {
-            x: sprite::X(20),
-            y: sprite::Y(32),
-        };
-
-        // Top left point on the rect that makes up the bottom left corner of the sprite.
-        const BOTTOM_LEFT: sprite::XY = sprite::XY {
-            x: sprite::X(0),
-            y: sprite::Y(52),
-        };
-
-        // Top left point on the rect that makes up the bottom right corner of the sprite.
-        const BOTTOM_RIGHT: sprite::XY = sprite::XY {
-            x: sprite::X(20),
-            y: sprite::Y(52),
-        };
-
-        // Top left point on the rect that makes up the middle of the sprite.
-        const MIDDLE: sprite::XY = sprite::XY {
-            x: sprite::x_const_add_w(TOP_LEFT.x, EDGE_W),
-            y: sprite::y_const_add_h(TOP_LEFT.y, EDGE_H),
-        };
-
-        // Top left point on the rect that makes up the top edge of the sprite.
-        const TOP: sprite::XY = sprite::XY {
-            x: MIDDLE.x,
-            y: TOP_LEFT.y,
-        };
-
-        // Top left point on the rect that makes up the left edge of the sprite.
-        const LEFT: sprite::XY = sprite::XY {
-            x: TOP_LEFT.x,
-            y: MIDDLE.y,
-        };
-
-        // Top left point on the rect that makes up the right edge of the sprite.
-        const RIGHT: sprite::XY = sprite::XY {
-            x: TOP_RIGHT.x,
-            y: MIDDLE.y,
-        };
-
-        // Top left point on the rect that makes up the bottom edge of the sprite.
-        const BOTTOM: sprite::XY = sprite::XY {
-            x: TOP.x,
-            y: BOTTOM_LEFT.y,
-        };
-
-        const CENTER_W: unscaled::W = unscaled::W(16);
-        const CENTER_H: unscaled::H = unscaled::H(16);
-
-        const EDGE_W: unscaled::W = unscaled::W(4);
-        const EDGE_H: unscaled::H = unscaled::H(4);
-
-        let after_left_corner = x.saturating_add(EDGE_W);
-        let before_right_corner = x.saturating_add(w).saturating_sub(EDGE_W);
-
-        let below_top_corner = y.saturating_add(EDGE_H);
-        let above_bottom_corner = y.saturating_add(h).saturating_sub(EDGE_H);
-
-        // ABBBC
-        // DEEEF
-        // DEEEF
-        // GHHHI
-
-        // Draw E
-        for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(CENTER_H.get() as _).map(unscaled::Y) {
-            for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(CENTER_W.get() as _).map(unscaled::X) {
-                self.sspr(
-                    MIDDLE,
-                    Rect::from_unscaled(unscaled::Rect {
-                        x: fill_x,
-                        y: fill_y,
-                        // Clamp these values so we don't draw past the edge.
-                        w: core::cmp::min(CENTER_W, before_right_corner - fill_x),
-                        h: core::cmp::min(CENTER_H, above_bottom_corner - fill_y),
-                    })
-                );
-            }
-        }
-
-        // Draw B and H
-        for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(CENTER_W.get() as _).map(unscaled::X) {
-            self.sspr(
-                TOP,
-                Rect::from_unscaled(unscaled::Rect {
-                    x: fill_x,
-                    y,
-                    // Clamp this value so we don't draw past the edge.
-                    w: core::cmp::min(CENTER_W, before_right_corner - fill_x),
-                    h: EDGE_H,
-                })
-            );
-
-            self.sspr(
-                BOTTOM,
-                Rect::from_unscaled(unscaled::Rect {
-                    x: fill_x,
-                    y: above_bottom_corner,
-                    // Clamp this value so we don't draw past the edge.
-                    w: core::cmp::min(CENTER_W, before_right_corner - fill_x),
-                    h: EDGE_H,
-                })
-            );
-        }
-
-        // Draw D and F
-        for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(CENTER_H.get() as _).map(unscaled::Y) {
-            self.sspr(
-                LEFT,
-                Rect::from_unscaled(unscaled::Rect {
-                    x,
-                    y: fill_y,
-                    // Clamp this value so we don't draw past the edge.
-                    w: EDGE_W,
-                    h: core::cmp::min(CENTER_H, above_bottom_corner - fill_y),
-                })
-            );
-
-            self.sspr(
-                RIGHT,
-                Rect::from_unscaled(unscaled::Rect {
-                    x: before_right_corner,
-                    y: fill_y,
-                    // Clamp this value so we don't draw past the edge.
-                    w: EDGE_W,
-                    h: core::cmp::min(CENTER_H, above_bottom_corner - fill_y),
-                })
-            );
-        }
-
-        // Draw A
-        self.sspr(
-            TOP_LEFT,
-            Rect::from_unscaled(unscaled::Rect {
-                x,
-                y,
-                w: EDGE_W,
-                h: EDGE_H,
-            })
-        );
-
-        // Draw C
-        self.sspr(
-            TOP_RIGHT,
-            Rect::from_unscaled(unscaled::Rect {
-                x: before_right_corner,
-                y,
-                w: EDGE_W,
-                h: EDGE_H,
-            })
-        );
-
-        // Draw G
-        self.sspr(
-            BOTTOM_LEFT,
-            Rect::from_unscaled(unscaled::Rect {
-                x,
-                y: above_bottom_corner,
-                w: EDGE_W,
-                h: EDGE_H,
-            })
-        );
-
-        // Draw I
-        self.sspr(
-            BOTTOM_RIGHT,
-            Rect::from_unscaled(unscaled::Rect {
-                x: before_right_corner,
-                y: above_bottom_corner,
-                w: EDGE_W,
-                h: EDGE_H,
-            })
-        );
+    pub fn nine_slice(&mut self, outer_rect: unscaled::Rect) {
+        nine_slice::render(self, outer_rect);
     }
 }
 
@@ -363,6 +184,203 @@ mod nine_slice_works {
         assert_eq!(actual.len(), 12);
     }
 }
+
+mod nine_slice {
+    use super::*;
+
+    // Top left point on the rect that makes up the top left corner of the sprite.
+    const TOP_LEFT: sprite::XY = sprite::XY {
+        x: sprite::X(0),
+        y: sprite::Y(32),
+    };
+
+    // Top left point on the rect that makes up the top right corner of the sprite.
+    const TOP_RIGHT: sprite::XY = sprite::XY {
+        x: sprite::X(20),
+        y: sprite::Y(32),
+    };
+
+    // Top left point on the rect that makes up the bottom left corner of the sprite.
+    const BOTTOM_LEFT: sprite::XY = sprite::XY {
+        x: sprite::X(0),
+        y: sprite::Y(52),
+    };
+
+    // Top left point on the rect that makes up the bottom right corner of the sprite.
+    const BOTTOM_RIGHT: sprite::XY = sprite::XY {
+        x: sprite::X(20),
+        y: sprite::Y(52),
+    };
+
+    // Top left point on the rect that makes up the middle of the sprite.
+    const MIDDLE: sprite::XY = sprite::XY {
+        x: sprite::x_const_add_w(TOP_LEFT.x, EDGE_W),
+        y: sprite::y_const_add_h(TOP_LEFT.y, EDGE_H),
+    };
+
+    // Top left point on the rect that makes up the top edge of the sprite.
+    const TOP: sprite::XY = sprite::XY {
+        x: MIDDLE.x,
+        y: TOP_LEFT.y,
+    };
+
+    // Top left point on the rect that makes up the left edge of the sprite.
+    const LEFT: sprite::XY = sprite::XY {
+        x: TOP_LEFT.x,
+        y: MIDDLE.y,
+    };
+
+    // Top left point on the rect that makes up the right edge of the sprite.
+    const RIGHT: sprite::XY = sprite::XY {
+        x: TOP_RIGHT.x,
+        y: MIDDLE.y,
+    };
+
+    // Top left point on the rect that makes up the bottom edge of the sprite.
+    const BOTTOM: sprite::XY = sprite::XY {
+        x: TOP.x,
+        y: BOTTOM_LEFT.y,
+    };
+
+    const CENTER_W: unscaled::W = unscaled::W(16);
+    const CENTER_H: unscaled::H = unscaled::H(16);
+
+    const EDGE_W: unscaled::W = unscaled::W(4);
+    const EDGE_H: unscaled::H = unscaled::H(4);
+
+    pub fn render(commands: &mut Commands, unscaled::Rect{ x, y, w, h }: unscaled::Rect) {
+        let after_left_corner = x.saturating_add(EDGE_W);
+        let before_right_corner = x.saturating_add(w).saturating_sub(EDGE_W);
+
+        let below_top_corner = y.saturating_add(EDGE_H);
+        let above_bottom_corner = y.saturating_add(h).saturating_sub(EDGE_H);
+
+        // ABBBC
+        // DEEEF
+        // DEEEF
+        // GHHHI
+
+        // Draw E
+        for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(CENTER_H.get() as _).map(unscaled::Y) {
+            for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(CENTER_W.get() as _).map(unscaled::X) {
+                commands.sspr(
+                    MIDDLE,
+                    Rect::from_unscaled(unscaled::Rect {
+                        x: fill_x,
+                        y: fill_y,
+                        // Clamp these values so we don't draw past the edge.
+                        w: core::cmp::min(CENTER_W, before_right_corner - fill_x),
+                        h: core::cmp::min(CENTER_H, above_bottom_corner - fill_y),
+                    })
+                );
+            }
+        }
+
+        // Draw B and H
+        for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(CENTER_W.get() as _).map(unscaled::X) {
+            commands.sspr(
+                TOP,
+                Rect::from_unscaled(unscaled::Rect {
+                    x: fill_x,
+                    y,
+                    // Clamp this value so we don't draw past the edge.
+                    w: core::cmp::min(CENTER_W, before_right_corner - fill_x),
+                    h: EDGE_H,
+                })
+            );
+
+            commands.sspr(
+                BOTTOM,
+                Rect::from_unscaled(unscaled::Rect {
+                    x: fill_x,
+                    y: above_bottom_corner,
+                    // Clamp this value so we don't draw past the edge.
+                    w: core::cmp::min(CENTER_W, before_right_corner - fill_x),
+                    h: EDGE_H,
+                })
+            );
+        }
+
+        // Draw D and F
+        for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(CENTER_H.get() as _).map(unscaled::Y) {
+            commands.sspr(
+                LEFT,
+                Rect::from_unscaled(unscaled::Rect {
+                    x,
+                    y: fill_y,
+                    // Clamp this value so we don't draw past the edge.
+                    w: EDGE_W,
+                    h: core::cmp::min(CENTER_H, above_bottom_corner - fill_y),
+                })
+            );
+
+            commands.sspr(
+                RIGHT,
+                Rect::from_unscaled(unscaled::Rect {
+                    x: before_right_corner,
+                    y: fill_y,
+                    // Clamp this value so we don't draw past the edge.
+                    w: EDGE_W,
+                    h: core::cmp::min(CENTER_H, above_bottom_corner - fill_y),
+                })
+            );
+        }
+
+        // Draw A
+        commands.sspr(
+            TOP_LEFT,
+            Rect::from_unscaled(unscaled::Rect {
+                x,
+                y,
+                w: EDGE_W,
+                h: EDGE_H,
+            })
+        );
+
+        // Draw C
+        commands.sspr(
+            TOP_RIGHT,
+            Rect::from_unscaled(unscaled::Rect {
+                x: before_right_corner,
+                y,
+                w: EDGE_W,
+                h: EDGE_H,
+            })
+        );
+
+        // Draw G
+        commands.sspr(
+            BOTTOM_LEFT,
+            Rect::from_unscaled(unscaled::Rect {
+                x,
+                y: above_bottom_corner,
+                w: EDGE_W,
+                h: EDGE_H,
+            })
+        );
+
+        // Draw I
+        commands.sspr(
+            BOTTOM_RIGHT,
+            Rect::from_unscaled(unscaled::Rect {
+                x: before_right_corner,
+                y: above_bottom_corner,
+                w: EDGE_W,
+                h: EDGE_H,
+            })
+        );
+    }
+
+    pub fn inner_rect(outer_rect: unscaled::Rect) -> unscaled::Rect {
+        unscaled::Rect {
+            x: outer_rect.x + EDGE_W,
+            y: outer_rect.y + EDGE_H,
+            w: outer_rect.w - (EDGE_W * 2),
+            h: outer_rect.h - (EDGE_H * 2),
+        }
+    }
+}
+pub use nine_slice::{inner_rect as nine_slice_inner_rect};
 
 pub const TEN_CHAR: u8 = 27;
 

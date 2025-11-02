@@ -2,7 +2,7 @@ use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
 use game::{Dir, Mode};
-use models::{Entity, XY, i_to_xy};
+use models::{Entity, XY, i_to_xy, TileSprite};
 
 #[derive(Debug)]
 pub enum Error {
@@ -150,18 +150,6 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
 const TILE_W: unscaled::W = unscaled::W(16);
 const TILE_H: unscaled::H = unscaled::H(16);
 
-fn tile_xy_to_rect(xy: XY) -> command::Rect {
-    let x = unscaled::X(xy.x.get() * TILE_W.get());
-    let y = unscaled::Y(xy.y.get() * TILE_H.get());
-
-    command::Rect::from_unscaled(unscaled::Rect {
-        x: x.saturating_add(TILE_W),
-        y: y.saturating_add(TILE_H),
-        w: TILE_W,
-        h: TILE_H,
-    })
-}
-
 /// Where the tiles start on the spreadsheet.
 const TILES_Y: sprite::Y = sprite::Y(64);
 
@@ -171,29 +159,38 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     // Render World
     //
 
-    for i in 0..state.world.segment.tiles.len() {
-        let sprite = state.world.segment.tiles[i].sprite as sprite::Inner;
+    fn draw_tile(commands: &mut Commands, xy: XY, sprite: TileSprite) {
+        let x = unscaled::X(xy.x.get() * TILE_W.get()).saturating_add(TILE_W);
+        let y = unscaled::Y(xy.y.get() * TILE_H.get()).saturating_add(TILE_H);
+    
+        draw_tile_sprite(commands, unscaled::XY { x, y }, sprite);
+    }
 
+    fn draw_tile_sprite(commands: &mut Commands, unscaled::XY{ x, y }: unscaled::XY, sprite: TileSprite) {
         commands.sspr(
             sprite::XY {
-                x: sprite::X(sprite * TILE_W.get()),
+                x: sprite::X(sprite as sprite::Inner * TILE_W.get()),
                 y: TILES_Y,
             },
-            tile_xy_to_rect(i_to_xy(state.world.segment.width, i)),
+            command::Rect::from_unscaled(unscaled::Rect {
+                x: x,
+                y: y,
+                w: TILE_W,
+                h: TILE_H,
+            }),
         );
     }
 
-    // TODO make a convenient way to draw a tile/sprite at tile boundaries, since we do it multiple times.
-    fn draw_entity(commands: &mut Commands, entity: &Entity) {
-        let sprite = entity.sprite as sprite::Inner;
-
-        commands.sspr(
-            sprite::XY {
-                x: sprite::X(sprite * TILE_W.get()),
-                y: TILES_Y,
-            },
-            tile_xy_to_rect(entity.xy())
+    for i in 0..state.world.segment.tiles.len() {
+        draw_tile(
+            commands,
+            i_to_xy(state.world.segment.width, i),
+            state.world.segment.tiles[i].sprite,
         );
+    }
+
+    fn draw_entity(commands: &mut Commands, entity: &Entity) {
+        draw_tile(commands, entity.xy(), entity.sprite);
     }
 
     for (_, item) in state.world.items.for_id(state.segment_id) {
@@ -212,17 +209,43 @@ fn game_render(commands: &mut Commands, state: &game::State) {
 
     match state.mode {
         Mode::Walking => {
-            
+            // Nothing yet
         },
         Mode::Inventory {} => {
             const SPACING: unscaled::Inner = 20;
 
-            commands.nine_slice(
-                unscaled::X(SPACING),
-                unscaled::Y(SPACING),
-                unscaled::W(platform_types::command::WIDTH - (SPACING * 2)),
-                unscaled::H(platform_types::command::HEIGHT - 120),
-            );
+            let outer_rect = unscaled::Rect {
+                x: unscaled::X(SPACING),
+                y: unscaled::Y(SPACING),
+                w: unscaled::W(platform_types::command::WIDTH - (SPACING * 2)),
+                h: unscaled::H(platform_types::command::HEIGHT - 120),
+            };
+
+            commands.nine_slice(outer_rect);
+
+            let inner_rect = gfx::nine_slice_inner_rect(outer_rect);
+
+            let mut inventory_index = 0;
+
+            let mut at = unscaled::XY { x: inner_rect.x, y: inner_rect.y };
+
+            let x_max = inner_rect.x + inner_rect.w;
+            let y_max = inner_rect.y + inner_rect.h;
+
+            while at.x < x_max && at.y < y_max {
+                let Some(item) = state.player_inventory.get(inventory_index) else {
+                    break
+                };
+                
+                draw_tile_sprite(commands, at, item.sprite);
+
+                at.x += inner_rect.w;
+                if at.x < x_max {
+                    at.y += inner_rect.h;
+                    at.x = inner_rect.x;
+                }
+                inventory_index += 1;
+            }
         },
     }
 }
