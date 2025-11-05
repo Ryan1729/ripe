@@ -1,7 +1,7 @@
 use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
-use game::{Dir, Mode};
+use game::{Dir, Mode, to_tile};
 use models::{Entity, XY, i_to_xy, TileSprite};
 
 #[derive(Debug)]
@@ -107,6 +107,8 @@ pub fn release(state: &mut State, button: Button) {
 }
 
 fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
+    state.tick();
+
     match &mut state.mode {
         Mode::Walking => {
             if input.pressed_this_frame(Button::START) {
@@ -144,14 +146,17 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
                 return
             }
         },
+        Mode::Talking(talking) => {
+            if input.pressed_this_frame(Button::A)
+            || input.pressed_this_frame(Button::B) {
+                talking.speech_index += 1;
+                return
+            }
+        },
     }
 }
 
-const TILE_W: unscaled::W = unscaled::W(16);
-const TILE_H: unscaled::H = unscaled::H(16);
 
-/// Where the tiles start on the spreadsheet.
-const TILES_Y: sprite::Y = sprite::Y(64);
 
 #[inline]
 fn game_render(commands: &mut Commands, state: &game::State) {
@@ -160,24 +165,13 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     //
 
     fn draw_tile(commands: &mut Commands, xy: XY, sprite: TileSprite) {
-        let x = unscaled::X(xy.x.get() * TILE_W.get()).saturating_add(TILE_W);
-        let y = unscaled::Y(xy.y.get() * TILE_H.get()).saturating_add(TILE_H);
-    
-        draw_tile_sprite(commands, unscaled::XY { x, y }, sprite);
+        draw_tile_sprite(commands, to_tile::min_corner(xy), sprite);
     }
 
-    fn draw_tile_sprite(commands: &mut Commands, unscaled::XY{ x, y }: unscaled::XY, sprite: TileSprite) {
+    fn draw_tile_sprite(commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite) {
         commands.sspr(
-            sprite::XY {
-                x: sprite::X(sprite as sprite::Inner * TILE_W.get()),
-                y: TILES_Y,
-            },
-            command::Rect::from_unscaled(unscaled::Rect {
-                x: x,
-                y: y,
-                w: TILE_W,
-                h: TILE_H,
-            }),
+            to_tile::sprite_xy(sprite),
+            command::Rect::from_unscaled(to_tile::rect(xy)),
         );
     }
 
@@ -202,6 +196,15 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     }
 
     draw_entity(commands, &state.player);
+
+    for message in &state.fade_messages {
+        commands.print_lines(
+            message.xy,
+            0,
+            message.text.as_bytes(),
+            6,
+        );
+    }
 
     //
     // Conditional rendering
@@ -246,6 +249,9 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                 }
                 inventory_index += 1;
             }
+        },
+        Mode::Talking(_) => {
+            todo!("render Talking")
         },
     }
 }

@@ -25,6 +25,22 @@ impl Entity {
     }
 }
 
+pub fn is_npc(entity: &Entity) -> bool {
+    entity.sprite == NPC_SPRITE
+}
+
+/// Returns a phrase like "a thing" or "an entity".
+pub fn entity_article_phrase(entity: &Entity) -> &str {
+    match entity.sprite {
+        WALL_SPRITE => "a wall",
+        FLOOR_SPRITE => "a floor",
+        PLAYER_SPRITE => "a me(?!)",
+        NPC_SPRITE => "a person",
+        ITEM_SPRITE => "an item",
+        _ => "a whatever-this-is",
+    }
+}
+
 pub mod xy {
     use super::*;
 
@@ -229,6 +245,37 @@ pub mod xy {
     pub struct XY {
         pub x: X,
         pub y: Y,
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct WH {
+        pub w: W,
+        pub h: H,
+    }
+
+    pub const fn const_add_assign_wh(xy: &mut XY, wh: WH) {
+        const_add_assign_w(&mut xy.x, wh.w);
+        const_add_assign_h(&mut xy.y, wh.h);
+    }
+
+    impl core::ops::AddAssign<WH> for XY {
+        fn add_assign(&mut self, wh: WH) {
+            const_add_assign_wh(self, wh)
+        }
+    }
+
+    pub const fn const_add_wh(mut xy: XY, wh: WH) -> XY {
+        const_add_assign_wh(&mut xy, wh);
+        xy
+    }
+
+    impl core::ops::Add<WH> for XY {
+        type Output = Self;
+
+        fn add(mut self, other: WH) -> Self::Output {
+            self += other;
+            self
+        }
     }
 
     pub struct Rect {

@@ -3,12 +3,65 @@ use models::{
     Tile,
     X,
     Y,
+    XY,
     SegmentId,
     WorldSegment,
     is_passable,
     xy_to_i,
 };
 use xs::{Xs, Seed};
+
+use platform_types::{unscaled};
+
+
+pub mod to_tile {
+    use platform_types::{sprite, unscaled};
+    use models::{xy::{XY}, TileSprite};
+
+    const TILE_W: unscaled::W = unscaled::W(16);
+    const TILE_H: unscaled::H = unscaled::H(16);
+
+    const CENTER_OFFSET: unscaled::WH = unscaled::WH{
+        w: TILE_W.halve(),
+        h: TILE_H.halve(),
+    };
+
+    /// Where the tiles start on the spreadsheet.
+    const TILES_Y: sprite::Y = sprite::Y(64);
+
+    pub fn min_corner(xy: XY) -> unscaled::XY {
+        // Could see this needing to be passed in later
+        // And we might even want an intermediate type 
+        // here that can go negative or fractional
+        // that we'd ulimately clip to unscaled types
+        let base_offset = unscaled::WH { w: TILE_W, h: TILE_H };
+
+        let x = unscaled::X(xy.x.get() * TILE_W.get());
+        let y = unscaled::Y(xy.y.get() * TILE_H.get());
+
+        unscaled::XY { x, y } + base_offset
+    }
+
+    pub fn center(xy: XY) -> unscaled::XY {
+        min_corner(xy) + CENTER_OFFSET
+    }
+    
+    pub fn sprite_xy(tile_sprite: TileSprite) -> sprite::XY {
+        sprite::XY {
+            x: sprite::X(tile_sprite as sprite::Inner * TILE_W.get()),
+            y: TILES_Y,
+        }
+    }
+
+    pub fn rect(unscaled::XY{ x, y }: unscaled::XY) -> unscaled::Rect {
+        unscaled::Rect {
+            x: x,
+            y: y,
+            w: TILE_W,
+            h: TILE_H,
+        }
+    }
+}
 
 pub mod config {
     use models::{SegmentWidth};
@@ -166,13 +219,17 @@ mod entities {
         map: BTreeMap<Key, Entity>,
     }
     
-    impl Entities {
-        pub fn insert(&mut self, id: SegmentId, entity: Entity) -> Option<Entity> {
-            self.map.insert(entity_key(id, entity.x, entity.y), entity)
+    impl Entities {    
+        pub fn get(&self, key: Key) -> Option<&Entity> {
+            self.map.get(&key)
         }
-    
+
         pub fn for_id(&self, id: SegmentId) -> impl Iterator<Item=(&Key, &Entity)> {
             self.map.range(entity_key(id, X::MIN, Y::MIN)..=entity_key(id, X::MAX, Y::MAX))
+        }
+
+        pub fn insert(&mut self, id: SegmentId, entity: Entity) -> Option<Entity> {
+            self.map.insert(entity_key(id, entity.x, entity.y), entity)
         }
 
         pub fn remove(&mut self, key: Key) -> Option<Entity> {
@@ -229,13 +286,18 @@ pub struct World {
     pub mobs: Entities,
 }
 
-fn can_walk_onto(world: &World, x: X, y: Y) -> bool {
+fn can_walk_onto(world: &World, id: SegmentId, x: X, y: Y) -> bool {
     let Ok(i) = xy_to_i(&world.segment, x, y) else {
         return false;
     };
 
     if let Some(tile) = &world.segment.tiles.get(i) {
-        // TODO check for other entities
+        let key = entity_key(id, x, y);
+
+        if let Some(_) = world.mobs.get(key) {
+            return false;
+        }
+
         if is_passable(tile) {
             return true;
         }
@@ -246,12 +308,63 @@ fn can_walk_onto(world: &World, x: X, y: Y) -> bool {
 
 pub type Inventory = Vec<Entity>;
 
+/// 64k speech boxes ought to be enough for anybody!
+pub type SpeechIndex = u16;
+
+/// 64k blink frames ought to be enough for anybody!
+pub type BlinkTimer = u16;
+
+#[derive(Clone)]
+pub struct TalkingState {
+    pub key: entities::Key,
+    pub speech_index: SpeechIndex,
+    pub blink_timer: BlinkTimer
+}
+
+impl TalkingState {
+    pub fn new(key: entities::Key) -> Self {
+        Self {
+            key,
+            speech_index: <_>::default(),
+            blink_timer: <_>::default(),
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 pub enum Mode {
     #[default]
     Walking,
-    Inventory {}
+    Inventory {},
+    Talking(TalkingState),
 }
+
+/// 64k fade frames ought to be enough for anybody!
+type FadeTimer = u16;
+
+#[derive(Clone)]
+pub struct FadeMessage {
+    pub text: String,
+    pub fade_timer: FadeTimer,
+    pub xy: unscaled::XY,
+    pub wh: unscaled::WH,
+}
+
+impl FadeMessage {
+    pub fn new(text: String, xy: XY) -> Self {
+        Self {
+            text,
+            // TODO? Scale this based on text length?
+            fade_timer: 100,
+            xy: to_tile::center(xy),
+            // TODO? Scale this based on text length?
+            wh: unscaled::WH { w: unscaled::W::ZERO, h: unscaled::H::ONE },
+        }
+    }
+}
+
+// TODO? Put a hard limit on the amount of these, with I guess LIFO eviction?
+pub type FadeMessages = Vec<FadeMessage>;
 
 #[derive(Clone, Default)]
 pub struct State {
@@ -262,6 +375,7 @@ pub struct State {
     pub player_inventory: Inventory,
     pub segment_id: SegmentId,
     pub mode: Mode,
+    pub fade_messages: FadeMessages,
 }
 
 // Proposed Steps
@@ -365,6 +479,12 @@ impl State {
 
         let mut next_free_segment_id = 0;
 
+        let mut new_segment_id = || {
+            let output = next_free_segment_id;
+            next_free_segment_id += 1;
+            output
+        };
+
         let mut rng = xs::from_seed(seed);
 
         // TODO? Cap the number of segments, or just be okay with the first room never being in the 5 billions, etc?
@@ -385,11 +505,10 @@ impl State {
         ).collect();
 
         let segment = WorldSegment {
-            id: next_free_segment_id,
+            id: new_segment_id(),
             width: config_segment.width,
             tiles,
         };
-        next_free_segment_id += 1;
 
         let mut world = World {
             segment,
@@ -459,25 +578,34 @@ pub enum Dir {
     Down,
 }
 
+fn xy_in_dir(x: X, y: Y, dir: Dir) -> Option<XY> {
+    use Dir::*;
+
+    let (new_x, new_y) = match dir {
+        Left => (x.dec(), y),
+        Right => (x.inc(), y),
+        Up => (x, y.dec()),
+        Down => (x, y.inc()),
+    };
+
+    // This can happen due to saturation
+    if new_x == x
+    && new_y == y {
+        return None
+    }
+
+    Some(XY { x: new_x, y: new_y })
+}
+
 impl State {
     pub fn walk(&mut self, dir: Dir) {
         let entity = &mut self.player;
 
-        use Dir::*;
-        let (new_x, new_y) = match dir {
-            Left => (entity.x.dec(), entity.y),
-            Right => (entity.x.inc(), entity.y),
-            Up => (entity.x, entity.y.dec()),
-            Down => (entity.x, entity.y.inc()),
+        let Some(XY { x: new_x, y: new_y }) = xy_in_dir(entity.x, entity.y, dir) else {
+            return
         };
 
-        // This can happen due to saturation
-        if new_x == entity.x
-        && new_y == entity.y {
-            return
-        }
-
-        if can_walk_onto(&self.world, new_x, new_y) {
+        if can_walk_onto(&self.world, self.segment_id, new_x, new_y) {
             entity.x = new_x;
             entity.y = new_y;
 
@@ -489,7 +617,69 @@ impl State {
         }
     }
 
-    pub fn interact(&mut self, _dir: Dir) {
-        // TODO
+    pub fn interact(&mut self, dir: Dir) {
+        let entity = &mut self.player;
+
+        let Some(XY { x: target_x, y: target_y }) = xy_in_dir(entity.x, entity.y, dir) else {
+            self.fade_messages.push(FadeMessage::new(format!("there's nothing there."), entity.xy()));
+            return
+        };
+
+        let key = entity_key(self.segment_id, target_x, target_y);
+
+        let Some(mob) = self.world.mobs.get(key) else {
+            self.fade_messages.push(
+                FadeMessage::new(format!("there's nobody there."), entity.xy())
+            );
+            return
+        };
+
+        if models::is_npc(mob) {
+            self.mode = Mode::Talking(TalkingState::new(key));
+            return
+        }
+
+        self.fade_messages.push(
+            FadeMessage::new(
+                format!(
+                    "what do you want me to do with {}?",
+                    models::entity_article_phrase(mob),
+                ),
+                entity.xy()
+            )
+        );
+    }
+
+    pub fn tick(&mut self) {
+        //
+        // Advance Timers
+        //
+        for i in (0..self.fade_messages.len()).rev() {
+            let message = &mut self.fade_messages[i];
+
+            message.fade_timer = message.fade_timer.saturating_sub(1);
+            if message.fade_timer == 0 {
+                self.fade_messages.remove(i);
+                continue
+            }
+
+            // TODO? A timer or other method to be able to move less than one pixel per frame?
+            //     At that point, do we want sub-pixel blending enough to implement it?
+            message.xy += message.wh;
+        }
+
+        match &mut self.mode {
+            Mode::Talking(talking) => {
+                if talking.blink_timer == 0 {
+                    talking.blink_timer = 500;
+                } else {
+                    talking.blink_timer = talking.blink_timer.saturating_sub(1);
+                }
+            }
+            Mode::Walking
+            | Mode::Inventory {} => {
+                // No timers
+            }
+        }
     }
 }

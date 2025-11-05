@@ -396,6 +396,40 @@ pub mod unscaled {
         }
     }
 
+    macro_rules! shared_impl {
+        ($($name: ident)+) => {
+            $(
+                impl $name {
+                    pub const MIN: Self = Self(Inner::MIN);
+                    pub const MAX: Self = Self(Inner::MAX);
+
+                    pub const ZERO: Self = Self(0);
+                    pub const ONE: Self = Self(1);
+
+                    pub fn dec(self) -> Self {
+                        Self(self.0.saturating_sub(1))
+                    }
+
+                    pub fn inc(self) -> Self {
+                        Self(self.0.saturating_add(1))
+                    }
+
+                    pub fn usize(self) -> usize {
+                        self.0.into()
+                    }
+
+                    pub const fn halve(self) -> Self {
+                        Self(self.0 >> 1)
+                    }
+                }
+            )+
+        }
+    }
+
+    shared_impl!{
+        X Y W H
+    }
+
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct WH {
         pub w: W,
