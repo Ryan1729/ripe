@@ -1,4 +1,4 @@
-use gfx::{Commands};
+use gfx::{Commands, nine_slice, next_arrow};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
 use game::{Dir, Mode, to_tile};
@@ -210,7 +210,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     // Conditional rendering
     //
 
-    match state.mode {
+    match &state.mode {
         Mode::Walking => {
             // Nothing yet
         },
@@ -224,9 +224,9 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                 h: unscaled::H(platform_types::command::HEIGHT - 120),
             };
 
-            commands.nine_slice(outer_rect);
+            commands.nine_slice(nine_slice::INVENTORY, outer_rect);
 
-            let inner_rect = gfx::nine_slice_inner_rect(outer_rect);
+            let inner_rect = nine_slice::inner_rect(outer_rect);
 
             let mut inventory_index = 0;
 
@@ -250,8 +250,27 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                 inventory_index += 1;
             }
         },
-        Mode::Talking(_) => {
-            todo!("render Talking")
+        Mode::Talking(talking) => {
+            //key: entities::Key,
+            //pub speech_index: SpeechIndex,
+
+            const SPACING: unscaled::Inner = 20;
+
+            let outer_rect = unscaled::Rect {
+                x: unscaled::X(SPACING),
+                y: unscaled::Y(platform_types::command::HEIGHT - 120),
+                w: unscaled::W(platform_types::command::WIDTH - (SPACING * 2)),
+                h: unscaled::H(120),
+            };
+
+            commands.nine_slice(nine_slice::TALKING, outer_rect);
+
+            if talking.blink_timer > 25 {
+                // Draw the next arrow
+                let inner_rect = nine_slice::inner_rect(outer_rect);
+
+                commands.next_arrow_in_corner_of(next_arrow::TALKING, inner_rect);
+            }
         },
     }
 }

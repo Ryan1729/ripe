@@ -546,6 +546,13 @@ pub mod unscaled {
             }
         }
 
+        pub fn max_xy(self) -> XY {
+            XY {
+                x: self.x + self.w,
+                y: self.y + self.h,
+            }
+        }
+
         pub fn wh(self) -> WH {
             WH {
                 w: self.w,

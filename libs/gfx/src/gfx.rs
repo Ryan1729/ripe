@@ -158,8 +158,50 @@ impl Commands {
         bytes.split(|&b| b == b'\n')
     }
 
-    pub fn nine_slice(&mut self, outer_rect: unscaled::Rect) {
-        nine_slice::render(self, outer_rect);
+    pub fn nine_slice(&mut self, nine_slice_sprite: nine_slice::Sprite, outer_rect: unscaled::Rect) {
+        nine_slice::render(self, nine_slice_sprite, outer_rect);
+    }
+
+    pub fn next_arrow_in_corner_of(&mut self, next_arrow_sprite: next_arrow::Sprite, rect: unscaled::Rect) {
+        next_arrow::next_arrow_in_corner_of(self, next_arrow_sprite, rect);
+    }
+
+    pub fn next_arrow(&mut self, next_arrow_sprite: next_arrow::Sprite, x: unscaled::X, y: unscaled::Y) {
+        next_arrow::render(self, next_arrow_sprite, x, y);
+    }
+}
+
+pub mod next_arrow {
+    use super::*;
+
+    pub type Sprite = u8;
+    pub const TALKING: Sprite = 0;
+    pub const INVENTORY: Sprite = 1;
+
+    const ARROW_W: unscaled::W = unscaled::W(8);
+    const ARROW_H: unscaled::H = unscaled::H(4);
+
+    pub(crate) fn next_arrow_in_corner_of(commands: &mut Commands, next_arrow_sprite: Sprite, rect: unscaled::Rect) {
+        let unscaled::XY{ x, y } = rect.max_xy();
+
+        render(commands, next_arrow_sprite, x - ARROW_W, y - ARROW_H)
+    }
+
+    pub(crate) fn render(commands: &mut Commands, next_arrow_sprite: Sprite, x: unscaled::X, y: unscaled::Y) {
+        let sprite_xy = match next_arrow_sprite & 1 {
+            1 => sprite::XY { x: sprite::X(0), y: sprite::Y(0) },
+            _ => sprite::XY { x: sprite::X(0), y: sprite::Y(4) },
+        };
+
+        commands.sspr(
+            sprite_xy,
+            Rect::from_unscaled(unscaled::Rect {
+                x,
+                y,
+                w: ARROW_W,
+                h: ARROW_H,
+            })
+        );
     }
 }
 
@@ -185,61 +227,134 @@ mod nine_slice_works {
     }
 }
 
-mod nine_slice {
+pub mod nine_slice {
     use super::*;
 
-    // Top left point on the rect that makes up the top left corner of the sprite.
-    const TOP_LEFT: sprite::XY = sprite::XY {
-        x: sprite::X(0),
-        y: sprite::Y(32),
+    pub type Sprite = u8;
+    pub const TALKING: Sprite = 0;
+    pub const INVENTORY: Sprite = 1;
+
+    struct Slices {
+        // Top left point on the rect that makes up the top left corner of the sprite.
+        top_left: sprite::XY,
+        // Top left point on the rect that makes up the top right corner of the sprite.
+        top_right: sprite::XY,
+        // Top left point on the rect that makes up the bottom left corner of the sprite.
+        bottom_left: sprite::XY,
+        // Top left point on the rect that makes up the bottom right corner of the sprite.
+        bottom_right: sprite::XY,
+        // Top left point on the rect that makes up the middle of the sprite.
+        middle: sprite::XY,
+        // Top left point on the rect that makes up the top edge of the sprite.
+        top: sprite::XY,
+        // Top left point on the rect that makes up the left edge of the sprite.
+        left: sprite::XY,
+        // Top left point on the rect that makes up the right edge of the sprite.
+        right: sprite::XY,
+        // Top left point on the rect that makes up the bottom edge of the sprite.
+        bottom: sprite::XY,
+    }
+
+    const TALKING_SLICES: Slices = {
+        let top_left: sprite::XY = sprite::XY {
+            x: sprite::X(0),
+            y: sprite::Y(8),
+        };
+        let top_right: sprite::XY = sprite::XY {
+            x: sprite::X(20),
+            y: sprite::Y(8),
+        };
+        let bottom_left: sprite::XY = sprite::XY {
+            x: sprite::X(0),
+            y: sprite::Y(28),
+        };
+        let bottom_right: sprite::XY = sprite::XY {
+            x: sprite::X(20),
+            y: sprite::Y(28),
+        };
+        let middle: sprite::XY = sprite::XY {
+            x: sprite::x_const_add_w(top_left.x, EDGE_W),
+            y: sprite::y_const_add_h(top_left.y, EDGE_H),
+        };
+        let top: sprite::XY = sprite::XY {
+            x: middle.x,
+            y: top_left.y,
+        };
+        let left: sprite::XY = sprite::XY {
+            x: top_left.x,
+            y: middle.y,
+        };
+        let right: sprite::XY = sprite::XY {
+            x: top_right.x,
+            y: middle.y,
+        };
+        let bottom: sprite::XY = sprite::XY {
+            x: top.x,
+            y: bottom_left.y,
+        };
+
+        Slices {
+            top_left,
+            top_right,
+            bottom_left,
+            bottom_right,
+            middle,
+            top,
+            left,
+            right,
+            bottom,
+        }
     };
 
-    // Top left point on the rect that makes up the top right corner of the sprite.
-    const TOP_RIGHT: sprite::XY = sprite::XY {
-        x: sprite::X(20),
-        y: sprite::Y(32),
-    };
+    const INVENTORY_SLICES: Slices = {
+        let top_left: sprite::XY = sprite::XY {
+            x: sprite::X(0),
+            y: sprite::Y(32),
+        };
+        let top_right: sprite::XY = sprite::XY {
+            x: sprite::X(20),
+            y: sprite::Y(32),
+        };
+        let bottom_left: sprite::XY = sprite::XY {
+            x: sprite::X(0),
+            y: sprite::Y(52),
+        };
+        let bottom_right: sprite::XY = sprite::XY {
+            x: sprite::X(20),
+            y: sprite::Y(52),
+        };
+        let middle: sprite::XY = sprite::XY {
+            x: sprite::x_const_add_w(top_left.x, EDGE_W),
+            y: sprite::y_const_add_h(top_left.y, EDGE_H),
+        };
+        let top: sprite::XY = sprite::XY {
+            x: middle.x,
+            y: top_left.y,
+        };
+        let left: sprite::XY = sprite::XY {
+            x: top_left.x,
+            y: middle.y,
+        };
+        let right: sprite::XY = sprite::XY {
+            x: top_right.x,
+            y: middle.y,
+        };
+        let bottom: sprite::XY = sprite::XY {
+            x: top.x,
+            y: bottom_left.y,
+        };
 
-    // Top left point on the rect that makes up the bottom left corner of the sprite.
-    const BOTTOM_LEFT: sprite::XY = sprite::XY {
-        x: sprite::X(0),
-        y: sprite::Y(52),
-    };
-
-    // Top left point on the rect that makes up the bottom right corner of the sprite.
-    const BOTTOM_RIGHT: sprite::XY = sprite::XY {
-        x: sprite::X(20),
-        y: sprite::Y(52),
-    };
-
-    // Top left point on the rect that makes up the middle of the sprite.
-    const MIDDLE: sprite::XY = sprite::XY {
-        x: sprite::x_const_add_w(TOP_LEFT.x, EDGE_W),
-        y: sprite::y_const_add_h(TOP_LEFT.y, EDGE_H),
-    };
-
-    // Top left point on the rect that makes up the top edge of the sprite.
-    const TOP: sprite::XY = sprite::XY {
-        x: MIDDLE.x,
-        y: TOP_LEFT.y,
-    };
-
-    // Top left point on the rect that makes up the left edge of the sprite.
-    const LEFT: sprite::XY = sprite::XY {
-        x: TOP_LEFT.x,
-        y: MIDDLE.y,
-    };
-
-    // Top left point on the rect that makes up the right edge of the sprite.
-    const RIGHT: sprite::XY = sprite::XY {
-        x: TOP_RIGHT.x,
-        y: MIDDLE.y,
-    };
-
-    // Top left point on the rect that makes up the bottom edge of the sprite.
-    const BOTTOM: sprite::XY = sprite::XY {
-        x: TOP.x,
-        y: BOTTOM_LEFT.y,
+        Slices {
+            top_left,
+            top_right,
+            bottom_left,
+            bottom_right,
+            middle,
+            top,
+            left,
+            right,
+            bottom,
+        }
     };
 
     const CENTER_W: unscaled::W = unscaled::W(16);
@@ -248,7 +363,12 @@ mod nine_slice {
     const EDGE_W: unscaled::W = unscaled::W(4);
     const EDGE_H: unscaled::H = unscaled::H(4);
 
-    pub fn render(commands: &mut Commands, unscaled::Rect{ x, y, w, h }: unscaled::Rect) {
+    pub(crate) fn render(commands: &mut Commands, nine_slice_sprite: Sprite, unscaled::Rect{ x, y, w, h }: unscaled::Rect) {
+        let slices = match nine_slice_sprite & 1 {
+            1 => INVENTORY_SLICES,
+            _ => TALKING_SLICES,
+        };
+
         let after_left_corner = x.saturating_add(EDGE_W);
         let before_right_corner = x.saturating_add(w).saturating_sub(EDGE_W);
 
@@ -264,7 +384,7 @@ mod nine_slice {
         for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(CENTER_H.get() as _).map(unscaled::Y) {
             for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(CENTER_W.get() as _).map(unscaled::X) {
                 commands.sspr(
-                    MIDDLE,
+                    slices.middle,
                     Rect::from_unscaled(unscaled::Rect {
                         x: fill_x,
                         y: fill_y,
@@ -279,7 +399,7 @@ mod nine_slice {
         // Draw B and H
         for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(CENTER_W.get() as _).map(unscaled::X) {
             commands.sspr(
-                TOP,
+                slices.top,
                 Rect::from_unscaled(unscaled::Rect {
                     x: fill_x,
                     y,
@@ -290,7 +410,7 @@ mod nine_slice {
             );
 
             commands.sspr(
-                BOTTOM,
+                slices.bottom,
                 Rect::from_unscaled(unscaled::Rect {
                     x: fill_x,
                     y: above_bottom_corner,
@@ -304,7 +424,7 @@ mod nine_slice {
         // Draw D and F
         for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(CENTER_H.get() as _).map(unscaled::Y) {
             commands.sspr(
-                LEFT,
+                slices.left,
                 Rect::from_unscaled(unscaled::Rect {
                     x,
                     y: fill_y,
@@ -315,7 +435,7 @@ mod nine_slice {
             );
 
             commands.sspr(
-                RIGHT,
+                slices.right,
                 Rect::from_unscaled(unscaled::Rect {
                     x: before_right_corner,
                     y: fill_y,
@@ -328,7 +448,7 @@ mod nine_slice {
 
         // Draw A
         commands.sspr(
-            TOP_LEFT,
+            slices.top_left,
             Rect::from_unscaled(unscaled::Rect {
                 x,
                 y,
@@ -339,7 +459,7 @@ mod nine_slice {
 
         // Draw C
         commands.sspr(
-            TOP_RIGHT,
+            slices.top_right,
             Rect::from_unscaled(unscaled::Rect {
                 x: before_right_corner,
                 y,
@@ -350,7 +470,7 @@ mod nine_slice {
 
         // Draw G
         commands.sspr(
-            BOTTOM_LEFT,
+            slices.bottom_left,
             Rect::from_unscaled(unscaled::Rect {
                 x,
                 y: above_bottom_corner,
@@ -361,7 +481,7 @@ mod nine_slice {
 
         // Draw I
         commands.sspr(
-            BOTTOM_RIGHT,
+            slices.bottom_right,
             Rect::from_unscaled(unscaled::Rect {
                 x: before_right_corner,
                 y: above_bottom_corner,
@@ -380,7 +500,6 @@ mod nine_slice {
         }
     }
 }
-pub use nine_slice::{inner_rect as nine_slice_inner_rect};
 
 pub const TEN_CHAR: u8 = 27;
 
