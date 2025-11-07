@@ -405,6 +405,7 @@ pub mod unscaled {
 
                     pub const ZERO: Self = Self(0);
                     pub const ONE: Self = Self(1);
+                    pub const TWO: Self = Self(2);
 
                     pub fn dec(self) -> Self {
                         Self(self.0.saturating_sub(1))
@@ -1143,3 +1144,37 @@ pub const PALETTE: [ARGB; 8] = [
     WHITE,
     BLACK,
 ];
+
+pub mod arrow_timer {
+    use crate::unscaled::{self, W, H};
+
+    /// 64k arrow frames ought to be enough for anybody!
+    pub type ArrowTimer = u16;
+    
+    const MAX: ArrowTimer = 128;
+    
+    pub fn tick(timer: &mut ArrowTimer) {
+        if *timer == 0 {
+            *timer = MAX;
+        } else {
+            *timer = timer.saturating_sub(1);
+        }
+    }
+
+    /// The max W value that will be returned from `offset`.
+    pub const MAX_W: unscaled::W = unscaled::W(0);
+    /// The max H value that will be returned from `offset`.
+    pub const MAX_H: unscaled::H = unscaled::H::TWO;
+
+    pub fn offset(timer: ArrowTimer) -> unscaled::WH {
+        if timer < 32 {
+            unscaled::WH{ w: W::ZERO, h: H::TWO }
+        } else if timer < 64 {
+            unscaled::WH{ w: W::ZERO, h: H::ONE }
+        } else if timer < 96 {
+            unscaled::WH{ w: W::ZERO, h: H::ZERO }
+        } else {
+            unscaled::WH{ w: W::ZERO, h: H::ONE }
+        }
+    }
+}

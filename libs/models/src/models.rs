@@ -348,3 +348,4 @@ pub fn i_to_xy(segment_width: SegmentWidth, index: Index) -> XY {
         y: xy::y((index / segment_width) as _),
     }
 }
+

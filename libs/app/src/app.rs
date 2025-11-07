@@ -265,12 +265,9 @@ fn game_render(commands: &mut Commands, state: &game::State) {
 
             commands.nine_slice(nine_slice::TALKING, outer_rect);
 
-            if talking.blink_timer > 25 {
-                // Draw the next arrow
-                let inner_rect = nine_slice::inner_rect(outer_rect);
+            let inner_rect = nine_slice::inner_rect(outer_rect);
 
-                commands.next_arrow_in_corner_of(next_arrow::TALKING, inner_rect);
-            }
+            commands.next_arrow_in_corner_of(next_arrow::TALKING, talking.arrow_timer, inner_rect);
         },
     }
 }

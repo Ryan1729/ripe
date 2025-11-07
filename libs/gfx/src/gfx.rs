@@ -1,6 +1,6 @@
 use models::{};
 
-use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
+use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
 
 #[derive(Default)]
 pub struct Commands {
@@ -162,8 +162,8 @@ impl Commands {
         nine_slice::render(self, nine_slice_sprite, outer_rect);
     }
 
-    pub fn next_arrow_in_corner_of(&mut self, next_arrow_sprite: next_arrow::Sprite, rect: unscaled::Rect) {
-        next_arrow::next_arrow_in_corner_of(self, next_arrow_sprite, rect);
+    pub fn next_arrow_in_corner_of(&mut self, next_arrow_sprite: next_arrow::Sprite, timer: ArrowTimer, rect: unscaled::Rect) {
+        next_arrow::next_arrow_in_corner_of(self, next_arrow_sprite, timer, rect);
     }
 
     pub fn next_arrow(&mut self, next_arrow_sprite: next_arrow::Sprite, x: unscaled::X, y: unscaled::Y) {
@@ -181,13 +181,30 @@ pub mod next_arrow {
     const ARROW_W: unscaled::W = unscaled::W(8);
     const ARROW_H: unscaled::H = unscaled::H(4);
 
-    pub(crate) fn next_arrow_in_corner_of(commands: &mut Commands, next_arrow_sprite: Sprite, rect: unscaled::Rect) {
+    pub(crate) fn next_arrow_in_corner_of(
+        commands: &mut Commands,
+        next_arrow_sprite: Sprite,
+        arrow_timer: ArrowTimer,
+        rect: unscaled::Rect,
+    ) {
         let unscaled::XY{ x, y } = rect.max_xy();
 
-        render(commands, next_arrow_sprite, x - ARROW_W, y - ARROW_H)
+        let wh = arrow_timer::offset(arrow_timer);
+
+        render(
+            commands,
+            next_arrow_sprite,
+            x - ARROW_W - arrow_timer::MAX_W + wh.w,
+            y - ARROW_H - arrow_timer::MAX_H + wh.h
+        )
     }
 
-    pub(crate) fn render(commands: &mut Commands, next_arrow_sprite: Sprite, x: unscaled::X, y: unscaled::Y) {
+    pub(crate) fn render(
+        commands: &mut Commands,
+        next_arrow_sprite: Sprite,
+        x: unscaled::X,
+        y: unscaled::Y,
+    ) {
         let sprite_xy = match next_arrow_sprite & 1 {
             1 => sprite::XY { x: sprite::X(0), y: sprite::Y(0) },
             _ => sprite::XY { x: sprite::X(0), y: sprite::Y(4) },

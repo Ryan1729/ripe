@@ -11,7 +11,7 @@ use models::{
 };
 use xs::{Xs, Seed};
 
-use platform_types::{unscaled};
+use platform_types::{unscaled, arrow_timer::{self, ArrowTimer}};
 
 
 pub mod to_tile {
@@ -311,14 +311,11 @@ pub type Inventory = Vec<Entity>;
 /// 64k speech boxes ought to be enough for anybody!
 pub type SpeechIndex = u16;
 
-/// 64k blink frames ought to be enough for anybody!
-pub type BlinkTimer = u16;
-
 #[derive(Clone)]
 pub struct TalkingState {
     pub key: entities::Key,
     pub speech_index: SpeechIndex,
-    pub blink_timer: BlinkTimer
+    pub arrow_timer: ArrowTimer,
 }
 
 impl TalkingState {
@@ -326,7 +323,7 @@ impl TalkingState {
         Self {
             key,
             speech_index: <_>::default(),
-            blink_timer: <_>::default(),
+            arrow_timer: <_>::default(),
         }
     }
 }
@@ -670,11 +667,7 @@ impl State {
 
         match &mut self.mode {
             Mode::Talking(talking) => {
-                if talking.blink_timer == 0 {
-                    talking.blink_timer = 500;
-                } else {
-                    talking.blink_timer = talking.blink_timer.saturating_sub(1);
-                }
+                arrow_timer::tick(&mut talking.arrow_timer);
             }
             Mode::Walking
             | Mode::Inventory {} => {
