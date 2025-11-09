@@ -11,11 +11,21 @@ pub const PLAYER_SPRITE: TileSprite = 2;
 pub const NPC_SPRITE: TileSprite = 3;
 pub const ITEM_SPRITE: TileSprite = 4;
 
+/// Offsets from a tile, for visual purposes only.
+pub mod offset {
+    // TODO? Worth clamping these to the range [-1.0, 1.0], possibly removing subnormals too?
+    //     Would be able to make them Eq in that case
+    pub type X = f32;
+    pub type Y = f32;
+}
+
 // Fat-struct for entities! Fat-struct for entities!
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct Entity {
     pub x: X,
     pub y: Y,
+    pub offset_x: offset::X,
+    pub offset_y: offset::Y,
     pub sprite: TileSprite,
 }
 
@@ -231,6 +241,12 @@ pub mod xy {
 
                     pub fn halve(self) -> Self {
                         Self(self.0 >> 1)
+                    }
+                }
+
+                impl From<$name> for f32 {
+                    fn from(value: $name) -> Self {
+                        Self::from(value.get())
                     }
                 }
             )+

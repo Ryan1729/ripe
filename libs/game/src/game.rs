@@ -1,4 +1,5 @@
 use models::{
+    offset,
     Entity,
     Tile,
     X,
@@ -16,7 +17,7 @@ use platform_types::{unscaled, arrow_timer::{self, ArrowTimer}};
 
 pub mod to_tile {
     use platform_types::{sprite, unscaled};
-    use models::{xy::{XY}, TileSprite};
+    use models::{Entity, xy::{XY}, TileSprite, offset};
 
     const TILE_W: unscaled::W = unscaled::W(16);
     const TILE_H: unscaled::H = unscaled::H(16);
@@ -60,6 +61,28 @@ pub mod to_tile {
             w: TILE_W,
             h: TILE_H,
         }
+    }
+
+    pub fn entity_rect(entity: &Entity) -> unscaled::Rect {
+        let mut output = rect(min_corner(entity.xy()));
+
+        if entity.offset_x > 0.0 {
+            output.x += unscaled::W::from(entity.offset_x * offset::X::from(TILE_W));
+        } else if entity.offset_x < 0.0 {
+            output.x -= unscaled::W::from(entity.offset_x.abs() * offset::X::from(TILE_W));
+        } else {
+            // do nothing for zeroes or other weird values.
+        }
+
+        if entity.offset_y > 0.0 {
+            output.y += unscaled::H::from(entity.offset_y * offset::Y::from(TILE_H));
+        } else if entity.offset_y < 0.0 {
+            output.y -= unscaled::H::from(entity.offset_y.abs() * offset::Y::from(TILE_H));
+        } else {
+            // do nothing for zeroes or other weird values.
+        }
+
+        output
     }
 }
 
@@ -219,7 +242,11 @@ mod entities {
         map: BTreeMap<Key, Entity>,
     }
     
-    impl Entities {    
+    impl Entities {
+        pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
+            self.map.values_mut()
+        }
+
         pub fn get(&self, key: Key) -> Option<&Entity> {
             self.map.get(&key)
         }
@@ -284,6 +311,12 @@ pub struct World {
     pub segment: WorldSegment,
     pub items: Entities,
     pub mobs: Entities,
+}
+
+impl World {
+    pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
+        self.items.all_entities_mut().chain(self.mobs.all_entities_mut())
+    }
 }
 
 fn can_walk_onto(world: &World, id: SegmentId, x: X, y: Y) -> bool {
@@ -373,6 +406,12 @@ pub struct State {
     pub segment_id: SegmentId,
     pub mode: Mode,
     pub fade_messages: FadeMessages,
+}
+
+impl State {
+    pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
+        self.world.all_entities_mut().chain(std::iter::once(&mut self.player))
+    }
 }
 
 // Proposed Steps
@@ -538,6 +577,7 @@ impl State {
                     x: npc_xy.x,
                     y: npc_xy.y,
                     sprite: models::NPC_SPRITE,
+                    ..<_>::default()
                 }
             );
 
@@ -553,6 +593,7 @@ impl State {
                         x: item_xy.x,
                         y: item_xy.y,
                         sprite: models::ITEM_SPRITE,
+                        ..<_>::default()
                     }
                 );
             }
@@ -603,6 +644,10 @@ impl State {
         };
 
         if can_walk_onto(&self.world, self.segment_id, new_x, new_y) {
+            // TODO? Worth making every update to any entities x/y update the offset?
+            entity.offset_x = offset::X::from(entity.x) - offset::X::from(new_x);
+            entity.offset_y = offset::Y::from(entity.y) - offset::Y::from(new_y);
+
             entity.x = new_x;
             entity.y = new_y;
 
@@ -673,6 +718,25 @@ impl State {
             | Mode::Inventory {} => {
                 // No timers
             }
+        }
+
+        // The offests are timers of a sort.
+        for entity in self.all_entities_mut() {
+            /// Distinct from f32::signum in that it returns 0.0 for 0.0, -0.0, NaNs, etc.
+            fn sign(x: f32) -> f32 {
+                if x > 0.0{
+                    1.0
+                } else if x < 0.0 {
+                    -1.0
+                } else {
+                    0.0
+                }
+            }
+
+            const DECAY_RATE: f32 = 1./8.;
+
+            entity.offset_x -= sign(entity.offset_x) * DECAY_RATE;
+            entity.offset_y -= sign(entity.offset_y) * DECAY_RATE;
         }
     }
 }

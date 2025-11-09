@@ -423,6 +423,20 @@ pub mod unscaled {
                         Self(self.0 >> 1)
                     }
                 }
+
+                impl From<$name> for f32 {
+                    fn from(value: $name) -> Self {
+                        Self::from(value.get())
+                    }
+                }
+
+                impl From<f32> for $name {
+                    fn from(value: f32) -> Self {
+                        // The as cast has the behaviour we want in the cases we know we care about.
+                        // https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.numeric.float-as-int
+                        Self(value as Inner)
+                    }
+                }
             )+
         }
     }

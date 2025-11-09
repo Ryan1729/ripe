@@ -184,7 +184,10 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     }
 
     fn draw_entity(commands: &mut Commands, entity: &Entity) {
-        draw_tile(commands, entity.xy(), entity.sprite);
+        commands.sspr(
+            to_tile::sprite_xy(entity.sprite),
+            command::Rect::from_unscaled(to_tile::entity_rect(entity)),
+        );
     }
 
     for (_, item) in state.world.items.for_id(state.segment_id) {
