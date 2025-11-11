@@ -6,6 +6,7 @@ use models::{
     Y,
     XY,
     SegmentId,
+    ShakeAmount,
     WorldSegment,
     is_passable,
     xy_to_i,
@@ -406,6 +407,7 @@ pub struct State {
     pub segment_id: SegmentId,
     pub mode: Mode,
     pub fade_messages: FadeMessages,
+    pub shake_amount: ShakeAmount,
 }
 
 impl State {
@@ -654,6 +656,10 @@ impl State {
             let key = entity_key(self.segment_id, entity.x, entity.y);
 
             if let Some(item) = self.world.items.remove(key) {
+                // Mostly for testing putposes until we get to combat or other things that make sense to cause 
+                // screenshake
+                self.shake_amount = 5;
+
                 self.player_inventory.push(item);
             }
         }

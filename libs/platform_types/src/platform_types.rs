@@ -12,31 +12,37 @@ pub mod unscaled {
         byte as Inner
     }
 
+    pub type SignedInner = i16;
+
     macro_rules! def {
-        ($($name: ident, $inner_name: ident)+) => {$(
-            pub type $inner_name = Inner;
-            #[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
-            pub struct $name(pub $inner_name);
-
-            impl $name {
-                pub const fn get(self) -> $inner_name {
-                    self.0
+        ($($name: ident, $inner_name: ident = $inner_type: ident)+) => {
+            $(
+                pub type $inner_name = $inner_type;
+                #[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+                pub struct $name(pub $inner_name);
+    
+                impl $name {
+                    pub const fn get(self) -> $inner_name {
+                        self.0
+                    }
                 }
-            }
-
-            impl From<$name> for $inner_name {
-                fn from(to_convert: $name) -> $inner_name {
-                    $inner_name::from(to_convert.0)
+    
+                impl From<$name> for $inner_name {
+                    fn from(to_convert: $name) -> $inner_name {
+                        $inner_name::from(to_convert.0)
+                    }
                 }
-            }
-        )*}
+            )*
+        }
     }
 
     def!{
-        X, XInner
-        Y, YInner
-        W, WInner
-        H, HInner
+        X, XInner = Inner
+        Y, YInner = Inner
+        W, WInner = Inner
+        H, HInner = Inner
+        XD, XDInner = SignedInner
+        YD, YDInner = SignedInner
     }
 
     pub const fn w_to_usize(w: W) -> usize {
@@ -99,76 +105,96 @@ pub mod unscaled {
         Y(y.0 + h.0)
     }
 
-    macro_rules! self_add_sub_def {
-        ($($name: ident)+) => {$(
-            impl core::ops::AddAssign for $name {
-                fn add_assign(&mut self, other: Self) {
+    macro_rules! unsigned_paired_impls {
+        ($($a_name: ident, $b_name: ident)+) => {$(
+            impl core::ops::AddAssign<$b_name> for $a_name {
+                fn add_assign(&mut self, other: $b_name) {
                     self.0 += other.0;
                 }
             }
-
-            impl core::ops::Add for $name {
+        
+            impl core::ops::Add<$b_name> for $a_name {
                 type Output = Self;
-
-                fn add(mut self, other: Self) -> Self::Output {
+        
+                fn add(mut self, other: $b_name) -> Self::Output {
                     self += other;
                     self
                 }
             }
-
-            impl core::ops::SubAssign for $name {
-                fn sub_assign(&mut self, other: Self) {
+        
+            impl core::ops::SubAssign<$b_name> for $a_name {
+                fn sub_assign(&mut self, other: $b_name) {
                     self.0 -= other.0;
                 }
             }
-
-            impl core::ops::Sub for $name {
+        
+            impl core::ops::Sub<$b_name> for $a_name {
                 type Output = Self;
-
-                fn sub(mut self, other: Self) -> Self::Output {
+        
+                fn sub(mut self, other: $b_name) -> Self::Output {
                     self -= other;
                     self
                 }
             }
+        )+}
+    }
 
-            impl $name {
-                pub fn saturating_sub(self, other: Self) -> Self {
-                    Self(self.0.saturating_sub(other.0))
+    unsigned_paired_impls!{
+        X, W
+        Y, H
+    }
+
+    macro_rules! signed_paired_impls {
+        ($($a_name: ident, $b_name: ident, $a_inner: ident)+) => {$(
+            impl core::ops::AddAssign<$b_name> for $a_name {
+                fn add_assign(&mut self, other: $b_name) {
+                    if other.0 < 0 {
+                        // Adding a negative by subtracting the absolute value
+                        self.0 -= (other.0.abs()) as $a_inner;
+                    } else if other.0 > 0 {
+                        self.0 += other.0 as $a_inner;
+                    } else {
+                        // Nothing to do
+                    }
                 }
             }
-        )*}
+        
+            impl core::ops::Add<$b_name> for $a_name {
+                type Output = Self;
+        
+                fn add(mut self, other: $b_name) -> Self::Output {
+                    self += other;
+                    self
+                }
+            }
+        
+            impl core::ops::SubAssign<$b_name> for $a_name {
+                fn sub_assign(&mut self, other: $b_name) {
+                    if other.0 < 0 {
+                        // Subtracting a negative by adding the absolute value
+                        self.0 += (other.0.abs()) as $a_inner;
+                    } else if other.0 > 0 {
+                        self.0 -= other.0 as $a_inner;
+                    } else {
+                        // Nothing to do
+                    }
+                }
+            }
+        
+            impl core::ops::Sub<$b_name> for $a_name {
+                type Output = Self;
+        
+                fn sub(mut self, other: $b_name) -> Self::Output {
+                    self -= other;
+                    self
+                }
+            }
+        )+}
     }
 
-    self_add_sub_def!{W H}
-
-    impl core::ops::AddAssign<W> for X {
-        fn add_assign(&mut self, other: W) {
-            self.0 += other.0;
-        }
-    }
-
-    impl core::ops::Add<W> for X {
-        type Output = Self;
-
-        fn add(mut self, other: W) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::SubAssign<W> for X {
-        fn sub_assign(&mut self, other: W) {
-            self.0 -= other.0;
-        }
-    }
-
-    impl core::ops::Sub<W> for X {
-        type Output = Self;
-
-        fn sub(mut self, other: W) -> Self::Output {
-            self -= other;
-            self
-        }
+    signed_paired_impls!{
+        X, XD, XInner
+        Y, YD, YInner
     }
 
     impl core::ops::Sub<X> for X {
@@ -176,48 +202,6 @@ pub mod unscaled {
 
         fn sub(self, other: X) -> Self::Output {
             W(self.0 - other.0)
-        }
-    }
-
-    impl X {
-        pub const fn saturating_add(self, w: W) -> X {
-            X(self.0.saturating_add(w.0))
-        }
-        pub const fn saturating_sub(self, w: W) -> X {
-            X(self.0.saturating_sub(w.0))
-        }
-        pub const fn saturating_point_sub(self, x: X) -> W {
-            W(self.0.saturating_sub(x.0))
-        }
-    }
-
-    impl core::ops::AddAssign<H> for Y {
-        fn add_assign(&mut self, other: H) {
-            self.0 += other.0;
-        }
-    }
-
-    impl core::ops::Add<H> for Y {
-        type Output = Self;
-
-        fn add(mut self, other: H) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::SubAssign<H> for Y {
-        fn sub_assign(&mut self, other: H) {
-            self.0 -= other.0;
-        }
-    }
-
-    impl core::ops::Sub<H> for Y {
-        type Output = Self;
-
-        fn sub(mut self, other: H) -> Self::Output {
-            self -= other;
-            self
         }
     }
 
@@ -229,15 +213,27 @@ pub mod unscaled {
         }
     }
 
+    impl X {
+        pub const fn saturating_add_w(self, w: W) -> X {
+            X(self.0.saturating_add(w.0))
+        }
+        pub const fn saturating_sub_w(self, w: W) -> X {
+            X(self.0.saturating_sub(w.0))
+        }
+        pub const fn saturating_point_sub_w(self, x: X) -> W {
+            W(self.0.saturating_sub(x.0))
+        }
+    }
+
     impl Y {
-        pub const fn saturating_add(self, h: H) -> Y {
+        pub const fn saturating_add_h(self, h: H) -> Y {
             Y(self.0.saturating_add(h.0))
         }
-        pub const fn saturating_sub(self, h: H) -> Y {
+        pub const fn saturating_sub_h(self, h: H) -> Y {
             Y(self.0.saturating_sub(h.0))
         }
-        pub const fn saturating_point_sub(self, y: Y) -> H {
-            H(self.0.saturating_sub(y.0))
+        pub const fn saturating_point_sub_h(self, x: Y) -> H {
+            H(self.0.saturating_sub(x.0))
         }
     }
 
@@ -318,90 +314,97 @@ pub mod unscaled {
         }
     }
 
-    impl core::ops::MulAssign<Inner> for W {
-        fn mul_assign(&mut self, inner: Inner) {
-            self.0 *= inner;
-        }
+    macro_rules! shared_displacement_impl {
+        ($($name: ident, $inner_name: ident)+) => {$(
+            impl core::ops::AddAssign for $name {
+                fn add_assign(&mut self, other: Self) {
+                    self.0 += other.0;
+                }
+            }
+
+            impl core::ops::Add for $name {
+                type Output = Self;
+
+                fn add(mut self, other: Self) -> Self::Output {
+                    self += other;
+                    self
+                }
+            }
+
+            impl core::ops::SubAssign for $name {
+                fn sub_assign(&mut self, other: Self) {
+                    self.0 -= other.0;
+                }
+            }
+
+            impl core::ops::Sub for $name {
+                type Output = Self;
+
+                fn sub(mut self, other: Self) -> Self::Output {
+                    self -= other;
+                    self
+                }
+            }
+
+            impl $name {
+                pub fn saturating_sub(self, other: Self) -> Self {
+                    Self(self.0.saturating_sub(other.0))
+                }
+            }
+
+            impl core::ops::MulAssign<$inner_name> for $name {
+                fn mul_assign(&mut self, inner: $inner_name) {
+                    self.0 *= inner;
+                }
+            }
+        
+            impl core::ops::Mul<$inner_name> for $name {
+                type Output = Self;
+        
+                fn mul(mut self, inner: $inner_name) -> Self::Output {
+                    self *= inner;
+                    self
+                }
+            }
+        
+            impl core::ops::Mul<$name> for $inner_name {
+                type Output = $name;
+        
+                fn mul(self, mut w: $name) -> Self::Output {
+                    w *= self;
+                    w
+                }
+            }
+        
+            impl core::ops::DivAssign<$inner_name> for $name {
+                fn div_assign(&mut self, inner: $inner_name) {
+                    self.0 /= inner;
+                }
+            }
+        
+            impl core::ops::Div<$inner_name> for $name {
+                type Output = Self;
+        
+                fn div(mut self, inner: $inner_name) -> Self::Output {
+                    self /= inner;
+                    self
+                }
+            }
+        )*};
     }
-
-    impl core::ops::Mul<Inner> for W {
-        type Output = Self;
-
-        fn mul(mut self, inner: Inner) -> Self::Output {
-            self *= inner;
-            self
-        }
-    }
-
-    impl core::ops::Mul<W> for Inner {
-        type Output = W;
-
-        fn mul(self, mut w: W) -> Self::Output {
-            w *= self;
-            w
-        }
-    }
-
-    impl core::ops::DivAssign<Inner> for W {
-        fn div_assign(&mut self, inner: Inner) {
-            self.0 /= inner;
-        }
-    }
-
-    impl core::ops::Div<Inner> for W {
-        type Output = Self;
-
-        fn div(mut self, inner: Inner) -> Self::Output {
-            self /= inner;
-            self
-        }
-    }
-
-    impl core::ops::MulAssign<Inner> for H {
-        fn mul_assign(&mut self, inner: Inner) {
-            self.0 *= inner;
-        }
-    }
-
-    impl core::ops::Mul<Inner> for H {
-        type Output = Self;
-
-        fn mul(mut self, inner: Inner) -> Self::Output {
-            self *= inner;
-            self
-        }
-    }
-
-    impl core::ops::Mul<H> for Inner {
-        type Output = H;
-
-        fn mul(self, mut h: H) -> Self::Output {
-            h *= self;
-            h
-        }
-    }
-
-    impl core::ops::DivAssign<Inner> for H {
-        fn div_assign(&mut self, inner: Inner) {
-            self.0 /= inner;
-        }
-    }
-
-    impl core::ops::Div<Inner> for H {
-        type Output = Self;
-
-        fn div(mut self, inner: Inner) -> Self::Output {
-            self /= inner;
-            self
-        }
+    shared_displacement_impl!{
+        W, WInner
+        H, HInner
+        XD, XDInner
+        YD, YDInner
     }
 
     macro_rules! shared_impl {
-        ($($name: ident)+) => {
+        ($($name: ident, $inner_name: ident)+) => {
             $(
                 impl $name {
-                    pub const MIN: Self = Self(Inner::MIN);
-                    pub const MAX: Self = Self(Inner::MAX);
+                    pub const MIN: Self = Self($inner_name::MIN);
+                    pub const MAX: Self = Self($inner_name::MAX);
 
                     pub const ZERO: Self = Self(0);
                     pub const ONE: Self = Self(1);
@@ -413,14 +416,6 @@ pub mod unscaled {
 
                     pub fn inc(self) -> Self {
                         Self(self.0.saturating_add(1))
-                    }
-
-                    pub fn usize(self) -> usize {
-                        self.0.into()
-                    }
-
-                    pub const fn halve(self) -> Self {
-                        Self(self.0 >> 1)
                     }
                 }
 
@@ -434,7 +429,7 @@ pub mod unscaled {
                     fn from(value: f32) -> Self {
                         // The as cast has the behaviour we want in the cases we know we care about.
                         // https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.numeric.float-as-int
-                        Self(value as Inner)
+                        Self(value as $inner_name)
                     }
                 }
             )+
@@ -442,6 +437,31 @@ pub mod unscaled {
     }
 
     shared_impl!{
+        X, XInner
+        Y, YInner
+        W, WInner
+        H, HInner
+        XD, XDInner
+        YD, YDInner
+    }
+
+    macro_rules! shared_unsigned_impl {
+        ($($name: ident)+) => {
+            $(
+                impl $name {
+                    pub fn usize(self) -> usize {
+                        self.0.into()
+                    }
+
+                    // Note: this won't work for signed types: -1 >> 1 == -1, not 0
+                    pub const fn halve(self) -> Self {
+                        Self(self.0 >> 1)
+                    }
+                }
+            )+
+        }
+    }
+    shared_unsigned_impl!{
         X Y W H
     }
 
@@ -696,9 +716,10 @@ pub mod sprite {
 
 pub mod command {
     use xs::Xs;
-    use super::{ARGB, sprite, unscaled};
+    use super::{ARGB, sprite, unscaled::{self, XD, YD}};
 
     pub type Inner = unscaled::Inner;
+    pub type SignedInner = unscaled::SignedInner;
 
     // Small enough to fit on pretty much any reasonable device, at an aspect ratio
     // of 3:2 (1.5), which is a compromise between 4:3 (1.33...) and 16:9 (1.788...).
@@ -809,6 +830,53 @@ pub mod command {
             H::clipped(unscaled::H(h))
         }
     }
+    /*
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct XD(unscaled::XD);
+
+    impl XD {
+        pub const MAX: XD = XD(unscaled::XD(WIDTH as SignedInner - 1));
+
+        pub const fn get(self) -> unscaled::XD {
+            self.0
+        }
+
+        pub const fn clipped(xd: unscaled::XD) -> XD {
+            if xd.0 < XD::MAX.0.0 {
+                XD(xd)
+            } else {
+                XD::MAX
+            }
+        }
+
+        pub const fn clipped_inner(xd: SignedInner) -> XD {
+            XD::clipped(unscaled::XD(xd))
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct YD(unscaled::YD);
+
+    impl YD {
+        pub const MAX: YD = YD(unscaled::YD(WIDTH as SignedInner - 1));
+
+        pub const fn get(self) -> unscaled::YD {
+            self.0
+        }
+
+        pub const fn clipped(yd: unscaled::YD) -> YD {
+            if yd.0 < YD::MAX.0.0 {
+                YD(yd)
+            } else {
+                YD::MAX
+            }
+        }
+
+        pub const fn clipped_inner(yd: SignedInner) -> YD {
+            YD::clipped(unscaled::YD(yd))
+        }
+    }
+    */
 
     pub const fn w_to_usize(w: W) -> usize {
         w.0.0 as usize
@@ -961,6 +1029,37 @@ pub mod command {
         fn mul(self, mut h: H) -> Self::Output {
             h *= self;
             h
+        }
+    }
+
+    impl core::ops::AddAssign<XD> for X {
+        fn add_assign(&mut self, other: XD) {
+            *self = Self::clipped(self.0 + other);
+        }
+    }
+
+
+    impl core::ops::Add<XD> for X {
+        type Output = Self;
+
+        fn add(mut self, other: XD) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    impl core::ops::AddAssign<YD> for Y {
+        fn add_assign(&mut self, other: YD) {
+            *self = Self::clipped(self.0 + other);
+        }
+    }
+
+    impl core::ops::Add<YD> for Y {
+        type Output = Self;
+
+        fn add(mut self, other: YD) -> Self::Output {
+            self += other;
+            self
         }
     }
 

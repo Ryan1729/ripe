@@ -628,6 +628,7 @@ version = "0.1.0"
 dependencies = [
  "models",
  "platform_types",
+ "xs",
 ]
 
 [[package]]

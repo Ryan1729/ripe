@@ -11,6 +11,9 @@ pub const PLAYER_SPRITE: TileSprite = 2;
 pub const NPC_SPRITE: TileSprite = 3;
 pub const ITEM_SPRITE: TileSprite = 4;
 
+/// An amount of screenshake to render with.
+pub type ShakeAmount = u8;
+
 /// Offsets from a tile, for visual purposes only.
 pub mod offset {
     // TODO? Worth clamping these to the range [-1.0, 1.0], possibly removing subnormals too?
@@ -52,8 +55,6 @@ pub fn entity_article_phrase(entity: &Entity) -> &str {
 }
 
 pub mod xy {
-    use super::*;
-
     pub type Inner = u16;
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -69,7 +69,8 @@ impl State {
 
         Self {
             game_state,
-            commands: Commands::default(),
+            // This doesn't have to use the same seed, but there's currently no reason not to.
+            commands: Commands::new(seed),
             input: Input::default(),
             speaker: Speaker::default(),
         }
@@ -78,7 +79,13 @@ impl State {
 
 #[cfg_attr(feature = "reload", unsafe(no_mangle))]
 pub fn frame(state: &mut State) -> (&[platform_types::Command], &[SFX]) {
-    state.commands.clear();
+    let mut shake_amount_fallback = 0;
+    let shake_amount = match &mut state.game_state {
+        Ok(s) => &mut s.shake_amount,
+        Err(_) => &mut shake_amount_fallback
+    };
+
+    state.commands.begin_frame(shake_amount);
     state.speaker.clear();
     update_and_render(
         &mut state.commands,
@@ -309,8 +316,8 @@ fn err_render(commands: &mut Commands, error: &Error) {
                 y: sprite::Y(64),
             },
             command::Rect::from_unscaled(unscaled::Rect {
-                x: x.saturating_add(unscaled::W(16)),
-                y: y.saturating_add(unscaled::H(16)),
+                x: x.saturating_add_w(unscaled::W(16)),
+                y: y.saturating_add_h(unscaled::H(16)),
                 w: unscaled::W(16),
                 h: unscaled::H(16),
             })

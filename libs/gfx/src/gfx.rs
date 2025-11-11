@@ -1,19 +1,61 @@
-use models::{};
+use xs::Xs;
+use models::{ShakeAmount};
 
 use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
 
-#[derive(Default)]
 pub struct Commands {
     commands: Vec<Command>,
+    shake_xd: unscaled::XD,
+    shake_yd: unscaled::YD,
+    rng: Xs,
 }
 
 impl Commands {
+    pub fn new(seed: xs::Seed) -> Self {
+        Self {
+            commands: <_>::default(),
+            shake_xd: <_>::default(),
+            shake_yd: <_>::default(),
+            rng: xs::from_seed(seed),
+        }
+    }
+
+    fn push_with_screenshake(&mut self, mut command: Command) {
+        command.rect.x_min += self.shake_xd;
+        command.rect.y_min += self.shake_yd;
+        command.rect.x_max += self.shake_xd;
+        command.rect.y_max += self.shake_yd;
+
+        self.commands.push(
+            command
+        );
+    }
+
     pub fn slice(&self) -> &[Command] {
         &self.commands
     }
 
-    pub fn clear(&mut self) {
+    pub fn begin_frame(&mut self, shake_amount: &mut ShakeAmount) {
         self.commands.clear();
+
+        //
+        // tick screenshake
+        //
+        if *shake_amount > 0 {
+            *shake_amount -= 1;
+        }
+
+        if *shake_amount > 0 {
+            let shake_angle: f32 = xs::zero_to_one(&mut self.rng) * core::f32::consts::TAU;
+
+            let shake_amount = f32::from(*shake_amount);
+
+            self.shake_xd = unscaled::XD::from(shake_angle.cos() * shake_amount);
+            self.shake_yd = unscaled::YD::from(shake_angle.sin() * shake_amount);
+        } else {
+            self.shake_xd = unscaled::XD::ZERO;
+            self.shake_yd = unscaled::YD::ZERO;
+        }
     }
 
     pub fn sspr(
@@ -21,7 +63,7 @@ impl Commands {
         sprite_xy: sprite::XY,
         rect: command::Rect,
     ) {
-        self.commands.push(
+        self.push_with_screenshake(
             Command {
                 sprite_xy,
                 rect,
@@ -55,7 +97,7 @@ impl Commands {
         }
 
         let sprite_xy = get_char_xy(character);
-        self.commands.push(
+        self.push_with_screenshake(
             Command {
                 sprite_xy,
                 rect: Rect::from_unscaled(unscaled::Rect {
@@ -386,11 +428,11 @@ pub mod nine_slice {
             _ => TALKING_SLICES,
         };
 
-        let after_left_corner = x.saturating_add(EDGE_W);
-        let before_right_corner = x.saturating_add(w).saturating_sub(EDGE_W);
+        let after_left_corner = x.saturating_add_w(EDGE_W);
+        let before_right_corner = x.saturating_add_w(w).saturating_sub_w(EDGE_W);
 
-        let below_top_corner = y.saturating_add(EDGE_H);
-        let above_bottom_corner = y.saturating_add(h).saturating_sub(EDGE_H);
+        let below_top_corner = y.saturating_add_h(EDGE_H);
+        let above_bottom_corner = y.saturating_add_h(h).saturating_sub_h(EDGE_H);
 
         // ABBBC
         // DEEEF
