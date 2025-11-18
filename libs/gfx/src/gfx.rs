@@ -1,5 +1,5 @@
 use xs::Xs;
-use models::{ShakeAmount};
+use models::{Speech, ShakeAmount};
 
 use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
 
@@ -210,6 +210,10 @@ impl Commands {
 
     pub fn next_arrow(&mut self, next_arrow_sprite: next_arrow::Sprite, x: unscaled::X, y: unscaled::Y) {
         next_arrow::render(self, next_arrow_sprite, x, y);
+    }
+
+    pub fn speech(&mut self, speech: &Speech) {
+        speech::render(self, speech);
     }
 }
 
@@ -550,13 +554,40 @@ pub mod nine_slice {
         );
     }
 
-    pub fn inner_rect(outer_rect: unscaled::Rect) -> unscaled::Rect {
+    pub const fn inner_rect(outer_rect: unscaled::Rect) -> unscaled::Rect {
         unscaled::Rect {
-            x: outer_rect.x + EDGE_W,
-            y: outer_rect.y + EDGE_H,
-            w: outer_rect.w - (EDGE_W * 2),
-            h: outer_rect.h - (EDGE_H * 2),
+            x: unscaled::x_const_add_w(outer_rect.x, EDGE_W),
+            y: unscaled::y_const_add_h(outer_rect.y, EDGE_H),
+            w: unscaled::w_const_sub(outer_rect.w, unscaled::w_const_mul(EDGE_W, 2)),
+            h: unscaled::h_const_sub(outer_rect.h, unscaled::h_const_mul(EDGE_H, 2)),
         }
+    }
+}
+
+pub mod speech {
+    use super::*;
+    use crate::nine_slice;
+    use platform_types::unscaled;
+
+    pub const SPACING: unscaled::Inner = 20;
+
+    pub const OUTER_RECT: unscaled::Rect = unscaled::Rect {
+        x: unscaled::X(SPACING),
+        y: unscaled::Y(platform_types::command::HEIGHT - 120),
+        w: unscaled::W(platform_types::command::WIDTH - (SPACING * 2)),
+        h: unscaled::H(120),
+    };
+
+    pub const INNER_RECT: unscaled::Rect = nine_slice::inner_rect(OUTER_RECT);
+
+    pub(crate) fn render(commands: &mut Commands, speech: &models::Speech) {
+        // This might get more complicated, with like text colouring or effects, etc.
+        commands.print_lines(
+            INNER_RECT.xy(),
+            0,
+            speech.text.as_bytes(),
+            6,
+        )
     }
 }
 

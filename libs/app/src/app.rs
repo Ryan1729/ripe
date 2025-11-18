@@ -1,4 +1,4 @@
-use gfx::{Commands, nine_slice, next_arrow};
+use gfx::{Commands, nine_slice, next_arrow, speech};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
 use game::{Dir, Mode, to_tile};
@@ -261,23 +261,13 @@ fn game_render(commands: &mut Commands, state: &game::State) {
             }
         },
         Mode::Talking(talking) => {
-            //key: entities::Key,
-            //pub speech_index: SpeechIndex,
+            commands.nine_slice(nine_slice::TALKING, speech::OUTER_RECT);
 
-            const SPACING: unscaled::Inner = 20;
+            if let Some(speech) = game::get_speech(state, talking.key, talking.speech_index) {
+                commands.speech(speech);
+            }
 
-            let outer_rect = unscaled::Rect {
-                x: unscaled::X(SPACING),
-                y: unscaled::Y(platform_types::command::HEIGHT - 120),
-                w: unscaled::W(platform_types::command::WIDTH - (SPACING * 2)),
-                h: unscaled::H(120),
-            };
-
-            commands.nine_slice(nine_slice::TALKING, outer_rect);
-
-            let inner_rect = nine_slice::inner_rect(outer_rect);
-
-            commands.next_arrow_in_corner_of(next_arrow::TALKING, talking.arrow_timer, inner_rect);
+            commands.next_arrow_in_corner_of(next_arrow::TALKING, talking.arrow_timer, speech::INNER_RECT);
         },
     }
 }

@@ -91,8 +91,16 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             .as_array_ref().map_err(|got| Error::TypeMismatch{ key: ik!(key), expected: "array", got })?
     };
 
+    let entities = {
+        let key = "entities";
+        map.get(key)
+            .ok_or(Error::FieldMissing{ key, parent_key: ik!("#root"), })?
+            .as_array_ref().map_err(|got| Error::TypeMismatch{ key: ik!(key), expected: "array", got })?
+    };
+
     let mut config = Config {
         segments: Vec::with_capacity(segments.len()),
+        entities: Vec::with_capacity(entities.len()),
     };
 
     for i in 0..segments.len() {

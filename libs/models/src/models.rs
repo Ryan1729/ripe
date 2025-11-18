@@ -22,6 +22,9 @@ pub mod offset {
     pub type Y = f32;
 }
 
+/// 64k entity definitions ought to be enough for anybody!
+pub type DefId = u16;
+
 // Fat-struct for entities! Fat-struct for entities!
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct Entity {
@@ -30,9 +33,25 @@ pub struct Entity {
     pub offset_x: offset::X,
     pub offset_y: offset::Y,
     pub sprite: TileSprite,
+    pub def_id: DefId,
 }
 
 impl Entity {
+    pub fn new(
+        x: X,
+        y: Y,
+        sprite: TileSprite,
+        def_id: DefId,
+    ) -> Self {
+        Self {
+            x,
+            y,
+            sprite,
+            def_id,    
+            ..<_>::default()
+        }
+    }
+
     pub fn xy(&self) -> XY {
         XY { x: self.x, y: self.y }
     }
@@ -366,3 +385,7 @@ pub fn i_to_xy(segment_width: SegmentWidth, index: Index) -> XY {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct Speech {
+    pub text: String,
+}
