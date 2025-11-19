@@ -205,6 +205,16 @@ pub mod config {
         Item(ItemDef),
     }
 
+    pub type EntityDefKindVariant = u8;
+
+    pub const MOB: EntityDefKindVariant = 1;
+    pub const ITEM: EntityDefKindVariant = 2;
+
+    pub const ALL_ENTITY_DEF_KINDS: [(&str, EntityDefKindVariant); 2] = [
+        ("MOB", MOB),
+        ("ITEM", ITEM),
+    ];
+
     #[derive(Clone)]
     pub struct EntityDef {
         pub kind: EntityDefKind,

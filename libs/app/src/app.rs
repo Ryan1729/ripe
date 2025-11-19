@@ -19,7 +19,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new((seed, logger, error_logger): StateParams) -> Self {
+    pub fn new((seed, logger, error_logger, override_config): StateParams) -> Self {
         unsafe {
             features::GLOBAL_LOGGER = logger;
             features::GLOBAL_ERROR_LOGGER = error_logger;
@@ -48,17 +48,20 @@ impl State {
                         F, W, B, I, B, W, F,
                         F, W, W, I, W, W, F,
                         F, F, F, F, F, F, F,
-                    ]
-                }
-            ]
+                    ],
+                },
+            ],
+            entities: [
+                
+            ],
         }
         "#;
 
         // TODO: Should this error bubble up instead? Or maybe have the app display an error message?
-        let config = match config::parse(HARDCODED_CONFIG) {
+        let config = match config::parse(override_config.as_ref().map_or(HARDCODED_CONFIG, |s| s)) {
             Ok(c) => c,
             Err(err) => {
-                features::log(&format!("{:?}", err));
+                features::log(&format!("override_config: {}. {:?}", override_config.is_some(), err));
 
                 game::Config::default()
             }

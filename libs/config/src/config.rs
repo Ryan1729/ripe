@@ -28,6 +28,28 @@ macro_rules! ik {
     };
 }
 
+// TODO: Instead of ad hoc fields deciding what context seems relevant to keep, we should just track the whole 
+// key/index chain down from the root of the map we get from the rhai evaluation. Each error would then have a 
+// ctx field of a new ErrorContext type.
+// I think usage code should look like this
+/*
+let field = {
+    let key = "a_key";
+    let ctx = ctx.add_key(key);
+
+    ... Err(Error::SomeVariant{ ctx, ... })?
+
+    for i in 0..sub_things.len() {
+        let ctx = ctx.add_index(i);    
+
+        ... Err(Error::SomeVariant{ ctx, ... })?
+    }
+
+}
+*/
+// One can imagine inplmenting a version of this API that performs no unneeded allocations, and maybe even 
+// reclaims things with destructors, if we were to ever really care about that perf.
+
 #[derive(Debug)]
 pub enum Error {
     EvalAltResult(Box<EvalAltResult>),
@@ -44,7 +66,16 @@ pub enum Error {
         index: usize,
         got: rhai::INT,
     },
-    SizeError(std::num::TryFromIntError),
+    UnexpectedEntityKind {
+        index: usize,
+        got: rhai::INT,
+    },
+    SizeError {
+        key: &'static str,
+        parent_key: IndexableKey,
+        error: std::num::TryFromIntError,
+    },
+    TooManyEntityDefinitions{ got: usize },
 }
 
 impl From<Box<EvalAltResult>> for Error {
@@ -59,22 +90,36 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 
     let mut engine = Engine::new();
 
+    let mut resolver = StaticModuleResolver::new();
+
+    macro_rules! add_module {
+        ($name: ident = $string: expr) => {{
+            let $name: &str = &$string;
+
+            let ast = engine.compile($name)
+                .expect(concat!(stringify!($name), " should compile"));
+            let module = Module::eval_ast_as_new(Scope::new(), &ast, &engine)
+                .expect(concat!(stringify!($name), " should eval as a module"));
+            
+            resolver.insert(stringify!($name), module);
+        }};
+    }
+
     let mut tile_flags_string = String::with_capacity(128);
 
     for (name, value) in ALL_TILE_FLAGS {
         tile_flags_string += &format!("export const {name} = {value};\n");
     }
 
-    let tile_flags: &str = &tile_flags_string;
+    add_module!(tile_flags = tile_flags_string);
 
-    let tile_flags_ast = engine.compile(tile_flags)
-        .expect("tile_flags should compile");
-    let tile_flags_module = Module::eval_ast_as_new(Scope::new(), &tile_flags_ast, &engine)
-        .expect("tile_flags should eval as a module");
+    let mut entity_defs_string = String::with_capacity(128);
 
-    let mut resolver = StaticModuleResolver::new();
-    
-    resolver.insert("tile_flags", tile_flags_module);
+    for (name, value) in game::config::ALL_ENTITY_DEF_KINDS {
+        entity_defs_string += &format!("export const {name} = {value};\n");
+    }
+
+    add_module!(entity_defs = entity_defs_string);
 
     engine.set_module_resolver(resolver);
 
@@ -82,6 +127,9 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 });
 
 pub fn parse(code: &str) -> Result<Config, Error> {
+    use models::{DefId, Speech};
+    use game::{EntityDef, config::{EntityDefKind, EntityDefKindVariant}};
+
     let map: rhai::Map = ENGINE.eval(code)?;
 
     let segments = {
@@ -114,7 +162,11 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             segment.get(key)
                 .ok_or(Error::FieldMissing{ key, parent_key, })?
                 .as_int().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "int", got })?
-                .try_into().map_err(Error::SizeError)?
+                .try_into().map_err(|error| Error::SizeError {
+                    key,
+                    parent_key,
+                    error,
+                })?
         };
 
         let tiles = {
@@ -143,6 +195,63 @@ pub fn parse(code: &str) -> Result<Config, Error> {
         config.segments.push(WorldSegment {
             width,
             tiles,
+        });
+    }
+
+    let entity_def_count = DefId::try_from(entities.len())
+        .map_err(|_| Error::TooManyEntityDefinitions{ got: entities.len() })?;
+
+    for id in 0..entity_def_count {
+        let parent_key = ik!("entities", id.into());
+
+        let entity = entities[usize::from(id)]
+            .as_map_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
+
+        let kind = {
+            let key = "kind";
+            let kind: EntityDefKindVariant = entity.get(key)
+                .ok_or(Error::FieldMissing{ key, parent_key, })?
+                .as_int().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "int", got })?
+                .try_into().map_err(|error| Error::SizeError {
+                    key,
+                    parent_key,
+                    error,
+                })?;
+
+            let kind = match kind {
+                game::config::MOB => EntityDefKind::Mob(()),
+                game::config::ITEM => EntityDefKind::Item(()),
+                _ => return Err(Error::UnexpectedEntityKind { index: id.into(), got: rhai::INT::from(kind) })
+            };
+
+            kind
+        };
+
+        let speeches = {
+            let key = "speeches";
+            let raw_entities = entity.get(key)
+                .ok_or(Error::FieldMissing{ key, parent_key, })?
+                .as_array_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+                ;
+
+            let mut speeches = Vec::with_capacity(raw_entities.len());
+
+            for i in 0..raw_entities.len() {
+                let text = raw_entities[i].clone()
+                    .into_string().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "string", got })?;
+
+                speeches.push(Speech {
+                    text,
+                });
+            }
+
+            speeches
+        };
+
+        config.entities.push(EntityDef {
+            kind,
+            speeches,
+            id,
         });
     }
 

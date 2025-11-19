@@ -256,6 +256,7 @@ pub fn get_state_params() -> StateParams {
         seed,
         Some(logger),
         Some(error_logger),
+        None,
     )
 }
 
@@ -269,10 +270,18 @@ pub fn get_state_params() -> StateParams {
         eprintln!("{}", s);
     }
 
+    let mut args = std::env::args();
+    args.next(); // exe name
+
+    let override_config: Option<String> = args.next().and_then(
+        |file_name| std::fs::read_to_string(file_name).ok()
+    );
+
     (
         new_seed(),
         Some(logger),
         Some(error_logger),
+        override_config,
     )
 }
 

@@ -1225,7 +1225,7 @@ pub use button::Button;
 
 pub type Logger = Option<fn(&str) -> ()>;
 
-pub type StateParams = ([u8; 16], Logger, Logger);
+pub type StateParams = ([u8; 16], Logger, Logger, Option<String>);
 
 // reportedly colourblind friendly colours
 // https://twitter.com/ea_accessible/status/968595073184092160
