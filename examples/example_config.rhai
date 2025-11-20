@@ -4,6 +4,8 @@ const F = TF::FLOOR | TF::PLAYER_START;
 const B = TF::FLOOR; // Bare Floor
 const I = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
 
+import "entity_defs" as ED;
+
 #{
     segments: [
         #{
@@ -20,6 +22,13 @@ const I = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
         },
     ],
     entities: [
-        
+        #{
+            kind: ED::MOB,
+            speeches: [ "hey can you get me a specific item?" ],
+        },
+        #{
+            kind: ED::ITEM,
+            speeches: [ "hey can you get me a specific item?" ],
+        },
     ],
 }
