@@ -14,7 +14,7 @@ use models::{
 };
 use xs::{Xs, Seed};
 
-use platform_types::{unscaled, arrow_timer::{self, ArrowTimer}};
+use platform_types::{unscaled, arrow_timer::{self, ArrowTimer}, vec1::{Vec1, vec1}};
 
 // Proposed Steps
 // * Make the simplest task: Go find a thing and bring it to the person who wants it
@@ -115,6 +115,7 @@ use platform_types::{unscaled, arrow_timer::{self, ArrowTimer}};
 pub mod to_tile;
 
 pub mod config {
+    use platform_types::{vec1::{Vec1, vec1}};
     use models::{DefId, SegmentWidth, Speech};
     pub type TileFlags = u32;
 
@@ -156,10 +157,8 @@ pub mod config {
 
     #[derive(Clone)]
     pub struct Config {
-        // TODO Nonempty Vec
-        pub segments: Vec<WorldSegment>,
-        // TODO Nonempty Vec
-        pub entities: Vec<EntityDef>,
+        pub segments: Vec1<WorldSegment>,
+        pub entities: Vec1<EntityDef>,
     }
 
     impl Default for Config {
@@ -168,7 +167,7 @@ pub mod config {
             const PLAYER_START: TileFlags = ALL_TILE_FLAGS[2].1;
 
             Config {
-                segments: vec![
+                segments: vec1![
                     WorldSegment {
                         width: 1,
                         tiles: vec![
@@ -176,7 +175,7 @@ pub mod config {
                         ],
                     }
                 ],
-                entities: vec![
+                entities: vec1![
                     EntityDef {
                         kind: EntityDefKind::Mob(()),
                         speeches: vec![

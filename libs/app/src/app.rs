@@ -9,6 +9,15 @@ pub enum Error {
     Game(game::Error),
 }
 
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use Error::*;
+        match self {
+            Game(error) => write!(f, "Game Error: {error:?}"),
+        }
+    }
+}
+
 type GameState = Result<game::State, Error>;
 
 pub struct State {
@@ -309,8 +318,8 @@ fn err_render(commands: &mut Commands, error: &Error) {
                 y: sprite::Y(64),
             },
             command::Rect::from_unscaled(unscaled::Rect {
-                x: x.saturating_add_w(unscaled::W(16)),
-                y: y.saturating_add_h(unscaled::H(16)),
+                x,
+                y,
                 w: unscaled::W(16),
                 h: unscaled::H(16),
             })
@@ -320,11 +329,13 @@ fn err_render(commands: &mut Commands, error: &Error) {
     // TODO allow scrolling the text by allowing changing this.
     let top_index_with_offset = 0;
 
+    // TODO? Maybe cache this so we aren't allocating every frame?
+    let error_text = format!("{error}").to_lowercase();
+
     commands.print_lines(
         <_>::default(),
         top_index_with_offset,
-        // TODO? Maybe cache this so we aren't allocating every frame?
-        format!("{error:?}").as_bytes(),
+        error_text.as_bytes(),
         6,
     );
 }

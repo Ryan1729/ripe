@@ -76,6 +76,8 @@ pub enum Error {
         error: std::num::TryFromIntError,
     },
     TooManyEntityDefinitions{ got: usize },
+    NoSegmentsFound,
+    NoEntitiesFound,
 }
 
 impl From<Box<EvalAltResult>> for Error {
@@ -146,10 +148,8 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             .as_array_ref().map_err(|got| Error::TypeMismatch{ key: ik!(key), expected: "array", got })?
     };
 
-    let mut config = Config {
-        segments: Vec::with_capacity(segments.len()),
-        entities: Vec::with_capacity(entities.len()),
-    };
+    let mut segments_vec = Vec::with_capacity(segments.len());
+    let mut entities_vec = Vec::with_capacity(entities.len());
 
     for i in 0..segments.len() {
         let parent_key = ik!("segments", i);
@@ -192,7 +192,7 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             tiles
         };
 
-        config.segments.push(WorldSegment {
+        segments_vec.push(WorldSegment {
             width,
             tiles,
         });
@@ -248,12 +248,15 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             speeches
         };
 
-        config.entities.push(EntityDef {
+        entities_vec.push(EntityDef {
             kind,
             speeches,
             id,
         });
     }
 
-    Ok(config)
+    Ok(Config {
+        segments: segments_vec.try_into().map_err(|_| Error::NoSegmentsFound)?,
+        entities: entities_vec.try_into().map_err(|_| Error::NoEntitiesFound)?,
+    })
 }
