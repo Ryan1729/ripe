@@ -14,7 +14,7 @@ use models::{
 };
 use xs::{Xs, Seed};
 
-use platform_types::{unscaled, arrow_timer::{self, ArrowTimer}, vec1::{Vec1, vec1}};
+use platform_types::{unscaled, arrow_timer::{self, ArrowTimer}};
 
 // Proposed Steps
 // * Make the simplest task: Go find a thing and bring it to the person who wants it
@@ -115,7 +115,7 @@ use platform_types::{unscaled, arrow_timer::{self, ArrowTimer}, vec1::{Vec1, vec
 pub mod to_tile;
 
 pub mod config {
-    use platform_types::{vec1::{Vec1, vec1}};
+    use platform_types::{vec1::{Vec1}};
     use models::{DefId, SegmentWidth, Speech};
     pub type TileFlags = u32;
 
@@ -161,72 +161,63 @@ pub mod config {
         pub entities: Vec1<EntityDef>,
     }
 
-    impl Default for Config {
-        fn default() -> Config {
-            const FLOOR: TileFlags = ALL_TILE_FLAGS[1].1;
-            const PLAYER_START: TileFlags = ALL_TILE_FLAGS[2].1;
+    // Currently not used, and not worth the maintenance cost unless we know it is being used
+    //impl Default for Config {
+        //fn default() -> Config {
+            //const FLOOR: TileFlags = ALL_TILE_FLAGS[1].1;
+            //const PLAYER_START: TileFlags = ALL_TILE_FLAGS[2].1;
+//
+            //Config {
+                //segments: vec1![
+                    //WorldSegment {
+                        //width: 1,
+                        //tiles: vec![
+                            //FLOOR | PLAYER_START
+                        //],
+                    //}
+                //],
+                //entities: vec1![
+                    //EntityDef {
+                        //kind: EntityDefKind::Mob(()),
+                        //speeches: vec![
+                            //Speech {
+                                //text: format!("hey! would you bring me a specific thing?"),
+                            //}
+                        //],
+                        //id: 0,
+                    //},
+                    //EntityDef {
+                        //kind: EntityDefKind::Item(()),
+                        //speeches: vec![],
+                        //id: 1,
+                    //},
+                //],
+            //}
+        //}
+    //}
 
-            Config {
-                segments: vec1![
-                    WorldSegment {
-                        width: 1,
-                        tiles: vec![
-                            FLOOR | PLAYER_START
-                        ],
-                    }
-                ],
-                entities: vec1![
-                    EntityDef {
-                        kind: EntityDefKind::Mob(()),
-                        speeches: vec![
-                            Speech {
-                                text: format!("hey! would you bring me a specific thing?"),
-                            }
-                        ],
-                        id: 0,
-                    },
-                    EntityDef {
-                        kind: EntityDefKind::Item(()),
-                        speeches: vec![],
-                        id: 1,
-                    },
-                ],
-            }
-        }
-    }
+    pub type EntityDefFlags = u8;
 
-    pub type MobDef = ();
-    pub type ItemDef = ();
+    pub const COLLECTABLE: EntityDefFlags = 1;
 
-    #[derive(Clone)]
-    pub enum EntityDefKind {
-        Mob(MobDef),
-        Item(ItemDef),
-    }
-
-    pub type EntityDefKindVariant = u8;
-
-    pub const MOB: EntityDefKindVariant = 1;
-    pub const ITEM: EntityDefKindVariant = 2;
-
-    pub const ALL_ENTITY_DEF_KINDS: [(&str, EntityDefKindVariant); 2] = [
-        ("MOB", MOB),
-        ("ITEM", ITEM),
+    pub const ALL_ENTITY_FLAGS: [(&str, EntityDefFlags); 1] = [
+        ("COLLECTABLE", COLLECTABLE),
     ];
 
     #[derive(Clone)]
-    pub struct EntityDef {
-        pub kind: EntityDefKind,
+    pub struct EntityDef {        
         pub speeches: Vec<Speech>,
         pub id: DefId,
+        pub flags: EntityDefFlags,
     }
 }
-pub use config::{Config, EntityDef, EntityDefKind, TileFlags};
+pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE};
 
 pub fn to_entity(def: &EntityDef, x: X, y: Y) -> Entity {
-    let sprite = match def.kind {
-        EntityDefKind::Mob(_) => models::NPC_SPRITE,
-        EntityDefKind::Item(_) => models::ITEM_SPRITE,
+    let sprite = if def.flags & COLLECTABLE == COLLECTABLE {
+        models::ITEM_SPRITE
+    } else {
+        models::NPC_SPRITE
     };
 
     Entity::new(x, y, sprite, def.id)
@@ -509,7 +500,6 @@ pub type FadeMessages = Vec<FadeMessage>;
 #[derive(Clone, Default)]
 pub struct State {
     pub rng: Xs,
-    pub config: Config,
     pub world: World,
     pub player: Entity,
     pub player_inventory: Inventory,
@@ -608,13 +598,10 @@ impl State {
         let mut speeches_lists = Vec::with_capacity(16);
 
         for def in &config.entities {
-            match def.kind {
-                EntityDefKind::Mob(_) => {
-                    mob_defs.push(def);
-                },
-                EntityDefKind::Item(_) => {
-                    item_defs.push(def);
-                },
+            if def.flags & COLLECTABLE == COLLECTABLE {
+                item_defs.push(def);
+            } else {
+                mob_defs.push(def);
             }
 
             // PERF: Is it worth it to avoid this clone?
@@ -666,11 +653,8 @@ impl State {
             }
         }
 
-        
-
         Ok(State {
             rng,
-            config,
             world,
             player,
             speeches,

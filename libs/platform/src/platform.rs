@@ -159,7 +159,7 @@ mod wasm {
     };
     use wasm_bindgen::JsCast;
     use web_sys::HtmlCanvasElement;
-    use platform_types::{SFX, unscaled};
+    use platform_types::{SFX};
 
     pub fn set_canvas(builder: WindowBuilder) -> WindowBuilder {
         let canvas = get_canvas();
@@ -252,12 +252,12 @@ pub fn get_state_params() -> StateParams {
         core::mem::transmute::<[f64; 2], [u8; 16]>([time, 1.0 / time])
     };
 
-    (
+    StateParams {
         seed,
-        Some(logger),
-        Some(error_logger),
-        None,
-    )
+        logger: Some(logger),
+        error_logger: Some(error_logger),
+        config_loader: None,
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -270,19 +270,23 @@ pub fn get_state_params() -> StateParams {
         eprintln!("{}", s);
     }
 
-    let mut args = std::env::args();
-    args.next(); // exe name
+    fn config_loader() -> Option<String> {
+        let mut args = std::env::args();
+        args.next(); // exe name
+    
+        let override_config: Option<String> = args.next().and_then(
+            |file_name| std::fs::read_to_string(file_name).ok()
+        );
 
-    let override_config: Option<String> = args.next().and_then(
-        |file_name| std::fs::read_to_string(file_name).ok()
-    );
+        override_config
+    }
 
-    (
-        new_seed(),
-        Some(logger),
-        Some(error_logger),
-        override_config,
-    )
+    StateParams {
+        seed: new_seed(),
+        logger: Some(logger),
+        error_logger: Some(error_logger),
+        config_loader: Some(config_loader),
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

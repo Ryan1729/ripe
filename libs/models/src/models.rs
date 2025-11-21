@@ -389,3 +389,17 @@ pub fn i_to_xy(segment_width: SegmentWidth, index: Index) -> XY {
 pub struct Speech {
     pub text: String,
 }
+
+impl From<String> for Speech {
+    fn from(text: String) -> Self {
+        Self {
+            text,
+        }
+    }
+}
+
+impl From<&str> for Speech {
+    fn from(text: &str) -> Self {
+        Self::from(text.to_owned())
+    }
+}

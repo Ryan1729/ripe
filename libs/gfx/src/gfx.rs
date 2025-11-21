@@ -1,7 +1,7 @@
 use xs::Xs;
 use models::{Speech, ShakeAmount};
 
-use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
+use platform_types::{Command, PALETTE, sprite, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
 
 pub struct Commands {
     commands: Vec<Command>,

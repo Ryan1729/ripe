@@ -1226,8 +1226,15 @@ pub mod button {
 pub use button::Button;
 
 pub type Logger = Option<fn(&str) -> ()>;
+pub type ConfigLoader = Option<fn() -> Option<String>>;
 
-pub type StateParams = ([u8; 16], Logger, Logger, Option<String>);
+#[derive(Clone, Copy)]
+pub struct StateParams {
+    pub seed: [u8; 16], 
+    pub logger: Logger,
+    pub error_logger: Logger, 
+    pub config_loader: ConfigLoader,
+}
 
 // reportedly colourblind friendly colours
 // https://twitter.com/ea_accessible/status/968595073184092160

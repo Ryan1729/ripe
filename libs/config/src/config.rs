@@ -3,9 +3,9 @@ use rhai::{Engine, EvalAltResult};
 
 use std::sync::LazyLock;
 
-use models::{Tile};
+//use models::{};
 use game::{Config};
-use game::config::{ALL_TILE_FLAGS, TileFlags, WorldSegment};
+use game::config::{TileFlags, WorldSegment};
 
 #[derive(Clone, Copy, Debug)]
 pub struct IndexableKey {
@@ -109,19 +109,19 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 
     let mut tile_flags_string = String::with_capacity(128);
 
-    for (name, value) in ALL_TILE_FLAGS {
+    for (name, value) in game::config::ALL_TILE_FLAGS {
         tile_flags_string += &format!("export const {name} = {value};\n");
     }
 
     add_module!(tile_flags = tile_flags_string);
 
-    let mut entity_defs_string = String::with_capacity(128);
+    let mut entity_flags_string = String::with_capacity(128);
 
-    for (name, value) in game::config::ALL_ENTITY_DEF_KINDS {
-        entity_defs_string += &format!("export const {name} = {value};\n");
+    for (name, value) in game::config::ALL_ENTITY_FLAGS {
+        entity_flags_string += &format!("export const {name} = {value};\n");
     }
 
-    add_module!(entity_defs = entity_defs_string);
+    add_module!(entity_flags = entity_flags_string);
 
     engine.set_module_resolver(resolver);
 
@@ -130,7 +130,7 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 
 pub fn parse(code: &str) -> Result<Config, Error> {
     use models::{DefId, Speech};
-    use game::{EntityDef, config::{EntityDefKind, EntityDefKindVariant}};
+    use game::{EntityDef, config::{EntityDefFlags}};
 
     let map: rhai::Map = ENGINE.eval(code)?;
 
@@ -207,9 +207,9 @@ pub fn parse(code: &str) -> Result<Config, Error> {
         let entity = entities[usize::from(id)]
             .as_map_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
 
-        let kind = {
-            let key = "kind";
-            let kind: EntityDefKindVariant = entity.get(key)
+        let flags = {
+            let key = "flags";
+            let flags: EntityDefFlags = entity.get(key)
                 .ok_or(Error::FieldMissing{ key, parent_key, })?
                 .as_int().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "int", got })?
                 .try_into().map_err(|error| Error::SizeError {
@@ -218,21 +218,16 @@ pub fn parse(code: &str) -> Result<Config, Error> {
                     error,
                 })?;
 
-            let kind = match kind {
-                game::config::MOB => EntityDefKind::Mob(()),
-                game::config::ITEM => EntityDefKind::Item(()),
-                _ => return Err(Error::UnexpectedEntityKind { index: id.into(), got: rhai::INT::from(kind) })
-            };
-
-            kind
+            flags
         };
 
-        let speeches = {
+        let speeches = 'speeches: {
             let key = "speeches";
-            let raw_entities = entity.get(key)
-                .ok_or(Error::FieldMissing{ key, parent_key, })?
-                .as_array_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
-                ;
+            let raw_entities = match entity.get(key) {
+                None => break 'speeches vec![],
+                Some(dynamic) => dynamic
+                    .as_array_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+            };
 
             let mut speeches = Vec::with_capacity(raw_entities.len());
 
@@ -249,7 +244,7 @@ pub fn parse(code: &str) -> Result<Config, Error> {
         };
 
         entities_vec.push(EntityDef {
-            kind,
+            flags,
             speeches,
             id,
         });

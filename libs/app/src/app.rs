@@ -2,10 +2,11 @@ use gfx::{Commands, nine_slice, next_arrow, speech};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
 use game::{Dir, Mode, to_tile};
-use models::{Entity, XY, i_to_xy, TileSprite};
+use models::{Entity, XY, i_to_xy, TileSprite, Speech};
 
 #[derive(Debug)]
 pub enum Error {
+    Config(config::Error),
     Game(game::Error),
 }
 
@@ -13,26 +14,44 @@ impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use Error::*;
         match self {
-            Game(error) => write!(f, "Game Error: {error:?}"),
+            Config(error) => write!(f, "Config Error: {error:#?}"),
+            Game(error) => write!(f, "Game Error: {error:#?}"),
         }
     }
 }
 
-type GameState = Result<game::State, Error>;
+pub struct ErrorState {
+    pub error: Error,
+    pub show_are_you_sure: bool,
+}
+
+impl From<Error> for ErrorState {
+    fn from(error: Error) -> Self {
+        Self {
+            error,
+            show_are_you_sure: <_>::default(),
+        }
+    }
+}
+
+type GameState = Result<game::State, ErrorState>;
 
 pub struct State {
     pub game_state: GameState,
     pub commands: Commands,
     pub input: Input,
     pub speaker: Speaker,
+    // Retained for resarting in error scenarios
+    pub params: StateParams,
 }
 
 impl State {
-    pub fn new((seed, logger, error_logger, override_config): StateParams) -> Self {
+    pub fn new(params: StateParams) -> Self {
         unsafe {
-            features::GLOBAL_LOGGER = logger;
-            features::GLOBAL_ERROR_LOGGER = error_logger;
+            features::GLOBAL_LOGGER = params.logger;
+            features::GLOBAL_ERROR_LOGGER = params.error_logger;
         }
+        let seed = params.seed;
 
         // We always want to log the seed, if there is a logger available, so use the function,
         // not the macro.
@@ -45,7 +64,10 @@ impl State {
         const B = TF::FLOOR; // Bare Floor
         const I = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
         
-        import "entity_defs" as ED;
+        import "entity_flags" as EF;
+        
+        const MOB = 0;
+        const ITEM = EF::COLLECTABLE;
         
         #{
             segments: [
@@ -64,29 +86,29 @@ impl State {
             ],
             entities: [
                 #{
-                    kind: ED::MOB,
-                    speeches: [ "hey can you get me a specific item?" ],
+                    flags: MOB,
+                    speeches: [ "hey can you get me something that's at least probably cool?" ],
                 },
                 #{
-                    kind: ED::ITEM,
-                    speeches: [ "hey can you get me a specific item?" ],
+                    flags: ITEM,
+                    inventory_description: [ "a chest, probably with something cool in it.", "can't seem to open it, so it'll stay at least probably cool forever." ],
                 },
             ],
         }
         "#;
 
-        // TODO: Should this error bubble up instead? Or maybe have the app display an error message?
-        let config = match config::parse(override_config.as_ref().map_or(HARDCODED_CONFIG, |s| s)) {
-            Ok(c) => c,
-            Err(err) => {
-                features::log(&format!("override_config: {}. {:?}", override_config.is_some(), err));
+        let override_config = params.config_loader.and_then(|f| f());
 
-                game::Config::default()
-            }
-        };
-
-        let game_state = game::State::new(seed, config)
-            .map_err(Error::Game);
+        let game_state = 'game_state: {            
+            let config = match config::parse(override_config.as_ref().map_or(HARDCODED_CONFIG, |s| s)) {
+                Ok(c) => c,
+                Err(err) => {
+                    break 'game_state Err(Error::Config(err))
+                }
+            };
+    
+            game::State::new(seed, config).map_err(Error::Game)
+        }.map_err(ErrorState::from);
 
         Self {
             game_state,
@@ -94,6 +116,7 @@ impl State {
             commands: Commands::new(seed),
             input: Input::default(),
             speaker: Speaker::default(),
+            params,
         }
     }
 }
@@ -108,12 +131,19 @@ pub fn frame(state: &mut State) -> (&[platform_types::Command], &[SFX]) {
 
     state.commands.begin_frame(shake_amount);
     state.speaker.clear();
-    update_and_render(
+    let effect = update_and_render(
         &mut state.commands,
         &mut state.game_state,
         state.input,
         &mut state.speaker,
     );
+
+    match effect {
+        Effect::NoOp => {},
+        Effect::Reload => {
+            *state = State::new(state.params);
+        },
+    }
 
     state.input.previous_gamepad = state.input.gamepad;
 
@@ -293,28 +323,63 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     }
 }
 
+#[derive(Default)]
+enum Effect {
+    #[default]
+    NoOp,
+    Reload,
+}
+
 #[inline]
 fn update_and_render(
     commands: &mut Commands,
     game_state: &mut GameState,
     input: Input,
     speaker: &mut Speaker,
-) {
+) -> Effect {
     match game_state {
         Ok(state) => {
             game_update(state, input, speaker);
             game_render(commands, state);
+
+            <_>::default()
         },
-        Err(err) => {
-            // TODO? A way to restart within the app?
-            err_render(commands, err);
+        Err(err_state) => {
+            let effect = err_update(err_state, input, speaker);
+            err_render(commands, err_state);
+
+            effect
         }
     }
 
 }
 
 #[inline]
-fn err_render(commands: &mut Commands, error: &Error) {
+fn err_update(
+    error_state: &mut ErrorState,
+    input: Input,
+    _speaker: &mut Speaker,
+) -> Effect {
+    let mut effect = <_>::default();
+
+    if error_state.show_are_you_sure {
+        if input.pressed_this_frame(Button::A) {
+            effect = Effect::Reload;
+        } else if input.pressed_this_frame(Button::B) {
+            error_state.show_are_you_sure = false;
+        }
+    } else {
+        if input.pressed_this_frame(Button::A) {
+            error_state.show_are_you_sure = true;
+        }
+    }
+
+    effect
+}
+
+#[inline]
+fn err_render(commands: &mut Commands, error_state: &ErrorState) {
+    let error = &error_state.error;
     let width = 64;
     for i in 0..(width * width) {
         let x = unscaled::X(((i % width) * 16) as _);
@@ -347,4 +412,13 @@ fn err_render(commands: &mut Commands, error: &Error) {
         error_text.as_bytes(),
         6,
     );
+
+    if error_state.show_are_you_sure {
+        commands.nine_slice(nine_slice::TALKING, speech::OUTER_RECT);
+
+        // TODO? Maybe cache this so we aren't allocating every frame?
+        commands.speech(
+            &Speech::from("Are you sure you want to try reloading?\n\n(A) to confirm, (B) to back out.")
+        );
+    }
 }

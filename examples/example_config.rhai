@@ -4,7 +4,10 @@ const F = TF::FLOOR | TF::PLAYER_START;
 const B = TF::FLOOR; // Bare Floor
 const I = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
 
-import "entity_defs" as ED;
+import "entity_flags" as EF;
+
+const MOB = 0;
+const ITEM = EF::COLLECTABLE;
 
 #{
     segments: [
@@ -23,12 +26,12 @@ import "entity_defs" as ED;
     ],
     entities: [
         #{
-            kind: ED::MOB,
-            speeches: [ "hey can you get me a specific item?" ],
+            flags: MOB,
+            speeches: [ "hey can you get me something that's at least probably cool?" ],
         },
         #{
-            kind: ED::ITEM,
-            speeches: [ "hey can you get me a specific item?" ],
+            flags: ITEM,
+            inventory_description: [ "a chest, probably with something cool in it.", "can't seem to open it, so it'll stay at least probably cool forever." ],
         },
     ],
 }
