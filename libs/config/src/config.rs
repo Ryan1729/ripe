@@ -123,6 +123,26 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 
     add_module!(entity_flags = entity_flags_string);
 
+    use game::to_tile::TILES_PER_ROW;
+
+    // Rhai not allowing you to access consts outside the fucntion scope withotu using `function_name!` is annoying.
+    let default_spritesheet_string = format!(r#"
+        private fn tile_sprite_n_at_offset(n, offset) {{
+            const TILES_PER_ROW = {TILES_PER_ROW};
+            n * TILES_PER_ROW + offset
+        }}
+
+        fn mob(n) {{
+            tile_sprite_n_at_offset(n, 3)
+        }}
+
+        fn item(n) {{
+            tile_sprite_n_at_offset(n, 4)
+        }}
+    "#);
+
+    add_module!(default_spritesheet = default_spritesheet_string);
+
     engine.set_module_resolver(resolver);
 
     engine
@@ -130,7 +150,24 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 
 pub fn parse(code: &str) -> Result<Config, Error> {
     use models::{DefId, Speech};
-    use game::{EntityDef, config::{EntityDefFlags}};
+    use game::{EntityDef};
+
+    macro_rules! get_int {
+        ($map: expr, $key: expr, $parent_key: expr) => {
+            {
+                let key = $key;
+                let parent_key = $parent_key;
+                $map.get(key)
+                    .ok_or(Error::FieldMissing{ key, parent_key, })?
+                    .as_int().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "int", got })?
+                    .try_into().map_err(|error| Error::SizeError {
+                        key,
+                        parent_key,
+                        error,
+                    })?
+            }
+        }
+    }
 
     let map: rhai::Map = ENGINE.eval(code)?;
 
@@ -157,17 +194,7 @@ pub fn parse(code: &str) -> Result<Config, Error> {
         let segment = segments[i]
             .as_map_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
 
-        let width = {
-            let key = "width";
-            segment.get(key)
-                .ok_or(Error::FieldMissing{ key, parent_key, })?
-                .as_int().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "int", got })?
-                .try_into().map_err(|error| Error::SizeError {
-                    key,
-                    parent_key,
-                    error,
-                })?
-        };
+        let width = get_int!(segment, "width", parent_key);
 
         let tiles = {
             let key = "tiles";
@@ -207,32 +234,22 @@ pub fn parse(code: &str) -> Result<Config, Error> {
         let entity = entities[usize::from(id)]
             .as_map_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
 
-        let flags = {
-            let key = "flags";
-            let flags: EntityDefFlags = entity.get(key)
-                .ok_or(Error::FieldMissing{ key, parent_key, })?
-                .as_int().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "int", got })?
-                .try_into().map_err(|error| Error::SizeError {
-                    key,
-                    parent_key,
-                    error,
-                })?;
+        let flags = get_int!(entity, "flags", parent_key);
 
-            flags
-        };
+        let tile_sprite = get_int!(entity, "tile_sprite", parent_key);
 
         let speeches = 'speeches: {
             let key = "speeches";
-            let raw_entities = match entity.get(key) {
+            let raw_speeches = match entity.get(key) {
                 None => break 'speeches vec![],
                 Some(dynamic) => dynamic
                     .as_array_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
             };
 
-            let mut speeches = Vec::with_capacity(raw_entities.len());
+            let mut speeches = Vec::with_capacity(raw_speeches.len());
 
-            for i in 0..raw_entities.len() {
-                let text = raw_entities[i].clone()
+            for i in 0..raw_speeches.len() {
+                let text = raw_speeches[i].clone()
                     .into_string().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "string", got })?;
 
                 speeches.push(Speech {
@@ -247,6 +264,7 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             flags,
             speeches,
             id,
+            tile_sprite,
         });
     }
 

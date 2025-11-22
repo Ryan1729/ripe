@@ -116,7 +116,7 @@ pub mod to_tile;
 
 pub mod config {
     use platform_types::{vec1::{Vec1}};
-    use models::{DefId, SegmentWidth, Speech};
+    use models::{DefId, SegmentWidth, Speech, TileSprite};
     pub type TileFlags = u32;
 
     macro_rules! flags_def {
@@ -204,23 +204,18 @@ pub mod config {
         ("COLLECTABLE", COLLECTABLE),
     ];
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct EntityDef {        
         pub speeches: Vec<Speech>,
         pub id: DefId,
         pub flags: EntityDefFlags,
+        pub tile_sprite: TileSprite,
     }
 }
 pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE};
 
 pub fn to_entity(def: &EntityDef, x: X, y: Y) -> Entity {
-    let sprite = if def.flags & COLLECTABLE == COLLECTABLE {
-        models::ITEM_SPRITE
-    } else {
-        models::NPC_SPRITE
-    };
-
-    Entity::new(x, y, sprite, def.id)
+    Entity::new(x, y, def.tile_sprite, def.id)
 }
 
 mod random {
@@ -622,11 +617,14 @@ impl State {
 
         let speeches = Speeches::new(speeches_lists);
 
-        if let Some(npc_xy) = random::tile_matching_flags_besides(
+        let mut placed_already = Vec::with_capacity(16);
+        placed_already.push(p_xy);
+
+        while let Some(npc_xy) = random::tile_matching_flags_besides(
             &mut rng,
             &config_segment,
             ITEM_START,
-            &[p_xy],
+            &placed_already,
         ) {
             // FIXME: Actual logic to keep things solvable.
 
@@ -635,21 +633,25 @@ impl State {
                     first_segment.id,
                     to_entity(mob_def, npc_xy.x, npc_xy.y),
                 );
+                placed_already.push(npc_xy);
 
                 // TODO? probably combine all these option checks into one match?
                 if let Some(item_xy) = random::tile_matching_flags_besides(
                     &mut rng,
                     &config_segment,
                     NPC_START,
-                    &[p_xy, npc_xy],
+                    &placed_already,
                 ) {
                     if let Some(item_def) = item_defs.pop() {
                         world.items.insert(
                             first_segment.id,
                             to_entity(item_def, item_xy.x, item_xy.y),
                         );
+                        placed_already.push(item_xy);
                     }
                 }
+            } else {
+                break
             }
         }
 
@@ -743,7 +745,7 @@ impl State {
             return
         };
 
-        if models::is_npc(mob) {
+        if self.speeches.get(mob.def_id).is_some() {
             self.mode = Mode::Talking(TalkingState::new(key));
             return
         }

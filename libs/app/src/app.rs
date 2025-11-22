@@ -69,6 +69,8 @@ impl State {
         const MOB = 0;
         const ITEM = EF::COLLECTABLE;
         
+        import "default_spritesheet" as DS;
+        
         #{
             segments: [
                 #{
@@ -88,10 +90,22 @@ impl State {
                 #{
                     flags: MOB,
                     speeches: [ "hey can you get me something that's at least probably cool?" ],
+                    tile_sprite: DS::mob(0),
                 },
                 #{
                     flags: ITEM,
                     inventory_description: [ "a chest, probably with something cool in it.", "can't seem to open it, so it'll stay at least probably cool forever." ],
+                    tile_sprite: DS::item(0),
+                },
+                #{
+                    flags: MOB,
+                    speeches: [ "I lost my bayer-dollars! Can you help me find them?", "I don't know where I lost them. I'm looking over here because the light is better." ],
+                    tile_sprite: DS::mob(1),
+                },
+                #{
+                    flags: ITEM,
+                    inventory_description: [ "some bayer-dollars. you can tell because of the pattern in the middle." ],
+                    tile_sprite: DS::item(1),
                 },
             ],
         }

@@ -29,10 +29,12 @@ pub fn center(xy: XY) -> unscaled::XY {
     min_corner(xy) + CENTER_OFFSET
 }
 
+pub const TILES_PER_ROW: sprite::Inner = 8;
+
 pub fn sprite_xy(tile_sprite: TileSprite) -> sprite::XY {
     sprite::XY {
-        x: sprite::X(tile_sprite as sprite::Inner * TILE_W.get()),
-        y: TILES_Y,
+        x: sprite::X(0) + sprite::W(tile_sprite as sprite::Inner % TILES_PER_ROW) * TILE_W.get(),
+        y: TILES_Y + sprite::H(tile_sprite as sprite::Inner / TILES_PER_ROW) * TILE_H.get(),
     }
 }
 

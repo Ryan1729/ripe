@@ -57,10 +57,6 @@ impl Entity {
     }
 }
 
-pub fn is_npc(entity: &Entity) -> bool {
-    entity.sprite == NPC_SPRITE
-}
-
 /// Returns a phrase like "a thing" or "an entity".
 pub fn entity_article_phrase(entity: &Entity) -> &str {
     match entity.sprite {
