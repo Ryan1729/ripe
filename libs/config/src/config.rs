@@ -260,9 +260,32 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             speeches
         };
 
+        let inventory_description = 'inventory_description: {
+            let key = "inventory_description";
+            let raw_inventory_description = match entity.get(key) {
+                None => break 'inventory_description vec![],
+                Some(dynamic) => dynamic
+                    .as_array_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+            };
+
+            let mut inventory_description = Vec::with_capacity(raw_inventory_description.len());
+
+            for i in 0..raw_inventory_description.len() {
+                let text = raw_inventory_description[i].clone()
+                    .into_string().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "string", got })?;
+
+                inventory_description.push(Speech {
+                    text,
+                });
+            }
+
+            inventory_description
+        };
+
         entities_vec.push(EntityDef {
             flags,
             speeches,
+            inventory_description,
             id,
             tile_sprite,
         });

@@ -178,13 +178,21 @@ pub fn release(state: &mut State, button: Button) {
     state.input.gamepad.remove(button);
 }
 
+const INVENTORY_WIDTH_CELLS: usize = 18;
+const INVENTORY_HEIGHT_CELLS: usize = 8;
+const INVENTORY_MAX_INDEX: usize = (INVENTORY_WIDTH_CELLS * INVENTORY_HEIGHT_CELLS) - 1;
+
 fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
     state.tick();
 
     match &mut state.mode {
         Mode::Walking => {
             if input.pressed_this_frame(Button::START) {
-                state.mode = Mode::Inventory {};
+                state.mode = Mode::Inventory { 
+                    current_index: <_>::default(),
+                    last_dir: <_>::default(),
+                    dir_count: <_>::default(),
+                };
                 return
             }
         
@@ -212,10 +220,69 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
                 }
             }
         },
-        Mode::Inventory {} => {
+        Mode::Inventory {
+            current_index,
+            last_dir,
+            dir_count,
+        } => {
             if input.pressed_this_frame(Button::START) {
                 state.mode = Mode::Walking;
                 return
+            }
+
+            if input.gamepad.contains(Button::UP) {
+                if *last_dir == Some(Dir::Up) {
+                    *dir_count = dir_count.saturating_add(1);
+                } else {
+                    *dir_count = 0;
+                }
+                *last_dir = Some(Dir::Up);
+            } else if input.gamepad.contains(Button::DOWN) {
+                if *last_dir == Some(Dir::Down) {
+                    *dir_count = dir_count.saturating_add(1);
+                } else {
+                    *dir_count = 0;
+                }
+                *last_dir = Some(Dir::Down);
+            } else if input.gamepad.contains(Button::LEFT) {
+                if *last_dir == Some(Dir::Left) {
+                    *dir_count = dir_count.saturating_add(1);
+                } else {
+                    *dir_count = 0;
+                }
+                *last_dir = Some(Dir::Left);
+            } else if input.gamepad.contains(Button::RIGHT) {
+                if *last_dir == Some(Dir::Right) {
+                    *dir_count = dir_count.saturating_add(1);
+                } else {
+                    *dir_count = 0;
+                }
+                *last_dir = Some(Dir::Right);
+            } else {
+                *last_dir = None;
+                *dir_count = 0;
+            }
+
+            if *dir_count > 8 || *dir_count == 0 {
+                if *last_dir == Some(Dir::Up) {
+                    if *current_index >= INVENTORY_WIDTH_CELLS {
+                        *current_index -= INVENTORY_WIDTH_CELLS;
+                    }
+                } else if *last_dir == Some(Dir::Down) {
+                    if *current_index + INVENTORY_WIDTH_CELLS <= INVENTORY_MAX_INDEX {
+                        *current_index += INVENTORY_WIDTH_CELLS;
+                    }
+                } else if *last_dir == Some(Dir::Left) {
+                    if *current_index > 0
+                    && *current_index / INVENTORY_WIDTH_CELLS == (*current_index - 1) / INVENTORY_WIDTH_CELLS {
+                        *current_index -= 1;
+                    }
+                } else if *last_dir == Some(Dir::Right) {
+                    if *current_index + 1 <= INVENTORY_MAX_INDEX
+                    && *current_index / INVENTORY_WIDTH_CELLS == (*current_index + 1) / INVENTORY_WIDTH_CELLS {
+                        *current_index += 1;
+                    }
+                }
             }
         },
         Mode::Talking(talking) => {
@@ -289,7 +356,10 @@ fn game_render(commands: &mut Commands, state: &game::State) {
         Mode::Walking => {
             // Nothing yet
         },
-        Mode::Inventory {} => {
+        Mode::Inventory {
+            current_index,
+            ..
+        } => {
             const SPACING: unscaled::Inner = 20;
 
             let outer_rect = unscaled::Rect {
@@ -297,6 +367,14 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                 y: unscaled::Y(SPACING),
                 w: unscaled::W(platform_types::command::WIDTH - (SPACING * 2)),
                 h: unscaled::H(platform_types::command::HEIGHT - 120),
+            };
+
+            const CELL_W: unscaled::W = unscaled::W(24);
+            const CELL_H: unscaled::H = unscaled::H(24);
+
+            const CELL_INSET: unscaled::WH = unscaled::WH{
+                w: unscaled::W(4),
+                h: unscaled::H(4),
             };
 
             commands.nine_slice(nine_slice::INVENTORY, outer_rect);
@@ -311,15 +389,31 @@ fn game_render(commands: &mut Commands, state: &game::State) {
             let y_max = inner_rect.y + inner_rect.h;
 
             while at.x < x_max && at.y < y_max {
-                let Some(item) = state.player_inventory.get(inventory_index) else {
-                    break
-                };
-                
-                draw_tile_sprite(commands, at, item.sprite);
+                // draw selectrum
+                if inventory_index == *current_index {
+                    commands.sspr(
+                        sprite::XY {
+                            x: sprite::X(24),
+                            y: sprite::Y(8),
+                        },
+                        command::Rect::from_unscaled(
+                            unscaled::Rect {
+                                x: at.x,
+                                y: at.y,
+                                w: CELL_W,
+                                h: CELL_H,
+                            }
+                        ),
+                    );
+                }
 
-                at.x += inner_rect.w;
-                if at.x < x_max {
-                    at.y += inner_rect.h;
+                if let Some(item) = state.player_inventory.get(inventory_index) {
+                    draw_tile_sprite(commands, at + CELL_INSET, item.sprite);
+                };
+
+                at.x += CELL_W;
+                if at.x >= x_max {
+                    at.y += CELL_H;
                     at.x = inner_rect.x;
                 }
                 inventory_index += 1;

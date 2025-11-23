@@ -207,6 +207,7 @@ pub mod config {
     #[derive(Clone, Debug)]
     pub struct EntityDef {        
         pub speeches: Vec<Speech>,
+        pub inventory_description: Vec<Speech>,
         pub id: DefId,
         pub flags: EntityDefFlags,
         pub tile_sprite: TileSprite,
@@ -379,7 +380,6 @@ mod speeches {
     #[derive(Clone, Debug, Default)]
     pub struct Speeches {
         // For now, it seems reasonable to assume we can force Def IDs to be dense, and start at 0.
-        // TODO: Non-empty vecs?
         speeches: Vec<Vec<Speech>>,
     }
     
@@ -440,7 +440,7 @@ pub type Inventory = Vec<Entity>;
 /// 64k speech boxes ought to be enough for anybody!
 pub type SpeechIndex = u16;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TalkingState {
     pub key: entities::Key,
     pub speech_index: SpeechIndex,
@@ -457,11 +457,15 @@ impl TalkingState {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub enum Mode {
     #[default]
     Walking,
-    Inventory {},
+    Inventory {
+        current_index: usize,
+        last_dir: Option<Dir>,
+        dir_count: u8,
+    },
     Talking(TalkingState),
 }
 
@@ -503,6 +507,7 @@ pub struct State {
     pub fade_messages: FadeMessages,
     pub shake_amount: ShakeAmount,
     pub speeches: Speeches,
+    pub inventory_descriptions: Speeches,
 }
 
 impl State {
@@ -665,7 +670,7 @@ impl State {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Dir {
     Left,
     Right,
@@ -745,9 +750,11 @@ impl State {
             return
         };
 
-        if self.speeches.get(mob.def_id).is_some() {
-            self.mode = Mode::Talking(TalkingState::new(key));
-            return
+        if let Some(speeches) = self.speeches.get(mob.def_id) {
+            if !speeches.is_empty() {
+                self.mode = Mode::Talking(TalkingState::new(key));
+                return
+            }
         }
 
         self.fade_messages.push(
@@ -784,7 +791,7 @@ impl State {
                 arrow_timer::tick(&mut talking.arrow_timer);
             }
             Mode::Walking
-            | Mode::Inventory {} => {
+            | Mode::Inventory { .. } => {
                 // No timers
             }
         }
@@ -796,13 +803,10 @@ impl State {
                 }
             }
             Mode::Walking
-            | Mode::Inventory {} => {
+            | Mode::Inventory { .. } => {
                 // No timers
             }
         }
-
-        
-                
 
         // The offests are timers of a sort.
         for entity in self.all_entities_mut() {
