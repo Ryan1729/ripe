@@ -1,5 +1,6 @@
 use models::{
     offset,
+    DefId,
     Entity,
     Speech,
     Tile,
@@ -14,7 +15,7 @@ use models::{
 };
 use xs::{Xs, Seed};
 
-use platform_types::{unscaled, arrow_timer::{self, ArrowTimer}};
+use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
 
 // Proposed Steps
 // * Make the simplest task: Go find a thing and bring it to the person who wants it
@@ -395,22 +396,35 @@ mod speeches {
         }
     }
 }
-use speeches::{Speeches};
+pub use speeches::{Speeches};
 
 #[derive(Clone, Default)]
 pub struct World {
     // TODO a graph structure of `WorldSegment`s instead of just one
     pub segment: WorldSegment,
+    /// The ID of the current segment we are in.
+    pub segment_id: SegmentId,
+    pub player: Entity,
     pub items: Entities,
     pub mobs: Entities,
 }
 
 impl World {
     pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
-        self.items.all_entities_mut().chain(self.mobs.all_entities_mut())
+        std::iter::once(&mut self.player).chain(self.items.all_entities_mut().chain(self.mobs.all_entities_mut()))
     }
 
     pub fn get_entity(&self, key: entities::Key) -> Option<&Entity> {
+        let player_key = entity_key(
+            self.segment_id,
+            self.player.x,
+            self.player.y,
+        );
+
+        if key == player_key {
+            return Some(&self.player)
+        }
+
         self.mobs.get(key).or_else(|| self.items.get(key))
     }
 }
@@ -442,15 +456,15 @@ pub type SpeechIndex = u16;
 
 #[derive(Clone, Debug)]
 pub struct TalkingState {
-    pub key: entities::Key,
+    pub def_id: DefId,
     pub speech_index: SpeechIndex,
     pub arrow_timer: ArrowTimer,
 }
 
 impl TalkingState {
-    pub fn new(key: entities::Key) -> Self {
+    pub fn new(def_id: DefId) -> Self {
         Self {
-            key,
+            def_id,
             speech_index: <_>::default(),
             arrow_timer: <_>::default(),
         }
@@ -465,6 +479,7 @@ pub enum Mode {
         current_index: usize,
         last_dir: Option<Dir>,
         dir_count: u8,
+        description_talking: Option<TalkingState>,
     },
     Talking(TalkingState),
 }
@@ -500,9 +515,7 @@ pub type FadeMessages = Vec<FadeMessage>;
 pub struct State {
     pub rng: Xs,
     pub world: World,
-    pub player: Entity,
     pub player_inventory: Inventory,
-    pub segment_id: SegmentId,
     pub mode: Mode,
     pub fade_messages: FadeMessages,
     pub shake_amount: ShakeAmount,
@@ -512,21 +525,7 @@ pub struct State {
 
 impl State {
     pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
-        self.world.all_entities_mut().chain(std::iter::once(&mut self.player))
-    }
-
-    pub fn get_entity(&self, key: entities::Key) -> Option<&Entity> {
-        let player_key = entity_key(
-            self.segment_id,
-            self.player.x,
-            self.player.y,
-        );
-
-        if key == player_key {
-            return Some(&self.player)
-        }
-
-        self.world.get_entity(key)
+        self.world.all_entities_mut()
     }
 }
 
@@ -574,7 +573,14 @@ impl State {
             tiles,
         };
 
+        let player = Entity {
+            sprite: models::PLAYER_SPRITE,
+            ..<_>::default()
+        };
+
         let mut world = World {
+            player,
+            segment_id: segment.id,
             segment,
             items: <_>::default(),
             mobs: <_>::default(),
@@ -582,20 +588,16 @@ impl State {
 
         let first_segment = &world.segment;
 
-        let mut player = Entity {
-            sprite: models::PLAYER_SPRITE,
-            ..<_>::default()
-        };
-
         let p_xy = random::tile_matching_flags(&mut rng, &config_segment, PLAYER_START)
             .or_else(|| random::passable_tile(&mut rng, first_segment))
             .ok_or(Error::CannotPlacePlayer)?;
-        player.x = p_xy.x;
-        player.y = p_xy.y;
+        world.player.x = p_xy.x;
+        world.player.y = p_xy.y;
 
         let mut mob_defs = Vec::with_capacity(16);
         let mut item_defs = Vec::with_capacity(16);
         let mut speeches_lists = Vec::with_capacity(16);
+        let mut inventory_descriptions_lists = Vec::with_capacity(16);
 
         for def in &config.entities {
             if def.flags & COLLECTABLE == COLLECTABLE {
@@ -606,6 +608,7 @@ impl State {
 
             // PERF: Is it worth it to avoid this clone?
             speeches_lists.push(def.speeches.clone());
+            inventory_descriptions_lists.push(def.inventory_description.clone());
         }
 
         // TODO? Non-empty Vec
@@ -621,6 +624,7 @@ impl State {
         xs::shuffle(&mut rng, &mut item_defs);
 
         let speeches = Speeches::new(speeches_lists);
+        let inventory_descriptions = Speeches::new(inventory_descriptions_lists);
 
         let mut placed_already = Vec::with_capacity(16);
         placed_already.push(p_xy);
@@ -663,8 +667,8 @@ impl State {
         Ok(State {
             rng,
             world,
-            player,
             speeches,
+            inventory_descriptions,
             .. <_>::default()
         })
     }
@@ -697,31 +701,26 @@ fn xy_in_dir(x: X, y: Y, dir: Dir) -> Option<XY> {
     Some(XY { x: new_x, y: new_y })
 }
 
-pub fn get_speech(state: &State, key: entities::Key, speech_index: SpeechIndex) -> Option<&Speech> {
-    state.get_entity(key)
-        .and_then(|entity| 
-            state.speeches.get(entity.def_id)
-                .and_then(|list| list.get(speech_index as usize))
-        )
+pub fn get_speech<'speeches>(speeches: &'speeches Speeches, def_id: DefId, speech_index: SpeechIndex) -> Option<&'speeches Speech> {
+    speeches.get(def_id)
+        .and_then(|list| list.get(speech_index as usize))
 }
 
 impl State {
     pub fn walk(&mut self, dir: Dir) {
-        let entity = &mut self.player;
-
-        let Some(XY { x: new_x, y: new_y }) = xy_in_dir(entity.x, entity.y, dir) else {
+        let Some(XY { x: new_x, y: new_y }) = xy_in_dir(self.world.player.x, self.world.player.y, dir) else {
             return
         };
 
-        if can_walk_onto(&self.world, self.segment_id, new_x, new_y) {
+        if can_walk_onto(&self.world, self.world.segment_id, new_x, new_y) {
             // TODO? Worth making every update to any entities x/y update the offset?
-            entity.offset_x = offset::X::from(entity.x) - offset::X::from(new_x);
-            entity.offset_y = offset::Y::from(entity.y) - offset::Y::from(new_y);
+            self.world.player.offset_x = offset::X::from(self.world.player.x) - offset::X::from(new_x);
+            self.world.player.offset_y = offset::Y::from(self.world.player.y) - offset::Y::from(new_y);
 
-            entity.x = new_x;
-            entity.y = new_y;
+            self.world.player.x = new_x;
+            self.world.player.y = new_y;
 
-            let key = entity_key(self.segment_id, entity.x, entity.y);
+            let key = entity_key(self.world.segment_id, self.world.player.x, self.world.player.y);
 
             if let Some(item) = self.world.items.remove(key) {
                 // Mostly for testing putposes until we get to combat or other things that make sense to cause 
@@ -734,14 +733,14 @@ impl State {
     }
 
     pub fn interact(&mut self, dir: Dir) {
-        let entity = &mut self.player;
+        let entity = &mut self.world.player;
 
         let Some(XY { x: target_x, y: target_y }) = xy_in_dir(entity.x, entity.y, dir) else {
             self.fade_messages.push(FadeMessage::new(format!("there's nothing there."), entity.xy()));
             return
         };
 
-        let key = entity_key(self.segment_id, target_x, target_y);
+        let key = entity_key(self.world.segment_id, target_x, target_y);
 
         let Some(mob) = self.world.mobs.get(key) else {
             self.fade_messages.push(
@@ -752,7 +751,7 @@ impl State {
 
         if let Some(speeches) = self.speeches.get(mob.def_id) {
             if !speeches.is_empty() {
-                self.mode = Mode::Talking(TalkingState::new(key));
+                self.mode = Mode::Talking(TalkingState::new(mob.def_id));
                 return
             }
         }
@@ -769,6 +768,10 @@ impl State {
     }
 
     pub fn tick(&mut self) {
+        if ! matches!(self.mode, Mode::Walking) {
+            return
+        }
+
         //
         // Advance Timers
         //
@@ -784,28 +787,6 @@ impl State {
             // TODO? A timer or other method to be able to move less than one pixel per frame?
             //     At that point, do we want sub-pixel blending enough to implement it?
             message.xy += message.wh;
-        }
-
-        match &mut self.mode {
-            Mode::Talking(talking) => {
-                arrow_timer::tick(&mut talking.arrow_timer);
-            }
-            Mode::Walking
-            | Mode::Inventory { .. } => {
-                // No timers
-            }
-        }
-
-        match &self.mode {
-            Mode::Talking(talking) => {
-                if get_speech(self, talking.key, talking.speech_index).is_none() {
-                    self.mode = Mode::Walking;
-                }
-            }
-            Mode::Walking
-            | Mode::Inventory { .. } => {
-                // No timers
-            }
         }
 
         // The offests are timers of a sort.

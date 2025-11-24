@@ -1,7 +1,7 @@
 use gfx::{Commands, nine_slice, next_arrow, speech};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
-use game::{Dir, Mode, to_tile};
+use game::{Dir, Mode, Speeches, TalkingState, to_tile};
 use models::{Entity, XY, i_to_xy, TileSprite, Speech};
 
 #[derive(Debug)]
@@ -183,6 +183,35 @@ const INVENTORY_HEIGHT_CELLS: usize = 8;
 const INVENTORY_MAX_INDEX: usize = (INVENTORY_WIDTH_CELLS * INVENTORY_HEIGHT_CELLS) - 1;
 
 fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum TalkingUpdateState {
+        StillTalking,
+        Finished,
+    }
+    use TalkingUpdateState::*;
+
+    fn talking_update(
+        talking: &mut TalkingState,
+        speeches: &Speeches,
+        input: Input,
+    ) -> TalkingUpdateState {
+        let mut output = StillTalking;
+
+        if game::get_speech(speeches, talking.def_id, talking.speech_index).is_none() {
+            output = Finished;
+        }
+
+        if input.pressed_this_frame(Button::A)
+        || input.pressed_this_frame(Button::B) {
+            talking.speech_index += 1;
+            return output
+        }
+
+        platform_types::arrow_timer::tick(&mut talking.arrow_timer);
+
+        output
+    }
+
     state.tick();
 
     match &mut state.mode {
@@ -192,6 +221,7 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
                     current_index: <_>::default(),
                     last_dir: <_>::default(),
                     dir_count: <_>::default(),
+                    description_talking: <_>::default(),
                 };
                 return
             }
@@ -224,13 +254,26 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
             current_index,
             last_dir,
             dir_count,
+            description_talking,
         } => {
             if input.pressed_this_frame(Button::START) {
                 state.mode = Mode::Walking;
                 return
             }
 
-            if input.gamepad.contains(Button::UP) {
+            if let Some(talking) = description_talking {
+                if talking_update(talking, &state.inventory_descriptions, input) == Finished {
+                    *description_talking = None;
+                }
+
+                return
+            } 
+
+            if input.pressed_this_frame(Button::A) {
+                if let Some(item) = state.player_inventory.get(*current_index) {
+                    *description_talking = Some(TalkingState::new(item.def_id));
+                }
+            } else if input.gamepad.contains(Button::UP) {
                 if *last_dir == Some(Dir::Up) {
                     *dir_count = dir_count.saturating_add(1);
                 } else {
@@ -286,10 +329,8 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
             }
         },
         Mode::Talking(talking) => {
-            if input.pressed_this_frame(Button::A)
-            || input.pressed_this_frame(Button::B) {
-                talking.speech_index += 1;
-                return
+            if talking_update(talking, &state.speeches, input) == Finished {
+                state.mode = Mode::Walking;
             }
         },
     }
@@ -302,6 +343,16 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     //
     // Render World
     //
+
+    fn draw_talking(commands: &mut Commands, speeches: &Speeches, talking: &TalkingState) {
+        commands.nine_slice(nine_slice::TALKING, speech::OUTER_RECT);
+
+        if let Some(speech) = game::get_speech(speeches, talking.def_id, talking.speech_index) {
+            commands.speech(speech);
+        }
+
+        commands.next_arrow_in_corner_of(next_arrow::TALKING, talking.arrow_timer, speech::INNER_RECT);
+    }
 
     fn draw_tile(commands: &mut Commands, xy: XY, sprite: TileSprite) {
         draw_tile_sprite(commands, to_tile::min_corner(xy), sprite);
@@ -329,15 +380,15 @@ fn game_render(commands: &mut Commands, state: &game::State) {
         );
     }
 
-    for (_, item) in state.world.items.for_id(state.segment_id) {
+    for (_, item) in state.world.items.for_id(state.world.segment_id) {
         draw_entity(commands, item);
     }
 
-    for (_, mob) in state.world.mobs.for_id(state.segment_id) {
+    for (_, mob) in state.world.mobs.for_id(state.world.segment_id) {
         draw_entity(commands, mob);
     }
 
-    draw_entity(commands, &state.player);
+    draw_entity(commands, &state.world.player);
 
     for message in &state.fade_messages {
         commands.print_lines(
@@ -358,6 +409,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
         },
         Mode::Inventory {
             current_index,
+            description_talking,
             ..
         } => {
             const SPACING: unscaled::Inner = 20;
@@ -418,15 +470,13 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                 }
                 inventory_index += 1;
             }
+
+            if let Some(talking) = description_talking {
+                draw_talking(commands, &state.inventory_descriptions, talking);
+            }
         },
         Mode::Talking(talking) => {
-            commands.nine_slice(nine_slice::TALKING, speech::OUTER_RECT);
-
-            if let Some(speech) = game::get_speech(state, talking.key, talking.speech_index) {
-                commands.speech(speech);
-            }
-
-            commands.next_arrow_in_corner_of(next_arrow::TALKING, talking.arrow_timer, speech::INNER_RECT);
+            draw_talking(commands, &state.speeches, talking);
         },
     }
 }
