@@ -14,8 +14,9 @@ wasm = ["rhai/wasm-bindgen", "getrandom/wasm_js"]
 rhai = { version = "1.23.4", features = ["sync"] }
 getrandom = { version = "0.3"}
 
+[dependencies.game]
+path = "../game"
+
 [dependencies.models]
 path = "../models"
 
-[dependencies.game]
-path = "../game"

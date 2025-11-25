@@ -388,14 +388,20 @@ pub struct Speech {
 
 impl From<String> for Speech {
     fn from(text: String) -> Self {
-        Self {
-            text,
-        }
+        Self::from(text.as_str())
+    }
+}
+
+impl From<&String> for Speech {
+    fn from(text: &String) -> Self {
+        Self::from(text.as_str())
     }
 }
 
 impl From<&str> for Speech {
-    fn from(text: &str) -> Self {
-        Self::from(text.to_owned())
+    fn from(raw_text: &str) -> Self {
+        Self {
+            text: text::string::reflow(&raw_text.to_lowercase(), 54),
+        }
     }
 }

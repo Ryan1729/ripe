@@ -249,12 +249,11 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             let mut speeches = Vec::with_capacity(raw_speeches.len());
 
             for i in 0..raw_speeches.len() {
-                let text = raw_speeches[i].clone()
+                let raw_text = raw_speeches[i].clone()
                     .into_string().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "string", got })?;
 
-                speeches.push(Speech {
-                    text,
-                });
+                // TODO? Allow avoiding this reflow per speech?
+                speeches.push(Speech::from(&raw_text));
             }
 
             speeches
@@ -271,12 +270,11 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             let mut inventory_description = Vec::with_capacity(raw_inventory_description.len());
 
             for i in 0..raw_inventory_description.len() {
-                let text = raw_inventory_description[i].clone()
+                let raw_text = raw_inventory_description[i].clone()
                     .into_string().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "string", got })?;
 
-                inventory_description.push(Speech {
-                    text,
-                });
+                // TODO? Allow avoiding this reflow per speech?
+                inventory_description.push(Speech::from(&raw_text));
             }
 
             inventory_description

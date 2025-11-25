@@ -628,6 +628,7 @@ version = "0.1.0"
 dependencies = [
  "models",
  "platform_types",
+ "text",
  "xs",
 ]
 
@@ -984,6 +985,7 @@ dependencies = [
 name = "models"
 version = "0.1.0"
 dependencies = [
+ "text",
  "xs",
 ]
 
@@ -1750,6 +1752,10 @@ dependencies = [
  "remove_dir_all",
  "winapi",
 ]
+
+[[package]]
+name = "text"
+version = "0.1.0"
 
 [[package]]
 name = "thin-vec"

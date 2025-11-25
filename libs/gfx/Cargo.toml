@@ -13,6 +13,9 @@ path = "../models"
 [dependencies.platform_types]
 path = "../platform_types"
 
+[dependencies.text]
+path = "../text"
+
 [dependencies.xs]
 path = "../xs"
 

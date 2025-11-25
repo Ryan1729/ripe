@@ -2,6 +2,7 @@ use xs::Xs;
 use models::{Speech, ShakeAmount};
 
 use platform_types::{Command, PALETTE, sprite, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
+use text::byte_slice as text;
 
 pub struct Commands {
     commands: Vec<Command>,
@@ -130,7 +131,7 @@ impl Commands {
         to_print: &[u8],
         colour: PaletteIndex,
     ) {
-        for (y, line) in Self::lines(to_print)
+        for (y, line) in text::lines(to_print)
             .skip((top_index_with_offset as u16 / CHAR_H.get()) as usize)
             .take(usize::from(command::HEIGHT * CHAR_H))
             .enumerate()
@@ -145,59 +146,15 @@ impl Commands {
                 // TODO investigate scrolling shimmering which seems to be
                 // related to this part. Do we need to make the scrolling
                 // speed up, then slow down or something? or is the offset
-                // calculation just wrong?  Maybe it won't look right unless
+                // calculation just wrong? Maybe it won't look right unless
                 // we add more in-between frames?
                 + unscaled::H(
-                    ((y + 1) * CHAR_H.get())
+                    (y * CHAR_H.get())
                     - offset
-                    - 1
-                )
-                + CHAR_H,
+                ),
                 colour
             );
         }
-    }
-
-    #[allow(unused)]
-    pub fn reflow(bytes: &[u8], width: usize) -> Vec<u8> {
-        if width == 0 || bytes.is_empty() {
-            return Vec::new();
-        }
-
-        let mut output = Vec::with_capacity(bytes.len() + bytes.len() / width);
-
-        let mut x = 0;
-        for word in Self::split_whitespace(bytes) {
-            x += word.len();
-
-            if x == width && x == word.len() {
-                output.extend(word.iter());
-                continue;
-            }
-
-            if x >= width {
-                output.push(b'\n');
-
-                x = word.len();
-            } else if x > word.len() {
-                output.push(b' ');
-
-                x += 1;
-            }
-            output.extend(word.iter());
-        }
-
-        output
-    }
-
-    pub fn split_whitespace(bytes: &[u8]) -> impl Iterator<Item = &[u8]> {
-        bytes
-            .split(|b| b.is_ascii_whitespace())
-            .filter(|word| !word.is_empty())
-    }
-
-    pub fn lines(bytes: &[u8]) -> impl Iterator<Item = &[u8]> {
-        bytes.split(|&b| b == b'\n')
     }
 
     pub fn nine_slice(&mut self, nine_slice_sprite: nine_slice::Sprite, outer_rect: unscaled::Rect) {
@@ -214,6 +171,47 @@ impl Commands {
 
     pub fn speech(&mut self, speech: &Speech) {
         speech::render(self, speech);
+    }
+}
+
+pub mod speech {
+    use super::*;
+    use crate::nine_slice;
+    use platform_types::unscaled;
+
+    pub const SPACING: unscaled::Inner = 20;
+
+    pub const OUTER_RECT: unscaled::Rect = unscaled::Rect {
+        x: unscaled::X(SPACING),
+        y: unscaled::Y(platform_types::command::HEIGHT - 120),
+        w: unscaled::W(platform_types::command::WIDTH - (SPACING * 2)),
+        h: unscaled::H(120),
+    };
+
+    pub const INNER_RECT: unscaled::Rect = {
+        let mut inner_rect = nine_slice::inner_rect(OUTER_RECT);
+
+        // TODO? Bother figuring out why these particular adjustments are needed to make it look right?
+        const X_NUDGE: unscaled::W = unscaled::W(2);
+        const Y_NUDGE: unscaled::H = unscaled::H(2);
+
+        inner_rect.x = unscaled::x_const_add_w(inner_rect.x, X_NUDGE);
+        inner_rect.w = unscaled::w_const_sub(inner_rect.w, unscaled::w_const_mul(X_NUDGE, 2));
+
+        inner_rect.y = unscaled::y_const_add_h(inner_rect.y, Y_NUDGE);
+        inner_rect.h = unscaled::h_const_sub(inner_rect.h, unscaled::h_const_mul(Y_NUDGE, 2));
+
+        inner_rect
+    };
+
+    pub(crate) fn render(commands: &mut Commands, speech: &models::Speech) {
+        // This might get more complicated, with like text colouring or effects, etc.
+        commands.print_lines(
+            INNER_RECT.xy(),
+            0,
+            speech.text.as_bytes(),
+            6,
+        )
     }
 }
 
@@ -561,33 +559,6 @@ pub mod nine_slice {
             w: unscaled::w_const_sub(outer_rect.w, unscaled::w_const_mul(EDGE_W, 2)),
             h: unscaled::h_const_sub(outer_rect.h, unscaled::h_const_mul(EDGE_H, 2)),
         }
-    }
-}
-
-pub mod speech {
-    use super::*;
-    use crate::nine_slice;
-    use platform_types::unscaled;
-
-    pub const SPACING: unscaled::Inner = 20;
-
-    pub const OUTER_RECT: unscaled::Rect = unscaled::Rect {
-        x: unscaled::X(SPACING),
-        y: unscaled::Y(platform_types::command::HEIGHT - 120),
-        w: unscaled::W(platform_types::command::WIDTH - (SPACING * 2)),
-        h: unscaled::H(120),
-    };
-
-    pub const INNER_RECT: unscaled::Rect = nine_slice::inner_rect(OUTER_RECT);
-
-    pub(crate) fn render(commands: &mut Commands, speech: &models::Speech) {
-        // This might get more complicated, with like text colouring or effects, etc.
-        commands.print_lines(
-            INNER_RECT.xy(),
-            0,
-            speech.text.as_bytes(),
-            6,
-        )
     }
 }
 
