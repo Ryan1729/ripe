@@ -1322,6 +1322,10 @@ pub mod vec1 {
         pub fn push(&mut self, value: T) {
             self.0.push(value)
         }
+
+        pub fn get(&self, index: usize) -> Option<&T> {
+            self.0.get(index)
+        }
     }
 
     impl<T, I: std::slice::SliceIndex<[T]>> Index<I> for Vec1<T> {

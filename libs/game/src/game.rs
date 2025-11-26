@@ -93,6 +93,33 @@ use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
 //            * Or maybe just the center tile for it, and we let the edges be ugly for now?
 //        * Render the item's tile sprite in a grid, or maybe just a vertical list for now
 // * Implement turning in the item and at least like a print when it happens.
+//    * Need to describe the connection between items and NPCs in the config file
+//        * Hmm. Could theoretically make it purely random, but I feel like allowing some structure here is more useful
+//          to config authors.
+//            * I guess having a way to make things purely random would make sesne. Maybe by leaving off the connection
+//              annotaion described below?
+//        * Best way, given the implicit ID structure, seems to be to allow saying "The previous mob wants the previous item"
+//            * `wanted_by: relative(-1)`
+//                * So an absolute reference would be possible. We can have `relative` return a map with a kind field 
+//                  to check during parsing.
+//            * What about making the mob be marked as wanting the item? I don't think it makes a big difference
+//              to the parsing code, but I expect it might be more inuitive that way when writing the config.
+//                * `wants: relative(-1)`
+//    * Will also need a way to actually win the whole run, and  thus a way to determine that from the config file.
+//        * I like the idea of a random goal as an option. Like this time they just really want some donuts. 
+//          But then this time they need the secret codes to overthrow the facist government, or the last known 
+//          wherabouts of the person they are investigating the disappearance of, or their mom wants the donuts.
+//        * Should also allow "triforce hunt" runs, where it's get N of M of a certain kind of item.
+//        * So an optional field on the root that indicates the goal I guess? Probably needs a specific GoalSpec type.
+//            * We will eventually want to have boss fights or "beat this minigame" as goals.
+//            * I guess minigame entrances can be represented as entities?
+//                * So maybe instead of a COLLECTABLE flag, it's a "steppable" flag, and the things have a 
+//                  "when_stepped_on" field that can be "collect" vs "start minigame"?
+//                    * Maybe doors can be placed on walls, and then still be "steppable"? Or does that 
+//                      complicate things, and they shoudl just embed a wall into the sprite if they want
+//                      to look like that? Feels like the second one.
+//        * I think the goal for this next pass should be to get to a random item is on the ground, than one npc wants,
+//          that then gives you what another NPC wants, and that NPC gives you the thing that you want, and you win!
 
 // A note about eventual design:
 // This bit about Mewgenics having one massive Character class makes me want to support that kind of thing:
@@ -112,31 +139,48 @@ use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
 //      can't learn the alternate script by heart, but maybe allow a setting to keep it the same. And obviously there 
 //      should be one to turn this mechanic off.
 //      * Eventually can expand this with something more linguistically complex.
+//    * Idleon seems to have a bunch of minigames, that are already based around getting a reward
 
 pub mod to_tile;
 
 pub mod config {
     use platform_types::{vec1::{Vec1}};
     use models::{DefId, SegmentWidth, Speech, TileSprite};
-    pub type TileFlags = u32;
+    
 
-    macro_rules! flags_def {
+    macro_rules! consts_def {
         (
+            $all_name: ident : $type: ty;
             $($name: ident = $value: expr),+ $(,)?
         ) => {
-            pub const ALL_TILE_FLAGS: [(&str, TileFlags); 5] = [
+            
+
+            pub const $all_name: [(&str, $type); const {
+                let mut count = 0;
+
+                $(
+                    // Use the repetition for something so we can take the count
+                    const _: $type = $value;
+                    count += 1;
+                )+
+
+                count
+            }] = [
                 $(
                     (stringify!($name), $value),
                 )+
             ];
 
             $(
-                pub const $name: TileFlags = $value;
+                pub const $name: $type = $value;
             )+
         };
     }
 
-    flags_def!{
+    pub type TileFlags = u32;
+
+    consts_def!{
+        ALL_TILE_FLAGS: TileFlags;
         // Can't be anything but a blocker
         WALL = 0,
         FLOOR = 1 << 0,
@@ -162,48 +206,20 @@ pub mod config {
         pub entities: Vec1<EntityDef>,
     }
 
-    // Currently not used, and not worth the maintenance cost unless we know it is being used
-    //impl Default for Config {
-        //fn default() -> Config {
-            //const FLOOR: TileFlags = ALL_TILE_FLAGS[1].1;
-            //const PLAYER_START: TileFlags = ALL_TILE_FLAGS[2].1;
-//
-            //Config {
-                //segments: vec1![
-                    //WorldSegment {
-                        //width: 1,
-                        //tiles: vec![
-                            //FLOOR | PLAYER_START
-                        //],
-                    //}
-                //],
-                //entities: vec1![
-                    //EntityDef {
-                        //kind: EntityDefKind::Mob(()),
-                        //speeches: vec![
-                            //Speech {
-                                //text: format!("hey! would you bring me a specific thing?"),
-                            //}
-                        //],
-                        //id: 0,
-                    //},
-                    //EntityDef {
-                        //kind: EntityDefKind::Item(()),
-                        //speeches: vec![],
-                        //id: 1,
-                    //},
-                //],
-            //}
-        //}
-    //}
-
     pub type EntityDefFlags = u8;
 
-    pub const COLLECTABLE: EntityDefFlags = 1;
+    consts_def!{
+        ALL_ENTITY_FLAGS: EntityDefFlags;
+        COLLECTABLE = 1,
+    }
 
-    pub const ALL_ENTITY_FLAGS: [(&str, EntityDefFlags); 1] = [
-        ("COLLECTABLE", COLLECTABLE),
-    ];
+    pub type EntityDefIdRefKind = u8;
+
+    consts_def!{
+        ALL_ENTITY_ID_REFERENCE_KINDS: EntityDefIdRefKind;
+        RELATIVE = 1,
+        ABSOLUTE = 2,
+    }
 
     #[derive(Clone, Debug)]
     pub struct EntityDef {        
@@ -212,9 +228,40 @@ pub mod config {
         pub id: DefId,
         pub flags: EntityDefFlags,
         pub tile_sprite: TileSprite,
+        pub wants: Vec<DefId>,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct Desire {
+        pub mob_def: EntityDef,
+        pub item_def: EntityDef,
+    }
+
+    impl Desire {
+        pub fn borrow(&self) -> DesireRef<'_> {
+            DesireRef {
+                mob_def: &self.mob_def,
+                item_def: &self.item_def,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct DesireRef<'defs> {
+        pub mob_def: &'defs EntityDef,
+        pub item_def: &'defs EntityDef,
+    }
+
+    impl <'defs> DesireRef<'defs> {
+        pub fn to_owned(&self) -> Desire {
+            Desire {
+                mob_def: self.mob_def.to_owned(),
+                item_def: self.item_def.to_owned(),
+            }
+        }
     }
 }
-pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE};
+pub use config::{Config, Desire, DesireRef, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE};
 
 pub fn to_entity(def: &EntityDef, x: X, y: Y) -> Entity {
     Entity::new(x, y, def.tile_sprite, def.id)
@@ -534,6 +581,9 @@ pub enum Error {
     CannotPlacePlayer,
     NoMobsFound,
     NoItemsFound,
+    CouldNotSatisfyDesire(Desire),
+    InvalidDesireID(EntityDef, SegmentId),
+    NonItemWasDesired(EntityDef, EntityDef, SegmentId),
 }
 
 impl State {
@@ -600,12 +650,6 @@ impl State {
         let mut inventory_descriptions_lists = Vec::with_capacity(16);
 
         for def in &config.entities {
-            if def.flags & COLLECTABLE == COLLECTABLE {
-                item_defs.push(def);
-            } else {
-                mob_defs.push(def);
-            }
-
             // PERF: Is it worth it to avoid this clone?
             speeches_lists.push(def.speeches.clone());
             inventory_descriptions_lists.push(def.inventory_description.clone());
@@ -626,41 +670,119 @@ impl State {
         let speeches = Speeches::new(speeches_lists);
         let inventory_descriptions = Speeches::new(inventory_descriptions_lists);
 
+        let mut all_desires = Vec::with_capacity(
+            core::cmp::min(
+                // A loose upper bound
+                config.entities.len() / 2,
+                1024,
+            )
+        );
+
+        for i in 0..config.entities.len() {
+            let def = &config.entities[i];
+
+            if def.flags & COLLECTABLE == COLLECTABLE {
+                item_defs.push(def.clone());
+            } else {
+                mob_defs.push(def.clone());
+
+                for &wanted_id in &def.wants {
+                    if let Some(desired_def) = config.entities.get(wanted_id.into()) {
+                        if desired_def.flags & COLLECTABLE == COLLECTABLE {
+                            all_desires.push(DesireRef {
+                                mob_def: def,
+                                item_def: desired_def,
+                            });
+                        } else {
+                            return Err(Error::NonItemWasDesired(def.clone(), desired_def.clone(), wanted_id))
+                        }
+                    } else {
+                        return Err(Error::InvalidDesireID(def.clone(), wanted_id))
+                    }
+                }
+            }
+        }
+
+        struct Constraints<'desires> {
+            desires: Vec<DesireRef<'desires>>,
+        }
+
+        // Select a random subset of the desires to make into constriants
+        fn select_constraints<'defs>(rng: &mut Xs, all_desires: &[DesireRef<'defs>]) -> Constraints<'defs> {
+            let target_len = xs::range(rng, 1..all_desires.len() as u32 + 1) as usize;
+            let initial_index = xs::range(rng, 0..all_desires.len() as u32) as usize;
+
+            let mut desires: Vec<_> = Vec::with_capacity(target_len);
+
+            let mut index = initial_index;
+            while desires.len() < target_len {
+                // Select the index or not, at a rate proportional to how many we need.
+                if (xs::range(rng, 0..all_desires.len() as u32 + 1) as usize) < target_len {
+                    desires.push(all_desires[index]);
+                }
+
+                index += 1;
+                if index >= all_desires.len() {
+                    index = 0;
+                }
+
+                if index == initial_index {
+                    // Avoid using the value from any index more than once.
+                    break
+                }
+            }
+
+            Constraints {
+                desires,
+            }
+        }
+
+        let constraints: Constraints = select_constraints(&mut rng, &all_desires);
+
         let mut placed_already = Vec::with_capacity(16);
         placed_already.push(p_xy);
 
-        while let Some(npc_xy) = random::tile_matching_flags_besides(
-            &mut rng,
-            &config_segment,
-            ITEM_START,
-            &placed_already,
-        ) {
-            // FIXME: Actual logic to keep things solvable.
+        for desire in constraints.desires {
+            let mut attempts = 0;
 
-            if let Some(mob_def) = mob_defs.pop() {
-                world.mobs.insert(
-                    first_segment.id,
-                    to_entity(mob_def, npc_xy.x, npc_xy.y),
-                );
-                placed_already.push(npc_xy);
+            while attempts < 16 {
+                attempts += 1;
 
-                // TODO? probably combine all these option checks into one match?
-                if let Some(item_xy) = random::tile_matching_flags_besides(
+                // TODO? Is there a nicer way to do this nested checking, and handle `placed_already`?
+                if let Some(npc_xy) = random::tile_matching_flags_besides(
                     &mut rng,
                     &config_segment,
                     NPC_START,
                     &placed_already,
                 ) {
-                    if let Some(item_def) = item_defs.pop() {
+                    placed_already.push(npc_xy);
+
+                    if let Some(item_xy) = random::tile_matching_flags_besides(
+                        &mut rng,
+                        &config_segment,
+                        ITEM_START,
+                        &placed_already,
+                    ) {
+                        world.mobs.insert(
+                            first_segment.id,
+                            to_entity(&desire.mob_def, npc_xy.x, npc_xy.y),
+                        );
+
                         world.items.insert(
                             first_segment.id,
-                            to_entity(item_def, item_xy.x, item_xy.y),
+                            to_entity(&desire.item_def, item_xy.x, item_xy.y),
                         );
                         placed_already.push(item_xy);
+
+                        break
+                    } else {
+                        placed_already.pop();
                     }
                 }
-            } else {
-                break
+            }
+
+            if attempts >= 16 {
+                return Err(Error::CouldNotSatisfyDesire(desire.to_owned()));
             }
         }
 

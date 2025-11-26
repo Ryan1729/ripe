@@ -3,7 +3,7 @@ use rhai::{Engine, EvalAltResult};
 
 use std::sync::LazyLock;
 
-//use models::{};
+use models::{DefId, DefIdDelta};
 use game::{Config};
 use game::config::{TileFlags, WorldSegment};
 
@@ -78,6 +78,22 @@ pub enum Error {
     TooManyEntityDefinitions{ got: usize },
     NoSegmentsFound,
     NoEntitiesFound,
+    OutOfBoundsDefId {
+        key: &'static str,
+        parent_key: IndexableKey,
+        def_id: models::DefId,
+    },
+    UnknownEntityDefIdRefKind { 
+        key: &'static str,
+        parent_key: IndexableKey,
+        kind: game::config::EntityDefIdRefKind,
+    },
+    DefIdOverflow{
+        key: &'static str,
+        parent_key: IndexableKey,
+        base: DefId,
+        delta: DefIdDelta,
+    }
 }
 
 impl From<Box<EvalAltResult>> for Error {
@@ -125,7 +141,7 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 
     use game::to_tile::TILES_PER_ROW;
 
-    // Rhai not allowing you to access consts outside the fucntion scope withotu using `function_name!` is annoying.
+    // Rhai not allowing you to access consts outside the function scope without using `function_name!` is annoying.
     let default_spritesheet_string = format!(r#"
         private fn tile_sprite_n_at_offset(n, offset) {{
             const TILES_PER_ROW = {TILES_PER_ROW};
@@ -143,6 +159,46 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 
     add_module!(default_spritesheet = default_spritesheet_string);
 
+    let mut entity_ids_string = String::with_capacity(256);
+
+    for (name, value) in game::config::ALL_ENTITY_ID_REFERENCE_KINDS {
+        entity_ids_string += &format!("export const {name} = {value};\n");
+    }
+
+    entity_ids_string += r#"
+        fn relative(n) {
+    "#;
+
+    for (name, value) in game::config::ALL_ENTITY_ID_REFERENCE_KINDS {
+        entity_ids_string += &format!("const {name} = {value};\n");
+    }
+
+    entity_ids_string += r#"
+            #{
+                kind: RELATIVE,
+                value: n,
+            }
+        }
+    "#;
+
+    entity_ids_string += r#"
+        fn absolute(n) {
+    "#;
+
+    for (name, value) in game::config::ALL_ENTITY_ID_REFERENCE_KINDS {
+        entity_ids_string += &format!("const {name} = {value};\n");
+    }
+
+    entity_ids_string += r#"
+            #{
+                kind: ABSOLUTE,
+                value: n,
+            }
+        }
+    "#;
+
+    add_module!(entity_ids = entity_ids_string);
+
     engine.set_module_resolver(resolver);
 
     engine
@@ -150,7 +206,17 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 
 pub fn parse(code: &str) -> Result<Config, Error> {
     use models::{DefId, Speech};
-    use game::{EntityDef};
+    use game::{EntityDef, config::EntityDefIdRefKind};
+
+    macro_rules! convert_to {
+        ($from: expr => $to: ty, $key: expr, $parent_key: expr) => {
+            <$to>::try_from($from).map_err(|error| Error::SizeError {
+                key: $key,
+                parent_key: $parent_key,
+                error,
+            })?
+        }
+    }
 
     macro_rules! get_int {
         ($map: expr, $key: expr, $parent_key: expr) => {
@@ -280,12 +346,56 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             inventory_description
         };
 
+        let wants = 'wants: {
+            let key = "wants";
+            let raw_wants = match entity.get(key) {
+                None => break 'wants vec![],
+                Some(dynamic) => dynamic
+                    .as_array_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+            };
+
+            let want_count: DefId = convert_to!(raw_wants.len() => DefId, key, parent_key);
+
+            let mut wants = Vec::with_capacity(raw_wants.len());
+
+            for i in 0..want_count {
+                let want_map = raw_wants[i as usize]
+                    .as_map_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
+
+                let parent_key = ik!("wants", i.into());
+
+                let kind: EntityDefIdRefKind = get_int!(want_map, "kind", parent_key);
+
+                let value: models::DefIdNextLargerSigned = get_int!(want_map, "value", parent_key);
+
+                let def_id = match kind {
+                    game::config::RELATIVE => {
+                        let delta = convert_to!(value => DefIdDelta, key, parent_key);
+
+                        i.checked_add_signed(delta).ok_or(Error::DefIdOverflow{ key, parent_key, base: i, delta })?
+                    },
+                    game::config::ABSOLUTE => convert_to!(value => DefId, key, parent_key),
+                    _ => return Err(Error::UnknownEntityDefIdRefKind { key, parent_key, kind }),
+                };
+
+                // TODO? Validate that the target is a valid kind of entity here?
+                if def_id >= entity_def_count {
+                    return Err(Error::OutOfBoundsDefId{ key, parent_key, def_id });
+                }
+
+                wants.push(def_id);
+            }
+
+            wants
+        };
+
         entities_vec.push(EntityDef {
             flags,
             speeches,
             inventory_description,
             id,
             tile_sprite,
+            wants,
         });
     }
 

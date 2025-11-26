@@ -24,6 +24,12 @@ pub mod offset {
 
 /// 64k entity definitions ought to be enough for anybody!
 pub type DefId = u16;
+// TODO? allow large enough deltas to represent going from DefId::MIN to DefId::MAX?
+//     I suspect no one will
+pub type DefIdDelta = i16;
+
+pub type DefIdNextLargerSigned = i32;
+
 
 // Fat-struct for entities! Fat-struct for entities!
 #[derive(Clone, Default, Debug, PartialEq)]
