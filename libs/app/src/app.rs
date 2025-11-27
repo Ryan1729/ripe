@@ -1,8 +1,8 @@
 use gfx::{Commands, nine_slice, next_arrow, speech};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
-use game::{Dir, Mode, Speeches, TalkingState, to_tile};
-use models::{Entity, XY, i_to_xy, TileSprite, Speech};
+use game::{Dir, Mode, TalkingState, to_tile};
+use models::{Entity, Speeches, XY, i_to_xy, TileSprite, Speech};
 
 #[derive(Debug)]
 pub enum Error {
@@ -197,7 +197,7 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
     ) -> TalkingUpdateState {
         let mut output = StillTalking;
 
-        if game::get_speech(speeches, talking.def_id, talking.speech_index).is_none() {
+        if game::get_speech(speeches, talking.key, talking.speech_index).is_none() {
             output = Finished;
         }
 
@@ -271,7 +271,7 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
 
             if input.pressed_this_frame(Button::A) {
                 if let Some(item) = state.player_inventory.get(*current_index) {
-                    *description_talking = Some(TalkingState::new(item.def_id));
+                    *description_talking = Some(TalkingState::new(item.speeches_key()));
                 }
             } else if input.gamepad.contains(Button::UP) {
                 if *last_dir == Some(Dir::Up) {
@@ -347,7 +347,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     fn draw_talking(commands: &mut Commands, speeches: &Speeches, talking: &TalkingState) {
         commands.nine_slice(nine_slice::TALKING, speech::OUTER_RECT);
 
-        if let Some(speech) = game::get_speech(speeches, talking.def_id, talking.speech_index) {
+        if let Some(speech) = game::get_speech(speeches, talking.key, talking.speech_index) {
             commands.speech(speech);
         }
 

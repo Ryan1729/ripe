@@ -1,8 +1,9 @@
 use models::{
     offset,
-    DefId,
+    speeches,
     Entity,
     Speech,
+    Speeches,
     Tile,
     X,
     Y,
@@ -80,7 +81,7 @@ use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
 // * Implement picking up the item upon walking over the item ✔
 //     * We can implement opening chests later on. If an idea for a generic "thingy" graphic comes up, feel free to replace it, keeping a copy of the chest graphic for later.
 //         * An open sack?
-// * Is now a good time for an inventory menu?
+// * Is now a good time for an inventory menu? ✔
 //    * How should the inventory work?
 //        * A grid, with a little description along the bottom?
 //            * Implies either like carefully fitting the description into a given space, or some way to scroll. 
@@ -223,8 +224,8 @@ pub mod config {
 
     #[derive(Clone, Debug)]
     pub struct EntityDef {        
-        pub speeches: Vec<Speech>,
-        pub inventory_description: Vec<Speech>,
+        pub speeches: Vec<Vec<Speech>>,
+        pub inventory_description: Vec<Vec<Speech>>,
         pub id: DefId,
         pub flags: EntityDefFlags,
         pub tile_sprite: TileSprite,
@@ -420,31 +421,6 @@ mod entities {
 }
 use entities::{Entities, entity_key};
 
-mod speeches {
-    use models::{DefId, Speech};
-
-    pub type Key = DefId;
-
-    #[derive(Clone, Debug, Default)]
-    pub struct Speeches {
-        // For now, it seems reasonable to assume we can force Def IDs to be dense, and start at 0.
-        speeches: Vec<Vec<Speech>>,
-    }
-    
-    impl Speeches {
-        pub fn new(speeches: Vec<Vec<Speech>>) -> Self {
-            Self {
-                speeches,
-            }
-        }
-
-        pub fn get(&self, key: Key) -> Option<&[Speech]> {
-            self.speeches.get(key as usize).map(|v| &**v)
-        }
-    }
-}
-pub use speeches::{Speeches};
-
 #[derive(Clone, Default)]
 pub struct World {
     // TODO a graph structure of `WorldSegment`s instead of just one
@@ -503,15 +479,15 @@ pub type SpeechIndex = u16;
 
 #[derive(Clone, Debug)]
 pub struct TalkingState {
-    pub def_id: DefId,
+    pub key: speeches::Key,
     pub speech_index: SpeechIndex,
     pub arrow_timer: ArrowTimer,
 }
 
 impl TalkingState {
-    pub fn new(def_id: DefId) -> Self {
+    pub fn new(key: speeches::Key) -> Self {
         Self {
-            def_id,
+            key,
             speech_index: <_>::default(),
             arrow_timer: <_>::default(),
         }
@@ -584,6 +560,8 @@ pub enum Error {
     CouldNotSatisfyDesire(Desire),
     InvalidDesireID(EntityDef, SegmentId),
     NonItemWasDesired(EntityDef, EntityDef, SegmentId),
+    InvalidSpeeches(speeches::PushError),
+    InvalidInventoryDescriptions(speeches::PushError),
 }
 
 impl State {
@@ -655,20 +633,14 @@ impl State {
             inventory_descriptions_lists.push(def.inventory_description.clone());
         }
 
-        // TODO? Non-empty Vec
-        if mob_defs.is_empty() {
-            return Err(Error::NoMobsFound);
+        let mut speeches = Speeches::with_capacity(speeches_lists.len());
+        for list in &mut speeches_lists {
+            speeches.push(list).map_err(Error::InvalidSpeeches)?;
         }
-
-        if item_defs.is_empty() {
-            return Err(Error::NoItemsFound);
+        let mut inventory_descriptions = Speeches::with_capacity(inventory_descriptions_lists.len());
+        for list in &mut inventory_descriptions_lists {
+            inventory_descriptions.push(list).map_err(Error::InvalidInventoryDescriptions)?;
         }
-
-        xs::shuffle(&mut rng, &mut mob_defs);
-        xs::shuffle(&mut rng, &mut item_defs);
-
-        let speeches = Speeches::new(speeches_lists);
-        let inventory_descriptions = Speeches::new(inventory_descriptions_lists);
 
         let mut all_desires = Vec::with_capacity(
             core::cmp::min(
@@ -702,6 +674,18 @@ impl State {
                 }
             }
         }
+
+        // TODO? Non-empty Vec
+        if mob_defs.is_empty() {
+            return Err(Error::NoMobsFound);
+        }
+
+        if item_defs.is_empty() {
+            return Err(Error::NoItemsFound);
+        }
+
+        xs::shuffle(&mut rng, &mut mob_defs);
+        xs::shuffle(&mut rng, &mut item_defs);
 
         struct Constraints<'desires> {
             desires: Vec<DesireRef<'desires>>,
@@ -823,8 +807,8 @@ fn xy_in_dir(x: X, y: Y, dir: Dir) -> Option<XY> {
     Some(XY { x: new_x, y: new_y })
 }
 
-pub fn get_speech<'speeches>(speeches: &'speeches Speeches, def_id: DefId, speech_index: SpeechIndex) -> Option<&'speeches Speech> {
-    speeches.get(def_id)
+pub fn get_speech<'speeches>(speeches: &'speeches Speeches, key: speeches::Key, speech_index: SpeechIndex) -> Option<&'speeches Speech> {
+    speeches.get(key)
         .and_then(|list| list.get(speech_index as usize))
 }
 
@@ -871,9 +855,10 @@ impl State {
             return
         };
 
-        if let Some(speeches) = self.speeches.get(mob.def_id) {
+        let speeches_key = mob.speeches_key();
+        if let Some(speeches) = self.speeches.get(speeches_key) {
             if !speeches.is_empty() {
-                self.mode = Mode::Talking(TalkingState::new(mob.def_id));
+                self.mode = Mode::Talking(TalkingState::new(speeches_key));
                 return
             }
         }

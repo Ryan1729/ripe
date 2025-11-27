@@ -304,43 +304,61 @@ pub fn parse(code: &str) -> Result<Config, Error> {
 
         let tile_sprite = get_int!(entity, "tile_sprite", parent_key);
 
-        let speeches = 'speeches: {
+        let speeches: Vec<Vec<Speech>> = 'speeches: {
             let key = "speeches";
-            let raw_speeches = match entity.get(key) {
+            let raw_speeches_list = match entity.get(key) {
                 None => break 'speeches vec![],
                 Some(dynamic) => dynamic
                     .as_array_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
             };
 
-            let mut speeches = Vec::with_capacity(raw_speeches.len());
+            let mut speeches = Vec::with_capacity(raw_speeches_list.len());
 
-            for i in 0..raw_speeches.len() {
-                let raw_text = raw_speeches[i].clone()
-                    .into_string().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "string", got })?;
+            for list_i in 0..raw_speeches_list.len() {
+                let raw_speeches = raw_speeches_list[list_i]
+                .as_array_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?;
 
-                // TODO? Allow avoiding this reflow per speech?
-                speeches.push(Speech::from(&raw_text));
+                let mut individual_speeches = Vec::with_capacity(raw_speeches.len());
+
+                for i in 0..raw_speeches.len() {
+                    let raw_text = raw_speeches[i].clone()
+                        .into_string().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "string", got })?;
+    
+                    // TODO? Allow avoiding this reflow per speech?
+                    individual_speeches.push(Speech::from(&raw_text));
+                }
+
+                speeches.push(individual_speeches);
             }
 
             speeches
         };
 
-        let inventory_description = 'inventory_description: {
+        let inventory_description: Vec<Vec<Speech>> = 'inventory_description: {
             let key = "inventory_description";
-            let raw_inventory_description = match entity.get(key) {
+            let raw_inventory_description_list = match entity.get(key) {
                 None => break 'inventory_description vec![],
                 Some(dynamic) => dynamic
                     .as_array_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
             };
 
-            let mut inventory_description = Vec::with_capacity(raw_inventory_description.len());
+            let mut inventory_description = Vec::with_capacity(raw_inventory_description_list.len());
 
-            for i in 0..raw_inventory_description.len() {
-                let raw_text = raw_inventory_description[i].clone()
-                    .into_string().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "string", got })?;
+            for list_i in 0..raw_inventory_description_list.len() {
+                let raw_inventory_description = raw_inventory_description_list[list_i]
+                .as_array_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?;
 
-                // TODO? Allow avoiding this reflow per speech?
-                inventory_description.push(Speech::from(&raw_text));
+                let mut individual_inventory_description = Vec::with_capacity(raw_inventory_description.len());
+
+                for i in 0..raw_inventory_description.len() {
+                    let raw_text = raw_inventory_description[i].clone()
+                        .into_string().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "string", got })?;
+    
+                    // TODO? Allow avoiding this reflow per speech?
+                    individual_inventory_description.push(Speech::from(&raw_text));
+                }
+
+                inventory_description.push(individual_inventory_description);
             }
 
             inventory_description
@@ -372,7 +390,7 @@ pub fn parse(code: &str) -> Result<Config, Error> {
                     game::config::RELATIVE => {
                         let delta = convert_to!(value => DefIdDelta, key, parent_key);
 
-                        i.checked_add_signed(delta).ok_or(Error::DefIdOverflow{ key, parent_key, base: i, delta })?
+                        id.checked_add_signed(delta).ok_or(Error::DefIdOverflow{ key, parent_key, base: id, delta })?
                     },
                     game::config::ABSOLUTE => convert_to!(value => DefId, key, parent_key),
                     _ => return Err(Error::UnknownEntityDefIdRefKind { key, parent_key, kind }),

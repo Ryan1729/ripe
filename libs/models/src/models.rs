@@ -40,6 +40,7 @@ pub struct Entity {
     pub offset_y: offset::Y,
     pub sprite: TileSprite,
     pub def_id: DefId,
+    pub speeches_state: speeches::State,
 }
 
 impl Entity {
@@ -60,6 +61,13 @@ impl Entity {
 
     pub fn xy(&self) -> XY {
         XY { x: self.x, y: self.y }
+    }
+
+    pub fn speeches_key(&self) -> speeches::Key {
+        speeches::Key {
+            def_id: self.def_id,
+            state: self.speeches_state,
+        }
     }
 }
 
@@ -411,3 +419,109 @@ impl From<&str> for Speech {
         }
     }
 }
+
+pub mod speeches {
+    use crate::{DefId, Speech};
+    use std::collections::BTreeMap;
+
+    /// The state of the entity in so far as it relates to which speech
+    /// should be used.
+    pub type State = u8;
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct Key {
+        pub state: State,
+        pub def_id: DefId,
+    }
+
+    type SparseState = std::num::NonZeroU8;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    struct SparseKey {
+        state: SparseState,
+        def_id: DefId,
+    }
+    
+    impl TryFrom<Key> for SparseKey {
+        type Error = <SparseState as TryFrom<State>>::Error;
+
+        fn try_from(value: Key) -> Result<Self, Self::Error> {
+            // Ideally this should be able to compile to almost nothing, since the representation is the same.
+            // TODO? Check on that?
+            let state = SparseState::try_from(value.state)?;
+            Ok(SparseKey{
+                state,
+                def_id: value.def_id,
+            })
+        }
+    }
+
+    type SparseSpeeches = BTreeMap<SparseKey, Vec<Speech>>;
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Speeches {
+        // We expect that many entities will have a first speech of each category, so dense seems appropriate.
+        // For now, it seems reasonable to assume we can force Def IDs to be dense, and start at 0.
+        first_speeches: Vec<Vec<Speech>>,
+        // We expect that many entities will only have a first speech though, so for the rest of them, 
+        // sparse makes sense.
+        // TODO? Use non-empty Vec here?
+        sparse_speeches: SparseSpeeches,
+    }
+    
+    #[derive(Clone, Debug)]
+    pub enum PushError {
+        TooManySpeechStates,
+        TooManyDefs,
+    }
+
+    impl Speeches {
+        /// In terms of entity defs to hold.
+        pub fn with_capacity(capacity: usize) -> Self {
+            Self {
+                first_speeches: Vec::with_capacity(capacity),
+                sparse_speeches: SparseSpeeches::new(),
+            }
+        }
+
+        #[must_use]
+        pub fn push(&mut self, speeches: &mut [Vec<Speech>]) -> Result<(), PushError> {
+            if speeches.is_empty() {
+                self.first_speeches.push(Vec::new());
+                return Ok(())
+            }
+
+            let state_len: SparseState = std::num::NonZeroUsize::try_from(speeches.len())
+                .and_then(SparseState::try_from)
+                .map_err(|_| PushError::TooManySpeechStates)?;
+            let def_id = DefId::try_from(self.first_speeches.len() + 1).map_err(|_| PushError::TooManyDefs)?;
+
+            let first_speech = std::mem::replace(&mut speeches[0], Vec::new());
+
+            self.first_speeches.push(first_speech);
+
+            let mut state = SparseState::MIN;
+            while state < state_len {
+                self.sparse_speeches.insert(
+                    SparseKey{
+                        state,
+                        def_id,
+                    },
+                    std::mem::replace(&mut speeches[state.get() as usize], Vec::new()),
+                );
+
+                state = state.saturating_add(1);
+            }
+
+            Ok(())
+        }
+
+        pub fn get(&self, key: Key) -> Option<&[Speech]> {
+            match SparseKey::try_from(key) {
+                Ok(s_key) => self.sparse_speeches.get(&s_key).map(|v| &**v),
+                Err(_) => self.first_speeches.get(key.def_id as usize).map(|v| &**v),
+            }
+        }
+    }
+}
+pub use speeches::{Speeches};
