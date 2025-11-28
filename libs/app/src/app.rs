@@ -1,7 +1,7 @@
 use gfx::{Commands, nine_slice, next_arrow, speech};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
-use game::{Dir, Mode, TalkingState, to_tile};
+use game::{Dir, Mode, TalkingState, PostTalkingAction, to_tile};
 use models::{Entity, Speeches, XY, i_to_xy, TileSprite, Speech};
 
 #[derive(Debug)]
@@ -329,7 +329,22 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
             }
         },
         Mode::Talking(talking) => {
-            if talking_update(talking, &state.speeches, input) == Finished {
+            if let Finished = talking_update(talking, &state.speeches, input) {
+                match talking.post_action {
+                    PostTalkingAction::NoOp => {},
+                    PostTalkingAction::TakeItem(def_id) => {
+                        // TODO? Worth checking if it's not there?
+                        // TODO? Do we want to give every entity an inventory, and preserve every item?
+                        for i in 0..state.player_inventory.len() {
+                            let item = &state.player_inventory[i];
+
+                            if item.def_id == def_id {
+                                state.player_inventory.remove(i);
+                            }
+                        }
+                    },
+                }
+
                 state.mode = Mode::Walking;
             }
         },

@@ -1,6 +1,7 @@
 use models::{
     offset,
     speeches,
+    DefId,
     Entity,
     Speech,
     Speeches,
@@ -262,7 +263,7 @@ pub mod config {
         }
     }
 }
-pub use config::{Config, Desire, DesireRef, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE};
+pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE};
 
 pub fn to_entity(def: &EntityDef, x: X, y: Y) -> Entity {
     Entity::new(x, y, def.tile_sprite, def.id)
@@ -365,6 +366,10 @@ mod entities {
 
         pub fn get(&self, key: Key) -> Option<&Entity> {
             self.map.get(&key)
+        }
+
+        pub fn get_mut(&mut self, key: Key) -> Option<&mut Entity> {
+            self.map.get_mut(&key)
         }
 
         pub fn for_id(&self, id: SegmentId) -> impl Iterator<Item=(&Key, &Entity)> {
@@ -477,19 +482,35 @@ pub type Inventory = Vec<Entity>;
 /// 64k speech boxes ought to be enough for anybody!
 pub type SpeechIndex = u16;
 
+#[derive(Clone, Copy, Debug, Default)]
+pub enum PostTalkingAction {
+    #[default]
+    NoOp,
+    TakeItem(DefId),
+}
+
 #[derive(Clone, Debug)]
 pub struct TalkingState {
     pub key: speeches::Key,
     pub speech_index: SpeechIndex,
     pub arrow_timer: ArrowTimer,
+    pub post_action: PostTalkingAction,
 }
 
 impl TalkingState {
     pub fn new(key: speeches::Key) -> Self {
+        Self::new_with_action(key, <_>::default())
+    }
+
+    pub fn new_with_action(
+        key: speeches::Key,
+        post_action: PostTalkingAction,
+    ) -> Self {
         Self {
             key,
             speech_index: <_>::default(),
             arrow_timer: <_>::default(),
+            post_action,
         }
     }
 }
@@ -557,7 +578,7 @@ pub enum Error {
     CannotPlacePlayer,
     NoMobsFound,
     NoItemsFound,
-    CouldNotSatisfyDesire(Desire),
+    CouldNotSatisfyDesire(config::Desire),
     InvalidDesireID(EntityDef, SegmentId),
     NonItemWasDesired(EntityDef, EntityDef, SegmentId),
     InvalidSpeeches(speeches::PushError),
@@ -661,7 +682,7 @@ impl State {
                 for &wanted_id in &def.wants {
                     if let Some(desired_def) = config.entities.get(wanted_id.into()) {
                         if desired_def.flags & COLLECTABLE == COLLECTABLE {
-                            all_desires.push(DesireRef {
+                            all_desires.push(config::DesireRef {
                                 mob_def: def,
                                 item_def: desired_def,
                             });
@@ -688,11 +709,11 @@ impl State {
         xs::shuffle(&mut rng, &mut item_defs);
 
         struct Constraints<'desires> {
-            desires: Vec<DesireRef<'desires>>,
+            desires: Vec<config::DesireRef<'desires>>,
         }
 
         // Select a random subset of the desires to make into constriants
-        fn select_constraints<'defs>(rng: &mut Xs, all_desires: &[DesireRef<'defs>]) -> Constraints<'defs> {
+        fn select_constraints<'defs>(rng: &mut Xs, all_desires: &[config::DesireRef<'defs>]) -> Constraints<'defs> {
             let target_len = xs::range(rng, 1..all_desires.len() as u32 + 1) as usize;
             let initial_index = xs::range(rng, 0..all_desires.len() as u32) as usize;
 
@@ -848,12 +869,21 @@ impl State {
 
         let key = entity_key(self.world.segment_id, target_x, target_y);
 
-        let Some(mob) = self.world.mobs.get(key) else {
+        let Some(mob) = self.world.mobs.get_mut(key) else {
             self.fade_messages.push(
                 FadeMessage::new(format!("there's nobody there."), entity.xy())
             );
             return
         };
+
+        for desire in &mut mob.desires {
+            use models::DesireState::*;
+            // Check if mob should notice the player's item.
+            if desire.state == Unsatisfied 
+            && self.player_inventory.iter().any(|e| e.def_id == desire.def_id) {
+                desire.state = SatisfactionInSight;
+            }
+        }
 
         let speeches_key = mob.speeches_key();
         if let Some(speeches) = self.speeches.get(speeches_key) {

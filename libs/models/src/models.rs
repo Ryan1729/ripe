@@ -30,9 +30,53 @@ pub type DefIdDelta = i16;
 
 pub type DefIdNextLargerSigned = i32;
 
+/// Higher overrides lower.
+pub type Precedence = u8;
+
+pub struct SpeechSelection {
+    speeches_state: speeches::State,
+    precedence: Precedence,
+}
+
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub enum DesireState {
+    #[default]
+    Unsatisfied,
+    SatisfactionInSight,
+    Satisfied,
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct Desire {
+    pub state: DesireState,
+    pub def_id: DefId,
+}
+
+impl Desire {
+    pub fn speech_selection(&self) -> SpeechSelection {
+        use DesireState::*;
+        match self.state {
+            Unsatisfied => SpeechSelection { 
+                speeches_state: 0,
+                precedence: 0x01, // NPCs should mention what they want to the player.
+            },
+            SatisfactionInSight => SpeechSelection { 
+                speeches_state: 1,
+                precedence: 0x10, // NPCs should ask for what they want if they see it.
+            },
+            Satisfied => SpeechSelection { 
+                speeches_state: 2,
+                precedence: 0x00, // Saying thank you can be easily overriden by other concerns.
+            },
+        }
+    }
+}
+
+/// Pre-emptively pluralize this, since one NPC wanting multiple things could be cool.
+pub type Desires = [Desire; 1];
 
 // Fat-struct for entities! Fat-struct for entities!
-#[derive(Clone, Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug)]
 pub struct Entity {
     pub x: X,
     pub y: Y,
@@ -40,7 +84,7 @@ pub struct Entity {
     pub offset_y: offset::Y,
     pub sprite: TileSprite,
     pub def_id: DefId,
-    pub speeches_state: speeches::State,
+    pub desires: Desires,
 }
 
 impl Entity {
@@ -64,9 +108,21 @@ impl Entity {
     }
 
     pub fn speeches_key(&self) -> speeches::Key {
+        let mut current_speeches_state = <_>::default(); 
+        let mut current_precedence = 0;
+
+        for desire in &self.desires {
+            let SpeechSelection{ speeches_state, precedence } = desire.speech_selection();
+
+            if precedence > current_precedence {
+                current_speeches_state = speeches_state;
+                current_precedence = precedence;
+            }
+        }
+
         speeches::Key {
             def_id: self.def_id,
-            state: self.speeches_state,
+            state: current_speeches_state,
         }
     }
 }
