@@ -33,14 +33,16 @@ pub type DefIdNextLargerSigned = i32;
 /// Higher overrides lower.
 pub type Precedence = u8;
 
+#[derive(Clone, Default, Debug)]
 pub struct SpeechSelection {
-    speeches_state: speeches::State,
-    precedence: Precedence,
+    pub speeches_state: speeches::State,
+    pub precedence: Precedence,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub enum DesireState {
     #[default]
+    Unsatisfiable,
     Unsatisfied,
     SatisfactionInSight,
     Satisfied,
@@ -53,9 +55,17 @@ pub struct Desire {
 }
 
 impl Desire {
+    pub fn new(def_id: DefId) -> Self {
+        Self {
+            def_id,
+            state: DesireState::Unsatisfied,
+        }
+    }
+
     pub fn speech_selection(&self) -> SpeechSelection {
         use DesireState::*;
         match self.state {
+            Unsatisfiable => SpeechSelection::default(),
             Unsatisfied => SpeechSelection { 
                 speeches_state: 0,
                 precedence: 0x01, // NPCs should mention what they want to the player.
@@ -72,8 +82,7 @@ impl Desire {
     }
 }
 
-/// Pre-emptively pluralize this, since one NPC wanting multiple things could be cool.
-pub type Desires = [Desire; 1];
+pub type Desires = Vec<Desire>;
 
 // Fat-struct for entities! Fat-struct for entities!
 #[derive(Clone, Default, Debug)]
@@ -93,12 +102,14 @@ impl Entity {
         y: Y,
         sprite: TileSprite,
         def_id: DefId,
+        desires: Desires,
     ) -> Self {
         Self {
             x,
             y,
             sprite,
-            def_id,    
+            def_id,
+            desires,
             ..<_>::default()
         }
     }
@@ -550,7 +561,7 @@ pub mod speeches {
             let state_len: SparseState = std::num::NonZeroUsize::try_from(speeches.len())
                 .and_then(SparseState::try_from)
                 .map_err(|_| PushError::TooManySpeechStates)?;
-            let def_id = DefId::try_from(self.first_speeches.len() + 1).map_err(|_| PushError::TooManyDefs)?;
+            let def_id = DefId::try_from(self.first_speeches.len()).map_err(|_| PushError::TooManyDefs)?;
 
             let first_speech = std::mem::replace(&mut speeches[0], Vec::new());
 

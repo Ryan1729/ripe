@@ -40,8 +40,9 @@ import "entity_ids" as ID;
         #{
             flags: MOB,
             speeches: [
-                ["hey can you get me something that's at least probably cool?" ],
+                ["hey can you get me something that's at least probably cool?"],
                 ["A chest, for me? That's probably cool of you bro!", "I gotta be probably cool back. Here have this thing I found." ],
+                ["I am probably living the life with my probably cool thing in this chest!"],
             ],
             tile_sprite: DS::mob(0),
             wants: [ID::relative(-1)],
@@ -51,6 +52,7 @@ import "entity_ids" as ID;
             speeches: [
                 [ "I lost my bayer-dollars! Can you help me find them?", "I don't know where I lost them. I'm looking over here because the light is better." ],
                 [ "You're giving me these bayer-dollars? I want them to be mine, so they must be mine!", "I also want everyone to give rewards when people return stuff like this. So I have to too. Here you go!" ],
+                [ "Thanks for being the conduit to bring my destined-for-me bayer dollars back!" ],
             ],
             tile_sprite: DS::mob(1),
             wants: [ID::relative(1)],

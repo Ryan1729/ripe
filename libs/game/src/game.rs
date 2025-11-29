@@ -266,7 +266,13 @@ pub mod config {
 pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE};
 
 pub fn to_entity(def: &EntityDef, x: X, y: Y) -> Entity {
-    Entity::new(x, y, def.tile_sprite, def.id)
+    Entity::new(
+        x,
+        y,
+        def.tile_sprite,
+        def.id,
+        def.wants.iter().map(|&def_id| models::Desire::new(def_id)).collect()
+    )
 }
 
 mod random {
@@ -876,19 +882,22 @@ impl State {
             return
         };
 
+        let mut post_action = PostTalkingAction::NoOp;
         for desire in &mut mob.desires {
             use models::DesireState::*;
             // Check if mob should notice the player's item.
             if desire.state == Unsatisfied 
             && self.player_inventory.iter().any(|e| e.def_id == desire.def_id) {
                 desire.state = SatisfactionInSight;
+                post_action = PostTalkingAction::TakeItem(desire.def_id);
             }
         }
 
         let speeches_key = mob.speeches_key();
+
         if let Some(speeches) = self.speeches.get(speeches_key) {
             if !speeches.is_empty() {
-                self.mode = Mode::Talking(TalkingState::new(speeches_key));
+                self.mode = Mode::Talking(TalkingState::new_with_action(speeches_key, post_action));
                 return
             }
         }

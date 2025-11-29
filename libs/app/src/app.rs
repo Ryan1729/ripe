@@ -335,7 +335,8 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
                     PostTalkingAction::TakeItem(def_id) => {
                         // TODO? Worth checking if it's not there?
                         // TODO? Do we want to give every entity an inventory, and preserve every item?
-                        for i in 0..state.player_inventory.len() {
+                        // Iterate backward so we can remove without indexing errors
+                        for i in (0..state.player_inventory.len()).rev() {
                             let item = &state.player_inventory[i];
 
                             if item.def_id == def_id {
