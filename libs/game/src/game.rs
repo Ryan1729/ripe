@@ -36,7 +36,7 @@ use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
 // * Add a way to have just collecting a thing unlock a door
 // * Add hallways between rooms that we'll figure out a way to make more interesting later
 //    * Drain some resource, probably. Say HP that can be restored at the safe rooms
-//        * So like a random halway with like one monster in it, for now
+//        * So like a random hallway with like one monster in it, for now
 // * If not already randomized, randomize things like which tasks are done in which order, based on how they are locked behind each other
 // * If not already, make more theme things changeable, and the script for charactrers, descriptions, etc.
 // * Playtest a few rounds, see what feel like it needs expanding
@@ -94,7 +94,7 @@ use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
 //        * Press start to bring up the menu, which can be a nine slice box drawn over top of everything ✔
 //            * Or maybe just the center tile for it, and we let the edges be ugly for now?
 //        * Render the item's tile sprite in a grid, or maybe just a vertical list for now
-// * Implement turning in the item and at least like a print when it happens.
+// * Implement turning in the item and at least like a print when it happens. ✔
 //    * Need to describe the connection between items and NPCs in the config file
 //        * Hmm. Could theoretically make it purely random, but I feel like allowing some structure here is more useful
 //          to config authors.
@@ -118,10 +118,16 @@ use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
 //                * So maybe instead of a COLLECTABLE flag, it's a "steppable" flag, and the things have a 
 //                  "when_stepped_on" field that can be "collect" vs "start minigame"?
 //                    * Maybe doors can be placed on walls, and then still be "steppable"? Or does that 
-//                      complicate things, and they shoudl just embed a wall into the sprite if they want
+//                      complicate things, and they should just embed a wall into the sprite if they want
 //                      to look like that? Feels like the second one.
 //        * I think the goal for this next pass should be to get to a random item is on the ground, than one npc wants,
 //          that then gives you what another NPC wants, and that NPC gives you the thing that you want, and you win!
+//        * Concrete steps then
+//            * Add a victory colectable sprite that makes some sense to be a victory when walked over
+//                * A portal?
+//            * Mark it as instant_victory in the config file
+//            * Have it actually trigger a victory screen
+//            * Is it a good time to add an in-game display of the goal?
 
 // A note about eventual design:
 // This bit about Mewgenics having one massive Character class makes me want to support that kind of thing:
@@ -130,6 +136,7 @@ use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
 
 // Things to add eventually:
 // * A tutorial.
+// * An in-game display of the goal
 // * A curated list of settings for people to pick for their first several runs.
 // * Sources of inspiration for mechanics to throw in the pot:
 //    * DROD
@@ -461,6 +468,20 @@ impl World {
 
         self.mobs.get(key).or_else(|| self.items.get(key))
     }
+
+    pub fn get_entity_mut(&mut self, key: entities::Key) -> Option<&mut Entity> {
+        let player_key = entity_key(
+            self.segment_id,
+            self.player.x,
+            self.player.y,
+        );
+
+        if key == player_key {
+            return Some(&mut self.player)
+        }
+
+        self.mobs.get_mut(key).or_else(|| self.items.get_mut(key))
+    }
 }
 
 fn can_walk_onto(world: &World, id: SegmentId, x: X, y: Y) -> bool {
@@ -492,7 +513,7 @@ pub type SpeechIndex = u16;
 pub enum PostTalkingAction {
     #[default]
     NoOp,
-    TakeItem(DefId),
+    TakeItem(entities::Key, DefId),
 }
 
 #[derive(Clone, Debug)]
@@ -889,7 +910,7 @@ impl State {
             if desire.state == Unsatisfied 
             && self.player_inventory.iter().any(|e| e.def_id == desire.def_id) {
                 desire.state = SatisfactionInSight;
-                post_action = PostTalkingAction::TakeItem(desire.def_id);
+                post_action = PostTalkingAction::TakeItem(key, desire.def_id);
             }
         }
 

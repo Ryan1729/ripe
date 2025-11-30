@@ -332,7 +332,7 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
             if let Finished = talking_update(talking, &state.speeches, input) {
                 match talking.post_action {
                     PostTalkingAction::NoOp => {},
-                    PostTalkingAction::TakeItem(def_id) => {
+                    PostTalkingAction::TakeItem(entity_key, def_id) => {
                         // TODO? Worth checking if it's not there?
                         // TODO? Do we want to give every entity an inventory, and preserve every item?
                         // Iterate backward so we can remove without indexing errors
@@ -341,6 +341,17 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
 
                             if item.def_id == def_id {
                                 state.player_inventory.remove(i);
+                                if let Some(recieveing_entity) = state.world.get_entity_mut(entity_key) {
+                                    for desire in &mut recieveing_entity.desires {
+                                        if desire.def_id == def_id {
+                                            dbg!(entity_key);
+                                            desire.state = models::DesireState::Satisfied;
+                                            break
+                                        }
+                                    }
+                                } else {
+                                    debug_assert!(false, "Why did the item get taken if no one wants it?!");
+                                }
                             }
                         }
                     },

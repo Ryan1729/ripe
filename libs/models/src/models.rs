@@ -68,7 +68,7 @@ impl Desire {
             Unsatisfiable => SpeechSelection::default(),
             Unsatisfied => SpeechSelection { 
                 speeches_state: 0,
-                precedence: 0x01, // NPCs should mention what they want to the player.
+                precedence: 0x02, // NPCs should mention what they want to the player.
             },
             SatisfactionInSight => SpeechSelection { 
                 speeches_state: 1,
@@ -76,7 +76,7 @@ impl Desire {
             },
             Satisfied => SpeechSelection { 
                 speeches_state: 2,
-                precedence: 0x00, // Saying thank you can be easily overriden by other concerns.
+                precedence: 0x01, // Saying thank you can be easily overriden by other concerns.
             },
         }
     }
