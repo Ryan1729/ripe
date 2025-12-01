@@ -127,7 +127,15 @@ use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
 //                * A portal?
 //            * Mark it as instant_victory in the config file
 //            * Have it actually trigger a victory screen
+//                * Worth adding a walking through the door animation? Like 3 frames or whatever?
 //            * Is it a good time to add an in-game display of the goal?
+//            * Add a locked door/portal sprite
+//            * Add a key sprite
+//            * Have the portal start locked
+//            * Ensure the key spawns
+//            * Make collecting the key open the corresponding door
+//                * Allow it to work for multiple doors in the future
+//            * Once it has been shown to work for one door, actually make multiple doors
 
 // A note about eventual design:
 // This bit about Mewgenics having one massive Character class makes me want to support that kind of thing:
@@ -196,6 +204,7 @@ pub mod config {
         PLAYER_START = 1 << 2,
         ITEM_START = 1 << 3,
         NPC_START = 1 << 4,
+        DOOR_START = 1 << 5,
     }
 
     /// A configuration WorldSegment that can be used to contruct game::WorldSegments later.
@@ -219,7 +228,9 @@ pub mod config {
 
     consts_def!{
         ALL_ENTITY_FLAGS: EntityDefFlags;
-        COLLECTABLE = 1,
+        COLLECTABLE = 1 << 0,
+        STEPPABLE = 1 << 1,
+        VICTORY = 1 << 2,
     }
 
     pub type EntityDefIdRefKind = u8;
@@ -270,7 +281,7 @@ pub mod config {
         }
     }
 }
-pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE};
+pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE, STEPPABLE, VICTORY};
 
 pub fn to_entity(def: &EntityDef, x: X, y: Y) -> Entity {
     Entity::new(
@@ -603,8 +614,10 @@ impl State {
 #[derive(Debug)]
 pub enum Error {
     CannotPlacePlayer,
+    CannotPlaceDoor,
     NoMobsFound,
     NoItemsFound,
+    NoDoorsFound,
     CouldNotSatisfyDesire(config::Desire),
     InvalidDesireID(EntityDef, SegmentId),
     NonItemWasDesired(EntityDef, EntityDef, SegmentId),
@@ -614,7 +627,7 @@ pub enum Error {
 
 impl State {
     pub fn new(seed: Seed, config: Config) -> Result<State, Error> {
-        use config::{FLOOR, PLAYER_START, NPC_START, ITEM_START};
+        use config::{FLOOR, DOOR_START, PLAYER_START, NPC_START, ITEM_START};
 
         let mut next_free_segment_id = 0;
 
@@ -670,8 +683,12 @@ impl State {
         world.player.x = p_xy.x;
         world.player.y = p_xy.y;
 
+        let mut placed_already = Vec::with_capacity(16);
+        placed_already.push(p_xy);
+
         let mut mob_defs = Vec::with_capacity(16);
         let mut item_defs = Vec::with_capacity(16);
+        let mut door_defs = Vec::with_capacity(16);
         let mut speeches_lists = Vec::with_capacity(16);
         let mut inventory_descriptions_lists = Vec::with_capacity(16);
 
@@ -703,6 +720,8 @@ impl State {
 
             if def.flags & COLLECTABLE == COLLECTABLE {
                 item_defs.push(def.clone());
+            } else if def.flags & STEPPABLE == STEPPABLE {
+                door_defs.push(def.clone());
             } else {
                 mob_defs.push(def.clone());
 
@@ -732,8 +751,29 @@ impl State {
             return Err(Error::NoItemsFound);
         }
 
+        if door_defs.is_empty() {
+            return Err(Error::NoDoorsFound);
+        }
+
         xs::shuffle(&mut rng, &mut mob_defs);
         xs::shuffle(&mut rng, &mut item_defs);
+        xs::shuffle(&mut rng, &mut door_defs);
+
+        for door_def in &door_defs {
+            let d_xy = random::tile_matching_flags_besides(
+                &mut rng,
+                &config_segment,
+                FLOOR | DOOR_START,
+                &placed_already,
+            ).ok_or(Error::CannotPlaceDoor)?;
+    
+            world.mobs.insert(
+                first_segment.id,
+                to_entity(door_def, d_xy.x, d_xy.y),
+            );
+
+            placed_already.push(d_xy);
+        }
 
         struct Constraints<'desires> {
             desires: Vec<config::DesireRef<'desires>>,
@@ -770,9 +810,6 @@ impl State {
         }
 
         let constraints: Constraints = select_constraints(&mut rng, &all_desires);
-
-        let mut placed_already = Vec::with_capacity(16);
-        placed_already.push(p_xy);
 
         for desire in constraints.desires {
             let mut attempts = 0;

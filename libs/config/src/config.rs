@@ -155,6 +155,9 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
         fn item(n) {{
             tile_sprite_n_at_offset(n, 4)
         }}
+        // TODO: Define walls, floor, and player here too
+
+        export const OPEN_DOOR = tile_sprite_n_at_offset(1, 0);
     "#);
 
     add_module!(default_spritesheet = default_spritesheet_string);

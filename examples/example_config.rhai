@@ -1,15 +1,17 @@
 import "tile_flags" as TF;
-const W = TF::WALL;
-const F = TF::FLOOR | TF::PLAYER_START;
+const A = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
 const B = TF::FLOOR; // Bare Floor
+const D = TF::FLOOR | TF::DOOR_START;
+const F = TF::FLOOR | TF::PLAYER_START;
 const I = TF::FLOOR | TF::ITEM_START;
 const N = TF::FLOOR | TF::NPC_START;
-const A = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
+const W = TF::WALL;
 
 import "entity_flags" as EF;
 
 const MOB = 0;
-const ITEM = EF::COLLECTABLE;
+const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
+const END_DOOR = EF::STEPPABLE | EF::VICTORY;
 
 import "default_spritesheet" as DS;
 import "entity_ids" as ID;
@@ -19,13 +21,13 @@ import "entity_ids" as ID;
         #{
             width: 14,
             tiles: [
-                F, F, F, F, F, F, F, F, F, F, F, F, F, F,
-                F, W, W, F, W, W, F, F, W, W, W, W, W, F,
-                F, W, B, A, B, W, F, F, W, I, I, I, W, F,
-                F, F, A, W, A, F, F, F, F, B, B, B, F, F,
-                F, W, B, A, B, W, F, F, F, F, N, F, F, F,
-                F, W, W, I, W, W, F, F, F, N, F, N, F, F,
-                F, F, F, F, F, F, F, F, F, F, F, F, F, F,
+                F, F, F, F, F, F, F, F, D, D, D, D, D, D,
+                F, W, W, F, W, W, F, F, W, W, W, W, W, D,
+                F, W, B, A, B, W, F, F, W, I, I, I, W, D,
+                F, F, A, W, A, F, F, F, F, B, B, B, F, D,
+                F, W, B, A, B, W, F, F, F, F, N, F, F, D,
+                F, W, W, I, W, W, F, F, F, N, F, N, F, D,
+                F, F, F, F, F, F, F, F, F, F, F, F, F, D,
             ],
         },
     ],
@@ -63,6 +65,10 @@ import "entity_ids" as ID;
                 ["some bayer-dollars. you can tell because of the pattern in the middle."],
             ],
             tile_sprite: DS::item(1),
+        },
+        #{
+            flags: END_DOOR,
+            tile_sprite: DS::OPEN_DOOR,
         },
     ],
 }
