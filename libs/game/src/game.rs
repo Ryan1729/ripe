@@ -439,10 +439,10 @@ mod entities {
             let mut actual = vec![];
     
             for (_, v) in entities.for_id(id) {
-                actual.push(v.clone());
+                actual.push(v.xy());
             }
     
-            let expected = vec![a, b];
+            let expected = vec![a.xy(), b.xy()];
     
             assert_eq!(actual, expected);
         }

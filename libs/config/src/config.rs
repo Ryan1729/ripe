@@ -102,7 +102,7 @@ impl From<Box<EvalAltResult>> for Error {
     }
 }
 
-static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
+fn init_engine() -> Engine {
     use rhai::{Module, Scope};
     use rhai::module_resolvers::StaticModuleResolver;
 
@@ -205,7 +205,14 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
     engine.set_module_resolver(resolver);
 
     engine
-});
+}
+
+#[test]
+fn init_engine_does_not_panic() {
+    init_engine();
+}
+
+static ENGINE: LazyLock<Engine> = LazyLock::new(init_engine);
 
 pub fn parse(code: &str) -> Result<Config, Error> {
     use models::{DefId, Speech};

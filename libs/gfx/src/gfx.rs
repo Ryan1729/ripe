@@ -272,16 +272,19 @@ mod nine_slice_works {
 
     #[test]
     fn on_this_uneven_example() {
-        let mut commands = Commands::default();
+        let mut commands = Commands::new(<_>::default());
 
         commands.nine_slice(
-            unscaled::X(0),
-            unscaled::Y(0),
-            unscaled::W(32),
-            unscaled::H(20),
+            0,
+            unscaled::Rect {
+                x: unscaled::X(0),
+                y: unscaled::Y(0),
+                w: unscaled::W(32),
+                h: unscaled::H(20),
+            },
         );
 
-        let mut actual = commands.commands.iter().map(|c| c.rect.clone()).collect::<Vec<_>>();
+        let actual = commands.commands.iter().map(|c| c.rect.clone()).collect::<Vec<_>>();
         // This was mainly written as a quick way to just look at the results. Might be useful to keep around, so
         // put in an assert that is unlikely to break later, and if it does, it should be clear why
         assert_eq!(actual.len(), 12);
