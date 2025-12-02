@@ -1,1 +1,1 @@
-cargo watch -w libs/app/ -w libs/game -w libs/gfx -w libs/config -w libs/models -w libs/platform_types -x 'build --release --package app --features reload'
+cargo watch -w libs/app/ -w libs/game -w libs/gfx -w libs/config -w libs/models -w libs/platform_types -x 'build --release --package app --features "reload,refresh"'

@@ -51,6 +51,7 @@ impl State {
             features::GLOBAL_LOGGER = params.logger;
             features::GLOBAL_ERROR_LOGGER = params.error_logger;
         }
+
         let seed = params.seed;
 
         // We always want to log the seed, if there is a logger available, so use the function,
@@ -59,53 +60,76 @@ impl State {
 
         const HARDCODED_CONFIG: &str = r#"
         import "tile_flags" as TF;
-        const W = TF::WALL;
-        const F = TF::FLOOR | TF::PLAYER_START;
+        const A = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
         const B = TF::FLOOR; // Bare Floor
-        const I = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
+        const D = TF::FLOOR | TF::DOOR_START;
+        const F = TF::FLOOR | TF::PLAYER_START;
+        const I = TF::FLOOR | TF::ITEM_START;
+        const N = TF::FLOOR | TF::NPC_START;
+        const W = TF::WALL;
         
         import "entity_flags" as EF;
         
         const MOB = 0;
-        const ITEM = EF::COLLECTABLE;
+        const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
+        const END_DOOR = EF::STEPPABLE | EF::VICTORY;
         
         import "default_spritesheet" as DS;
+        import "entity_ids" as ID;
         
         #{
             segments: [
                 #{
-                    width: 7,
+                    width: 14,
                     tiles: [
-                        F, F, F, F, F, F, F,
-                        F, W, W, F, W, W, F,
-                        F, W, B, I, B, W, F,
-                        F, F, I, W, I, F, F,
-                        F, W, B, I, B, W, F,
-                        F, W, W, I, W, W, F,
-                        F, F, F, F, F, F, F,
+                        F, F, F, F, F, F, F, F, D, D, D, D, D, D,
+                        F, W, W, F, W, W, F, F, W, W, W, W, W, D,
+                        F, W, B, A, B, W, F, F, W, I, I, I, W, D,
+                        F, F, A, W, A, F, F, F, F, B, B, B, F, D,
+                        F, W, B, A, B, W, F, F, F, F, N, F, F, D,
+                        F, W, W, I, W, W, F, F, F, N, F, N, F, D,
+                        F, F, F, F, F, F, F, F, F, F, F, F, F, D,
                     ],
                 },
             ],
             entities: [
                 #{
-                    flags: MOB,
-                    speeches: [ "hey can you get me something that's at least probably cool?" ],
-                    tile_sprite: DS::mob(0),
-                },
-                #{
                     flags: ITEM,
-                    inventory_description: [ "a chest, probably with something cool in it.", "can't seem to open it, so it'll stay at least probably cool forever." ],
+                    inventory_description: [
+                        ["a chest, probably with something cool in it.", "can't seem to open it, so it'll stay at least probably cool forever."]
+                    ],
                     tile_sprite: DS::item(0),
                 },
                 #{
                     flags: MOB,
-                    speeches: [ "I lost my bayer-dollars! Can you help me find them?", "I don't know where I lost them. I'm looking over here because the light is better." ],
+                    speeches: [
+                        ["hey can you get me something that's at least probably cool?"],
+                        ["A chest, for me? That's probably cool of you bro!", "I gotta be probably cool back. Here have this thing I found." ],
+                        ["I am probably living the life with my probably cool thing in this chest!"],
+                    ],
+                    tile_sprite: DS::mob(0),
+                    wants: [ID::relative(-1)],
+                },
+                #{
+                    flags: MOB,
+                    speeches: [
+                        [ "I lost my bayer-dollars! Can you help me find them?", "I don't know where I lost them. I'm looking over here because the light is better." ],
+                        [ "You're giving me these bayer-dollars? I want them to be mine, so they must be mine!", "I also want everyone to give rewards when people return stuff like this. So I have to too. Here you go!" ],
+                        [ "Thanks for being the conduit to bring my destined-for-me bayer dollars back!" ],
+                    ],
                     tile_sprite: DS::mob(1),
+                    wants: [ID::relative(1)],
                 },
                 #{
                     flags: ITEM,
-                    inventory_description: [ "some bayer-dollars. you can tell because of the pattern in the middle." ],
+                    inventory_description: [
+                        ["some bayer-dollars. you can tell because of the pattern in the middle."],
+                    ],
                     tile_sprite: DS::item(1),
+                },
+                #{
+                    flags: END_DOOR,
+                    tile_sprite: DS::OPEN_DOOR,
                 },
             ],
         }
@@ -522,6 +546,13 @@ fn update_and_render(
     input: Input,
     speaker: &mut Speaker,
 ) -> Effect {
+    #[cfg(feature = "refresh")]
+    {
+        if input.pressed_this_frame(Button::RESET) {
+            return Effect::Reload;
+        }
+    }
+
     match game_state {
         Ok(state) => {
             game_update(state, input, speaker);

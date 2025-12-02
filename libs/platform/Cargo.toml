@@ -35,3 +35,4 @@ path = "../render"
 default = []
 non-web-sound = []
 reload = ["app/reload", "dep:hot-lib-reloader"]
+refresh = []

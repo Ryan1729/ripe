@@ -10,3 +10,5 @@ path = "src/platform_types.rs"
 [dependencies.xs]
 path = "../xs"
 
+[features]
+refresh = []

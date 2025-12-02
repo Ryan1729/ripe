@@ -1197,8 +1197,14 @@ impl Speaker {
 
 // These values are deliberately picked to be the same as the ones in NES' input registers.
 pub mod button {
+    #[cfg(not(feature = "refresh"))]
+    type Inner = u8;
+
+    #[cfg(feature = "refresh")]
+    type Inner = u16;
+
     #[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
-    pub struct Button(u8);
+    pub struct Button(Inner);
 
     impl Button {
         pub const A     : Self = Self(1 << 0);
@@ -1209,6 +1215,9 @@ pub mod button {
         pub const DOWN  : Self = Self(1 << 5);
         pub const LEFT  : Self = Self(1 << 6);
         pub const RIGHT : Self = Self(1 << 7);
+
+        #[cfg(feature = "refresh")]
+        pub const RESET : Self = Self(1 << 8);
 
         pub const fn contains(&self, other: Self) -> bool {
             self.0 & other.0 == other.0

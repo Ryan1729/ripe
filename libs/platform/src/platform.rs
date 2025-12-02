@@ -98,6 +98,9 @@ pub fn run(mut state: app::State) {
                     VK::Semicolon => Button::A,
                     VK::Q => Button::B,
 
+                    #[cfg(feature = "refresh")]
+                    VK::F5 => Button::RESET,
+
                     _ => return,
                 };
 
