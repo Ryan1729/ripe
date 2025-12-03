@@ -284,12 +284,23 @@ pub mod config {
 pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE, STEPPABLE, VICTORY};
 
 pub fn to_entity(def: &EntityDef, x: X, y: Y) -> Entity {
+    let mut flags = 0;
+
+    if def.flags & config::COLLECTABLE == config::COLLECTABLE {
+        flags |= models::COLLECTABLE;
+    }
+
+    if def.flags & config::VICTORY == config::VICTORY {
+        flags |= models::VICTORY;
+    }
+
     Entity::new(
         x,
         y,
         def.tile_sprite,
         def.id,
-        def.wants.iter().map(|&def_id| models::Desire::new(def_id)).collect()
+        def.wants.iter().map(|&def_id| models::Desire::new(def_id)).collect(),
+        flags,
     )
 }
 
@@ -457,13 +468,13 @@ pub struct World {
     /// The ID of the current segment we are in.
     pub segment_id: SegmentId,
     pub player: Entity,
-    pub items: Entities,
+    pub steppables: Entities,
     pub mobs: Entities,
 }
 
 impl World {
     pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
-        std::iter::once(&mut self.player).chain(self.items.all_entities_mut().chain(self.mobs.all_entities_mut()))
+        std::iter::once(&mut self.player).chain(self.steppables.all_entities_mut().chain(self.mobs.all_entities_mut()))
     }
 
     pub fn get_entity(&self, key: entities::Key) -> Option<&Entity> {
@@ -477,7 +488,7 @@ impl World {
             return Some(&self.player)
         }
 
-        self.mobs.get(key).or_else(|| self.items.get(key))
+        self.mobs.get(key).or_else(|| self.steppables.get(key))
     }
 
     pub fn get_entity_mut(&mut self, key: entities::Key) -> Option<&mut Entity> {
@@ -491,7 +502,7 @@ impl World {
             return Some(&mut self.player)
         }
 
-        self.mobs.get_mut(key).or_else(|| self.items.get_mut(key))
+        self.mobs.get_mut(key).or_else(|| self.steppables.get_mut(key))
     }
 }
 
@@ -564,6 +575,7 @@ pub enum Mode {
         description_talking: Option<TalkingState>,
     },
     Talking(TalkingState),
+    Victory(DoorAnimation),
 }
 
 /// 64k fade frames ought to be enough for anybody!
@@ -592,6 +604,31 @@ impl FadeMessage {
 
 // TODO? Put a hard limit on the amount of these, with I guess LIFO eviction?
 pub type FadeMessages = Vec<FadeMessage>;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DoorAnimation {
+    frame: u16
+}
+
+impl DoorAnimation {
+    pub fn advance_frame(&mut self) {
+        self.frame = self.frame.saturating_add(1);
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.frame >= 150
+    }
+
+    // TODO: reference the config file somehow to determine this.
+    //     Probably copy the frames somewhere, instead of referencing it every frame
+    pub fn sprite(&self) -> models::TileSprite {
+        match self.frame {
+            x if x < 50 => models::DOOR_ANIMATION_FRAME_1,
+            x if x < 100 => models::DOOR_ANIMATION_FRAME_2,
+            _ => models::DOOR_ANIMATION_FRAME_3,
+        }
+    }
+}
 
 #[derive(Clone, Default)]
 pub struct State {
@@ -671,7 +708,7 @@ impl State {
             player,
             segment_id: segment.id,
             segment,
-            items: <_>::default(),
+            steppables: <_>::default(),
             mobs: <_>::default(),
         };
 
@@ -767,7 +804,7 @@ impl State {
                 &placed_already,
             ).ok_or(Error::CannotPlaceDoor)?;
     
-            world.mobs.insert(
+            world.steppables.insert(
                 first_segment.id,
                 to_entity(door_def, d_xy.x, d_xy.y),
             );
@@ -837,7 +874,7 @@ impl State {
                             to_entity(&desire.mob_def, npc_xy.x, npc_xy.y),
                         );
 
-                        world.items.insert(
+                        world.steppables.insert(
                             first_segment.id,
                             to_entity(&desire.item_def, item_xy.x, item_xy.y),
                         );
@@ -913,12 +950,18 @@ impl State {
 
             let key = entity_key(self.world.segment_id, self.world.player.x, self.world.player.y);
 
-            if let Some(item) = self.world.items.remove(key) {
-                // Mostly for testing putposes until we get to combat or other things that make sense to cause 
+            if let Some(steppable) = self.world.steppables.remove(key) {
+                // Mostly for testing purposes until we get to combat or other things that make sense to cause 
                 // screenshake
                 self.shake_amount = 5;
 
-                self.player_inventory.push(item);
+                if steppable.is_collectable() {
+                    self.player_inventory.push(steppable);
+                } else if steppable.is_victory() {
+                    self.mode = Mode::Victory(<_>::default());
+                } else {
+                    // Effectively just disappearing scenery. Could make this not go away if we have a reason to.
+                }
             }
         }
     }
@@ -972,6 +1015,15 @@ impl State {
     }
 
     pub fn tick(&mut self) {
+        match &mut self.mode {
+            Mode::Victory(animation) => {
+                animation.advance_frame();
+            },
+            Mode::Walking => { /* fall through to rest of method */ }
+            Mode::Inventory { .. }
+            | Mode::Talking(..) => return,
+        }
+
         if ! matches!(self.mode, Mode::Walking) {
             return
         }

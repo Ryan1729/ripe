@@ -8,8 +8,10 @@ pub type TileSprite = u8;
 pub const WALL_SPRITE: TileSprite = 0;
 pub const FLOOR_SPRITE: TileSprite = 1;
 pub const PLAYER_SPRITE: TileSprite = 2;
-pub const NPC_SPRITE: TileSprite = 3;
-pub const ITEM_SPRITE: TileSprite = 4;
+pub const DOOR_ANIMATION_FRAME_1: TileSprite = 10;
+pub const DOOR_ANIMATION_FRAME_2: TileSprite = DOOR_ANIMATION_FRAME_1 + 8;
+pub const DOOR_ANIMATION_FRAME_3: TileSprite = DOOR_ANIMATION_FRAME_2 + 8;
+
 
 /// An amount of screenshake to render with.
 pub type ShakeAmount = u8;
@@ -84,6 +86,11 @@ impl Desire {
 
 pub type Desires = Vec<Desire>;
 
+pub type EntityFlags = u8;
+
+pub const COLLECTABLE: EntityFlags = 1 << 0;
+pub const VICTORY: EntityFlags = 1 << 1;
+
 // Fat-struct for entities! Fat-struct for entities!
 #[derive(Clone, Default, Debug)]
 pub struct Entity {
@@ -94,6 +101,7 @@ pub struct Entity {
     pub sprite: TileSprite,
     pub def_id: DefId,
     pub desires: Desires,
+    pub flags: EntityFlags
 }
 
 impl Entity {
@@ -103,6 +111,7 @@ impl Entity {
         sprite: TileSprite,
         def_id: DefId,
         desires: Desires,
+        flags: EntityFlags,
     ) -> Self {
         Self {
             x,
@@ -110,6 +119,7 @@ impl Entity {
             sprite,
             def_id,
             desires,
+            flags,
             ..<_>::default()
         }
     }
@@ -136,6 +146,14 @@ impl Entity {
             state: current_speeches_state,
         }
     }
+
+    pub fn is_collectable(&self) -> bool {
+        self.flags & COLLECTABLE == COLLECTABLE
+    }
+
+    pub fn is_victory(&self) -> bool {
+        self.flags & VICTORY == VICTORY
+    }
 }
 
 /// Returns a phrase like "a thing" or "an entity".
@@ -144,8 +162,6 @@ pub fn entity_article_phrase(entity: &Entity) -> &str {
         WALL_SPRITE => "a wall",
         FLOOR_SPRITE => "a floor",
         PLAYER_SPRITE => "a me(?!)",
-        NPC_SPRITE => "a person",
-        ITEM_SPRITE => "an item",
         _ => "a whatever-this-is",
     }
 }

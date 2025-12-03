@@ -155,7 +155,7 @@ fn init_engine() -> Engine {
         fn item(n) {{
             tile_sprite_n_at_offset(n, 4)
         }}
-        // TODO: Define walls, floor, and player here too
+        // TODO: Define walls, floor, door animation, and player here too
 
         export const OPEN_DOOR = tile_sprite_n_at_offset(1, 0);
     "#);

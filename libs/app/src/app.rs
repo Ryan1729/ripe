@@ -239,6 +239,14 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
     state.tick();
 
     match &mut state.mode {
+        Mode::Victory(animation) => {
+            if animation.is_done() {
+                // Do we want to do something else here? Back to a main menu?
+                if input.pressed_this_frame(Button::START) {
+                    *animation = <_>::default();
+                }
+            }
+        },
         Mode::Walking => {
             if input.pressed_this_frame(Button::START) {
                 state.mode = Mode::Inventory { 
@@ -368,7 +376,6 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
                                 if let Some(recieveing_entity) = state.world.get_entity_mut(entity_key) {
                                     for desire in &mut recieveing_entity.desires {
                                         if desire.def_id == def_id {
-                                            dbg!(entity_key);
                                             desire.state = models::DesireState::Satisfied;
                                             break
                                         }
@@ -416,14 +423,6 @@ fn game_render(commands: &mut Commands, state: &game::State) {
         );
     }
 
-    for i in 0..state.world.segment.tiles.len() {
-        draw_tile(
-            commands,
-            i_to_xy(state.world.segment.width, i),
-            state.world.segment.tiles[i].sprite,
-        );
-    }
-
     fn draw_entity(commands: &mut Commands, entity: &Entity) {
         commands.sspr(
             to_tile::sprite_xy(entity.sprite),
@@ -431,23 +430,37 @@ fn game_render(commands: &mut Commands, state: &game::State) {
         );
     }
 
-    for (_, item) in state.world.items.for_id(state.world.segment_id) {
-        draw_entity(commands, item);
+    fn render_world(commands: &mut Commands, state: &game::State) {
+        for i in 0..state.world.segment.tiles.len() {
+            draw_tile(
+                commands,
+                i_to_xy(state.world.segment.width, i),
+                state.world.segment.tiles[i].sprite,
+            );
+        }
+
+        for (_, steppable) in state.world.steppables.for_id(state.world.segment_id) {
+            draw_entity(commands, steppable);
+        }
+    
+        for (_, mob) in state.world.mobs.for_id(state.world.segment_id) {
+            draw_entity(commands, mob);
+        }
     }
 
-    for (_, mob) in state.world.mobs.for_id(state.world.segment_id) {
-        draw_entity(commands, mob);
-    }
+    fn render_walking(commands: &mut Commands, state: &game::State) {
+        render_world(commands, state);
 
-    draw_entity(commands, &state.world.player);
-
-    for message in &state.fade_messages {
-        commands.print_lines(
-            message.xy,
-            0,
-            message.text.as_bytes(),
-            6,
-        );
+        draw_entity(commands, &state.world.player);
+    
+        for message in &state.fade_messages {
+            commands.print_lines(
+                message.xy,
+                0,
+                message.text.as_bytes(),
+                6,
+            );
+        }
     }
 
     //
@@ -455,14 +468,42 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     //
 
     match &state.mode {
+        Mode::Victory(animation) => {
+            if animation.is_done() {
+                commands.print_lines(
+                    unscaled::XY {
+                        x: unscaled::X(100),
+                        y: unscaled::Y(50),
+                    },
+                    0,
+                    // TODO Get this text from the config file
+                    b"congraturation\n\nthis story is happy end",
+                    6,
+                );
+                draw_tile_sprite(
+                    commands,
+                    // TODO Put this in the config file. Maybe allow defining any number of sprites to be drawn?
+                    unscaled::XY {
+                        x: unscaled::X(200),
+                        y: unscaled::Y(150),
+                    },
+                    state.world.player.sprite
+                );
+            } else {
+                render_world(commands, state);
+                draw_tile(commands, state.world.player.xy(), animation.sprite());
+            }
+        },
         Mode::Walking => {
-            // Nothing yet
+            render_walking(commands, state);
         },
         Mode::Inventory {
             current_index,
             description_talking,
             ..
         } => {
+            render_walking(commands, state);
+
             const SPACING: unscaled::Inner = 20;
 
             let outer_rect = unscaled::Rect {
@@ -527,6 +568,8 @@ fn game_render(commands: &mut Commands, state: &game::State) {
             }
         },
         Mode::Talking(talking) => {
+            render_walking(commands, state);
+
             draw_talking(commands, &state.speeches, talking);
         },
     }
