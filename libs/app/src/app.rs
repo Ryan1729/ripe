@@ -506,13 +506,55 @@ fn game_render(commands: &mut Commands, state: &game::State) {
 
             const SPACING: unscaled::Inner = 20;
 
-            let outer_rect = unscaled::Rect {
+            let menu_y = unscaled::Y(SPACING);
+            let menu_h = unscaled::H(platform_types::command::HEIGHT - 120);
+
+            let goal_outer_w = unscaled::W(120 - SPACING);
+
+            let inv_outer_rect = unscaled::Rect {
                 x: unscaled::X(SPACING),
-                y: unscaled::Y(SPACING),
-                w: unscaled::W(platform_types::command::WIDTH - (SPACING * 2)),
-                h: unscaled::H(platform_types::command::HEIGHT - 120),
+                y: menu_y,
+                w: unscaled::W(platform_types::command::WIDTH - (SPACING * 3)) - goal_outer_w,
+                h: menu_h,
             };
 
+            let goal_outer_rect = unscaled::Rect {
+                x: inv_outer_rect.x + inv_outer_rect.w + unscaled::W(SPACING),
+                y: menu_y,
+                w: goal_outer_w,
+                h: menu_h,
+            };
+
+            //
+            //  Draw the goal description
+            //
+
+            commands.nine_slice(nine_slice::INVENTORY, goal_outer_rect);
+
+            let goal_inner_rect = nine_slice::inner_rect(goal_outer_rect);
+
+            commands.print_lines(
+                goal_inner_rect.xy(),
+                0,
+                b"goal:\nfind the key\nto open this\ndoor.",
+                6,
+            );
+
+            let image_xy = unscaled::XY {
+                // TODO center this once we have the tile dimensions moved into the right spot
+                x: goal_inner_rect.x + goal_inner_rect.w.halve(),
+                y: goal_inner_rect.y + goal_inner_rect.h.halve(),
+            };
+
+            // TODO move this into the config.
+            const LOCKED_DOOR_1: TileSprite = 16;
+            draw_tile_sprite(commands, image_xy, LOCKED_DOOR_1);
+            
+   
+            //
+            //  Draw the inventory
+            //
+            
             const CELL_W: unscaled::W = unscaled::W(24);
             const CELL_H: unscaled::H = unscaled::H(24);
 
@@ -521,18 +563,18 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                 h: unscaled::H(4),
             };
 
-            commands.nine_slice(nine_slice::INVENTORY, outer_rect);
+            commands.nine_slice(nine_slice::INVENTORY, inv_outer_rect);
 
-            let inner_rect = nine_slice::inner_rect(outer_rect);
+            let inv_inner_rect = nine_slice::inner_rect(inv_outer_rect);
 
             let mut inventory_index = 0;
 
-            let mut at = unscaled::XY { x: inner_rect.x, y: inner_rect.y };
+            let mut at = unscaled::XY { x: inv_inner_rect.x, y: inv_inner_rect.y };
 
-            let x_max = inner_rect.x + inner_rect.w;
-            let y_max = inner_rect.y + inner_rect.h;
+            let inv_x_max = inv_inner_rect.x + inv_inner_rect.w;
+            let inv_y_max = inv_inner_rect.y + inv_inner_rect.h;
 
-            while at.x < x_max && at.y < y_max {
+            while at.x < inv_x_max && at.y < inv_y_max {
                 // draw selectrum
                 if inventory_index == *current_index {
                     commands.sspr(
@@ -556,9 +598,9 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                 };
 
                 at.x += CELL_W;
-                if at.x >= x_max {
+                if at.x >= inv_x_max {
                     at.y += CELL_H;
-                    at.x = inner_rect.x;
+                    at.x = inv_inner_rect.x;
                 }
                 inventory_index += 1;
             }

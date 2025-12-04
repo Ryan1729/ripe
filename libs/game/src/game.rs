@@ -123,18 +123,20 @@ use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
 //        * I think the goal for this next pass should be to get to a random item is on the ground, than one npc wants,
 //          that then gives you what another NPC wants, and that NPC gives you the thing that you want, and you win!
 //        * Concrete steps then
-//            * Add a victory colectable sprite that makes some sense to be a victory when walked over
+//            * Add a victory colectable sprite that makes some sense to be a victory when walked over ✔
 //                * A portal?
-//            * Mark it as instant_victory in the config file
-//            * Have it actually trigger a victory screen
+//            * Mark it as instant_victory in the config file ✔
+//            * Have it actually trigger a victory screen ✔
 //                * Worth adding a walking through the door animation? Like 3 frames or whatever?
 //            * Is it a good time to add an in-game display of the goal?
+//                * Let's do at least the most basic version: some text in the pause menu
 //            * Add a locked door/portal sprite
 //            * Add a key sprite
 //            * Have the portal start locked
 //            * Ensure the key spawns
 //            * Make collecting the key open the corresponding door
 //                * Allow it to work for multiple doors in the future
+//            * Put items in the NPC's pockets, and have them actually give them to you when you give them a thing
 //            * Once it has been shown to work for one door, actually make multiple doors
 
 // A note about eventual design:
