@@ -537,6 +537,22 @@ pub mod unscaled {
         }
     }
 
+    impl core::ops::SubAssign<WH> for XY {
+        fn sub_assign(&mut self, other: WH) {
+            self.x -= other.w;
+            self.y -= other.h;
+        }
+    }
+
+    impl core::ops::Sub<WH> for XY {
+        type Output = Self;
+
+        fn sub(mut self, other: WH) -> Self::Output {
+            self -= other;
+            self
+        }
+    }
+
     impl core::ops::AddAssign<W> for WH {
         fn add_assign(&mut self, other: W) {
             self.w += other;

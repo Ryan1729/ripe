@@ -425,6 +425,13 @@ fn game_render(commands: &mut Commands, state: &game::State) {
         );
     }
 
+    fn draw_tile_sprite_centered_at(commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite) {
+        commands.sspr(
+            to_tile::sprite_xy(sprite),
+            command::Rect::from_unscaled(to_tile::rect(to_tile::center_to_min_corner(xy))),
+        );
+    }
+
     fn draw_entity(commands: &mut Commands, entity: &Entity) {
         commands.sspr(
             to_tile::sprite_xy(entity.sprite),
@@ -542,7 +549,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
 
             // TODO move this into the config.
             const LOCKED_DOOR_1: TileSprite = 16;
-            draw_tile_sprite(commands, image_xy, LOCKED_DOOR_1);
+            draw_tile_sprite_centered_at(commands, image_xy, LOCKED_DOOR_1);
             
    
             //

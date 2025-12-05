@@ -36,6 +36,11 @@ pub fn center(xy: XY) -> unscaled::XY {
     min_corner(xy) + CENTER_OFFSET
 }
 
+/// Take an unscaled::XY representing the center of a tile, and return the min corner of the tile.
+pub fn center_to_min_corner(xy: unscaled::XY) -> unscaled::XY {
+    xy - CENTER_OFFSET
+}
+
 pub fn sprite_xy(tile_sprite: TileSprite) -> sprite::XY {
     sprite::XY {
         x: sprite::X(0) + sprite::W(tile_sprite as sprite::Inner % TILES_PER_ROW) * TILE_W.get(),
