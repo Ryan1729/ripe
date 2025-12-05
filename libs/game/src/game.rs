@@ -17,7 +17,7 @@ use models::{
 };
 use xs::{Xs, Seed};
 
-use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
+use platform_types::{arrow_timer::{ArrowTimer}};
 
 // Proposed Steps
 // * Make the simplest task: Go find a thing and bring it to the person who wants it
@@ -159,8 +159,6 @@ use platform_types::{unscaled, arrow_timer::{ArrowTimer}};
 //      should be one to turn this mechanic off.
 //      * Eventually can expand this with something more linguistically complex.
 //    * Idleon seems to have a bunch of minigames, that are already based around getting a reward
-
-pub mod to_tile;
 
 pub mod config {
     use platform_types::{vec1::{Vec1}};
@@ -580,32 +578,23 @@ pub enum Mode {
     Victory(DoorAnimation),
 }
 
-/// 64k fade frames ought to be enough for anybody!
-type FadeTimer = u16;
-
 #[derive(Clone)]
-pub struct FadeMessage {
-    pub text: String,
-    pub fade_timer: FadeTimer,
-    pub xy: unscaled::XY,
-    pub wh: unscaled::WH,
+pub struct FadeMessageSpec {
+    pub message: String,
+    pub xy: XY,
 }
 
-impl FadeMessage {
-    pub fn new(text: String, xy: XY) -> Self {
+impl FadeMessageSpec {
+    pub fn new(message: String, xy: XY) -> Self {
         Self {
-            text,
-            // TODO? Scale this based on text length?
-            fade_timer: 100,
-            xy: to_tile::center(xy),
-            // TODO? Scale this based on text length?
-            wh: unscaled::WH { w: unscaled::W::ZERO, h: unscaled::H::ONE },
+            message,
+            xy,
         }
     }
 }
 
-// TODO? Put a hard limit on the amount of these, with I guess LIFO eviction?
-pub type FadeMessages = Vec<FadeMessage>;
+// TODO? Put a hard limit on the amount of these? Like this could perhaps be just an Option?
+pub type FadeMessageSpecs = Vec<FadeMessageSpec>;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DoorAnimation {
@@ -638,7 +627,7 @@ pub struct State {
     pub world: World,
     pub player_inventory: Inventory,
     pub mode: Mode,
-    pub fade_messages: FadeMessages,
+    pub fade_message_specs: FadeMessageSpecs,
     pub shake_amount: ShakeAmount,
     pub speeches: Speeches,
     pub inventory_descriptions: Speeches,
@@ -968,19 +957,20 @@ impl State {
         }
     }
 
+    #[must_use]
     pub fn interact(&mut self, dir: Dir) {
         let entity = &mut self.world.player;
 
         let Some(XY { x: target_x, y: target_y }) = xy_in_dir(entity.x, entity.y, dir) else {
-            self.fade_messages.push(FadeMessage::new(format!("there's nothing there."), entity.xy()));
+            self.fade_message_specs.push(FadeMessageSpec::new(format!("there's nothing there."), entity.xy()));
             return
         };
 
         let key = entity_key(self.world.segment_id, target_x, target_y);
 
         let Some(mob) = self.world.mobs.get_mut(key) else {
-            self.fade_messages.push(
-                FadeMessage::new(format!("there's nobody there."), entity.xy())
+            self.fade_message_specs.push(
+                FadeMessageSpec::new(format!("there's nobody there."), entity.xy())
             );
             return
         };
@@ -1005,8 +995,8 @@ impl State {
             }
         }
 
-        self.fade_messages.push(
-            FadeMessage::new(
+        self.fade_message_specs.push(
+            FadeMessageSpec::new(
                 format!(
                     "what do you want me to do with {}?",
                     models::entity_article_phrase(mob),
@@ -1033,19 +1023,6 @@ impl State {
         //
         // Advance Timers
         //
-        for i in (0..self.fade_messages.len()).rev() {
-            let message = &mut self.fade_messages[i];
-
-            message.fade_timer = message.fade_timer.saturating_sub(1);
-            if message.fade_timer == 0 {
-                self.fade_messages.remove(i);
-                continue
-            }
-
-            // TODO? A timer or other method to be able to move less than one pixel per frame?
-            //     At that point, do we want sub-pixel blending enough to implement it?
-            message.xy += message.wh;
-        }
 
         // The offests are timers of a sort.
         for entity in self.all_entities_mut() {

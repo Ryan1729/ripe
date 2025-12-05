@@ -7,6 +7,8 @@ use models::{DefId, DefIdDelta};
 use game::{Config};
 use game::config::{TileFlags, WorldSegment};
 
+pub const TILES_PER_ROW: u8 = 8;
+
 #[derive(Clone, Copy, Debug)]
 pub struct IndexableKey {
     pub key: &'static str,
@@ -138,8 +140,6 @@ fn init_engine() -> Engine {
     }
 
     add_module!(entity_flags = entity_flags_string);
-
-    use game::to_tile::TILES_PER_ROW;
 
     // Rhai not allowing you to access consts outside the function scope without using `function_name!` is annoying.
     let default_spritesheet_string = format!(r#"

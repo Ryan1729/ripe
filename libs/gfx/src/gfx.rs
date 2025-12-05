@@ -1,14 +1,32 @@
 use xs::Xs;
-use models::{Speech, ShakeAmount};
+use models::{Entity, Speech, ShakeAmount};
+
+pub mod to_tile;
 
 use platform_types::{Command, PALETTE, sprite, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
 use text::byte_slice as text;
+
+/// 64k fade frames ought to be enough for anybody!
+type FadeTimer = u16;
+
+#[derive(Clone)]
+pub struct FadeMessage {
+    pub message: Vec<u8>,
+    pub fade_timer: FadeTimer,
+    pub xy: unscaled::XY,
+    // TODO: Should conceptually be an "XYD", as in an XY delta but that type doesn't exist yet.
+    pub offset_per_frame: unscaled::WH,
+}
+
+// TODO? Put a hard limit on the amount of these, with I guess LIFO eviction?
+pub type FadeMessages = Vec<FadeMessage>;
 
 pub struct Commands {
     commands: Vec<Command>,
     shake_xd: unscaled::XD,
     shake_yd: unscaled::YD,
     rng: Xs,
+    fade_messages: FadeMessages,
 }
 
 impl Commands {
@@ -18,18 +36,8 @@ impl Commands {
             shake_xd: <_>::default(),
             shake_yd: <_>::default(),
             rng: xs::from_seed(seed),
+            fade_messages: FadeMessages::with_capacity(4),
         }
-    }
-
-    fn push_with_screenshake(&mut self, mut command: Command) {
-        command.rect.x_min += self.shake_xd;
-        command.rect.y_min += self.shake_yd;
-        command.rect.x_max += self.shake_xd;
-        command.rect.y_max += self.shake_yd;
-
-        self.commands.push(
-            command
-        );
     }
 
     pub fn slice(&self) -> &[Command] {
@@ -59,12 +67,53 @@ impl Commands {
         }
     }
 
+    pub fn end_frame(&mut self) {
+        //
+        // Tick the fade messages
+        //
+        for i in (0..self.fade_messages.len()).rev() {
+            let message = &mut self.fade_messages[i];
+
+            message.fade_timer = message.fade_timer.saturating_sub(1);
+            if message.fade_timer == 0 {
+                self.fade_messages.remove(i);
+                continue
+            }
+
+            // TODO? A timer or other method to be able to move less than one pixel per frame?
+            //     At that point, do we want sub-pixel blending enough to implement it?
+            message.xy += message.offset_per_frame;
+        }
+
+        //
+        // Draw the fade messages on top of everything
+        //
+        // If always drawing these over everything becomes an issue, we can 
+        // add a boolean onto self here, that can be set to prevent the 
+        // drawing, and maybe the ticking too. Not sure whether it should 
+        // be reset every frame or not.
+        for message in &self.fade_messages {
+            print::lines(
+                &mut self.commands,
+                self.shake_xd,
+                self.shake_yd,
+                message.xy,
+                0,
+                &message.message,
+                6,
+            );
+        }
+    }
+
     pub fn sspr(
         &mut self,
         sprite_xy: sprite::XY,
         rect: command::Rect,
     ) {
-        self.push_with_screenshake(
+        push_with_screenshake(
+            &mut self.commands,
+            self.shake_xd,
+            self.shake_yd,
             Command {
                 sprite_xy,
                 rect,
@@ -75,6 +124,91 @@ impl Commands {
 
     pub fn print_char(
         &mut self,
+        character: u8, 
+        x: unscaled::X,
+        y: unscaled::Y,
+        colour: PaletteIndex
+    ) {
+        print::char(
+            &mut self.commands,
+            self.shake_xd,
+            self.shake_yd,
+            character,
+            x,
+            y,
+            colour,
+        )
+    }
+
+    pub fn print_line(
+        &mut self,
+        bytes: &[u8],
+        xy: unscaled::XY,
+        colour: PaletteIndex,
+    ) {
+        print::line(
+            &mut self.commands,
+            self.shake_xd,
+            self.shake_yd,
+            bytes,
+            xy,
+            colour,
+        )
+    }
+
+    pub fn print_lines(
+        &mut self,
+        base_xy: unscaled::XY,
+        top_index_with_offset: usize,
+        to_print: &[u8],
+        colour: PaletteIndex,
+    ) {
+        print::lines(
+            &mut self.commands,
+            self.shake_xd,
+            self.shake_yd,
+            base_xy,
+            top_index_with_offset,
+            to_print,
+            colour,
+        )
+    }
+
+    pub fn nine_slice(&mut self, nine_slice_sprite: nine_slice::Sprite, outer_rect: unscaled::Rect) {
+        nine_slice::render(self, nine_slice_sprite, outer_rect);
+    }
+
+    pub fn next_arrow_in_corner_of(&mut self, next_arrow_sprite: next_arrow::Sprite, timer: ArrowTimer, rect: unscaled::Rect) {
+        next_arrow::next_arrow_in_corner_of(self, next_arrow_sprite, timer, rect);
+    }
+
+    pub fn next_arrow(&mut self, next_arrow_sprite: next_arrow::Sprite, x: unscaled::X, y: unscaled::Y) {
+        next_arrow::render(self, next_arrow_sprite, x, y);
+    }
+
+    pub fn speech(&mut self, speech: &Speech) {
+        speech::render(self, speech);
+    }
+
+    pub fn push_fade_message(&mut self, message: Vec<u8>, xy: models::XY) {
+        self.fade_messages.push(FadeMessage {
+            message,
+            // TODO? Scale this based on text length?
+            fade_timer: 100,
+            xy: to_tile::center(xy),
+            // TODO? Scale this based on text length?
+            offset_per_frame: unscaled::WH { w: unscaled::W::ZERO, h: unscaled::H::ONE },
+        });
+    }
+}
+
+mod print {
+    use super::*;
+
+    pub fn char(
+        command_vec: &mut Vec<Command>, 
+        shake_xd: unscaled::XD,
+        shake_yd: unscaled::YD,
         character: u8, 
         x: unscaled::X,
         y: unscaled::Y,
@@ -96,9 +230,12 @@ impl Commands {
                 ),
             }
         }
-
+    
         let sprite_xy = get_char_xy(character);
-        self.push_with_screenshake(
+        push_with_screenshake(
+            command_vec,
+            shake_xd,
+            shake_yd,
             Command {
                 sprite_xy,
                 rect: Rect::from_unscaled(unscaled::Rect {
@@ -111,37 +248,52 @@ impl Commands {
             }
         );
     }
-
-    pub fn print_line(
-        &mut self,
+    
+    pub fn line(
+        command_vec: &mut Vec<Command>, 
+        shake_xd: unscaled::XD,
+        shake_yd: unscaled::YD,
         bytes: &[u8],
         mut xy : unscaled::XY,
         colour: PaletteIndex,
     ) {
         for &c in bytes.iter() {
-            self.print_char(c, xy.x, xy.y, colour);
+            char(
+                command_vec,
+                shake_xd,
+                shake_yd,
+                c,
+                xy.x,
+                xy.y,
+                colour
+            );
             xy.x += CHAR_W;
         }
     }
-
-    pub fn print_lines(
-        &mut self,
+    
+    pub fn lines(
+        command_vec: &mut Vec<Command>, 
+        shake_xd: unscaled::XD,
+        shake_yd: unscaled::YD,
         base_xy: unscaled::XY,
         top_index_with_offset: usize,
         to_print: &[u8],
         colour: PaletteIndex,
     ) {
-        for (y, line) in text::lines(to_print)
+        for (y, text_line) in text::lines(to_print)
             .skip((top_index_with_offset as u16 / CHAR_H.get()) as usize)
             .take(usize::from(command::HEIGHT * CHAR_H))
             .enumerate()
         {
             let y = y as unscaled::Inner;
-
+    
             let offset = top_index_with_offset as u16 % CHAR_H.get();
-
-            self.print_line(
-                line,
+    
+            line(
+                command_vec, 
+                shake_xd,
+                shake_yd,
+                text_line,
                 base_xy
                 // TODO investigate scrolling shimmering which seems to be
                 // related to this part. Do we need to make the scrolling
@@ -156,22 +308,22 @@ impl Commands {
             );
         }
     }
+}
 
-    pub fn nine_slice(&mut self, nine_slice_sprite: nine_slice::Sprite, outer_rect: unscaled::Rect) {
-        nine_slice::render(self, nine_slice_sprite, outer_rect);
-    }
+fn push_with_screenshake(
+    command_vec: &mut Vec<Command>, 
+    shake_xd: unscaled::XD,
+    shake_yd: unscaled::YD,
+    mut command: Command
+) {
+    command.rect.x_min += shake_xd;
+    command.rect.y_min += shake_yd;
+    command.rect.x_max += shake_xd;
+    command.rect.y_max += shake_yd;
 
-    pub fn next_arrow_in_corner_of(&mut self, next_arrow_sprite: next_arrow::Sprite, timer: ArrowTimer, rect: unscaled::Rect) {
-        next_arrow::next_arrow_in_corner_of(self, next_arrow_sprite, timer, rect);
-    }
-
-    pub fn next_arrow(&mut self, next_arrow_sprite: next_arrow::Sprite, x: unscaled::X, y: unscaled::Y) {
-        next_arrow::render(self, next_arrow_sprite, x, y);
-    }
-
-    pub fn speech(&mut self, speech: &Speech) {
-        speech::render(self, speech);
-    }
+    command_vec.push(
+        command
+    );
 }
 
 pub mod speech {

@@ -1,20 +1,23 @@
 use platform_types::{sprite, unscaled};
 use models::{Entity, xy::{XY}, TileSprite, offset};
 
-// TODO This should be changeable at runtime. Having it be here in this module as a static is inconvenient.
+// TODO These should be changeable at runtime. Having it be here in this module as a static is inconvenient.
 //      I think the place for it is on the gfx::Commands. So move this module into there, and start passing
-//      them into these functions, adding high level methods to gfx::Commands as needed
+//      them into these functions, adding high level methods to gfx::Commands as needed {
 const TILE_W: unscaled::W = unscaled::W(16);
 const TILE_H: unscaled::H = unscaled::H(16);
+pub const TILES_PER_ROW: sprite::Inner = 8;
+/// Where the tiles start on the spreadsheet.
+const TILES_Y: sprite::Y = sprite::Y(64);
+// }
 
 const CENTER_OFFSET: unscaled::WH = unscaled::WH{
     w: TILE_W.halve(),
     h: TILE_H.halve(),
 };
 
-/// Where the tiles start on the spreadsheet.
-const TILES_Y: sprite::Y = sprite::Y(64);
-
+/// Take a models::XY to the unscaled::XY representing the corner of the tile, with the mininum x/y values.
+/// Suitable for drawing the tile at that point
 pub fn min_corner(xy: XY) -> unscaled::XY {
     // Could see this needing to be passed in later
     // And we might even want an intermediate type 
@@ -28,11 +31,10 @@ pub fn min_corner(xy: XY) -> unscaled::XY {
     unscaled::XY { x, y } + base_offset
 }
 
+/// Take a models::XY to the unscaled::XY representing the center of the tile.
 pub fn center(xy: XY) -> unscaled::XY {
     min_corner(xy) + CENTER_OFFSET
 }
-
-pub const TILES_PER_ROW: sprite::Inner = 8;
 
 pub fn sprite_xy(tile_sprite: TileSprite) -> sprite::XY {
     sprite::XY {

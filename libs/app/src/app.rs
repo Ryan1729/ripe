@@ -1,7 +1,7 @@
-use gfx::{Commands, nine_slice, next_arrow, speech};
+use gfx::{Commands, nine_slice, next_arrow, speech, to_tile};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
-use game::{Dir, Mode, TalkingState, PostTalkingAction, to_tile};
+use game::{Dir, FadeMessageSpec, Mode, TalkingState, PostTalkingAction};
 use models::{Entity, Speeches, XY, i_to_xy, TileSprite, Speech};
 
 #[derive(Debug)]
@@ -182,6 +182,8 @@ pub fn frame(state: &mut State) -> (&[platform_types::Command], &[SFX]) {
             *state = State::new(state.params);
         },
     }
+
+    state.commands.end_frame();
 
     state.input.previous_gamepad = state.input.gamepad;
 
@@ -452,15 +454,6 @@ fn game_render(commands: &mut Commands, state: &game::State) {
         render_world(commands, state);
 
         draw_entity(commands, &state.world.player);
-    
-        for message in &state.fade_messages {
-            commands.print_lines(
-                message.xy,
-                0,
-                message.text.as_bytes(),
-                6,
-            );
-        }
     }
 
     //
@@ -536,6 +529,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
             commands.print_lines(
                 goal_inner_rect.xy(),
                 0,
+                // TODO move this into the config.
                 b"goal:\nfind the key\nto open this\ndoor.",
                 6,
             );
@@ -641,6 +635,10 @@ fn update_and_render(
     match game_state {
         Ok(state) => {
             game_update(state, input, speaker);
+            // Empty message queue
+            for FadeMessageSpec { message, xy } in state.fade_message_specs.drain(..) {
+                commands.push_fade_message(message.into(), xy);
+            }
             game_render(commands, state);
 
             <_>::default()
