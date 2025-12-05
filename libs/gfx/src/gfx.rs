@@ -250,8 +250,8 @@ pub mod next_arrow {
         y: unscaled::Y,
     ) {
         let sprite_xy = match next_arrow_sprite & 1 {
-            1 => sprite::XY { x: sprite::X(0), y: sprite::Y(0) },
-            _ => sprite::XY { x: sprite::X(0), y: sprite::Y(4) },
+            1 => sprite::XY { x: sprite::X(0), y: sprite::Y(4) },
+            _ => sprite::XY { x: sprite::X(0), y: sprite::Y(0) },
         };
 
         commands.sspr(
