@@ -11,10 +11,11 @@ import "entity_flags" as EF;
 
 const MOB = 0;
 const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
-const END_DOOR = EF::STEPPABLE | EF::VICTORY;
+const END_DOOR = EF::STEPPABLE | EF::VICTORY | EF::NOT_SPAWNED_AT_START;
 
 import "default_spritesheet" as DS;
 import "entity_ids" as ID;
+import "collect_actions" as CA;
 
 #{
     segments: [
@@ -69,6 +70,21 @@ import "entity_ids" as ID;
         #{
             flags: END_DOOR,
             tile_sprite: DS::OPEN_DOOR,
+        },
+        #{
+            flags: MOB,
+            tile_sprite: DS::LOCKED_DOOR_1,
+        },
+        #{
+            flags: ITEM,
+            tile_sprite: DS::KEY_1,
+            on_collect: [
+                #{
+                    kind: CA::TRANSFORM,
+                    from: ID::relative(-1),
+                    to: ID::relative(-2),
+                }
+            ],
         },
     ],
 }

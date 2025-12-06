@@ -1,11 +1,13 @@
 use models::{
     offset,
     speeches,
+    CollectAction,
     DefId,
     Entity,
     Speech,
     Speeches,
     Tile,
+    TileSprite,
     X,
     Y,
     XY,
@@ -17,7 +19,7 @@ use models::{
 };
 use xs::{Xs, Seed};
 
-use platform_types::{arrow_timer::{ArrowTimer}};
+use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 
 // Proposed Steps
 // * Make the simplest task: Go find a thing and bring it to the person who wants it
@@ -128,14 +130,19 @@ use platform_types::{arrow_timer::{ArrowTimer}};
 //            * Mark it as instant_victory in the config file ✔
 //            * Have it actually trigger a victory screen ✔
 //                * Worth adding a walking through the door animation? Like 3 frames or whatever?
-//            * Is it a good time to add an in-game display of the goal?
+//            * Is it a good time to add an in-game display of the goal? ✔
 //                * Let's do at least the most basic version: some text in the pause menu
-//            * Add a locked door/portal sprite
-//            * Add a key sprite
-//            * Have the portal start locked
+//            * Add a locked door/portal sprite ✔
+//            * Add a key sprite ✔
 //            * Ensure the key spawns
+//                * Add to config as new item entry
+//            * Have the portal start locked
+//                * Spawn only the locked door at the start
+//                    * Have a "NOT_SPAWNED_AT_START" flag that defaults to false
+//                        * Less work than marking all the other entities
 //            * Make collecting the key open the corresponding door
 //                * Allow it to work for multiple doors in the future
+//                    * Markup key as transforming instances of one entity ID into another
 //            * Put items in the NPC's pockets, and have them actually give them to you when you give them a thing
 //            * Once it has been shown to work for one door, actually make multiple doors
 
@@ -162,8 +169,8 @@ use platform_types::{arrow_timer::{ArrowTimer}};
 
 pub mod config {
     use platform_types::{vec1::{Vec1}};
-    use models::{DefId, SegmentWidth, Speech, TileSprite};
-    
+    use models::{DefId, OnCollect, SegmentWidth, Speech, TileSprite};
+    use crate::MiniEntityDef;
 
     macro_rules! consts_def {
         (
@@ -231,6 +238,7 @@ pub mod config {
         COLLECTABLE = 1 << 0,
         STEPPABLE = 1 << 1,
         VICTORY = 1 << 2,
+        NOT_SPAWNED_AT_START = 1 << 3,
     }
 
     pub type EntityDefIdRefKind = u8;
@@ -241,20 +249,28 @@ pub mod config {
         ABSOLUTE = 2,
     }
 
+    pub type CollectActionKind = u8;
+
+    consts_def!{
+        ALL_COLLECT_ACTION_KINDS: CollectActionKind;
+        TRANSFORM = 1,
+    }
+
     #[derive(Clone, Debug)]
-    pub struct EntityDef {        
+    pub struct EntityDef {
         pub speeches: Vec<Vec<Speech>>,
         pub inventory_description: Vec<Vec<Speech>>,
         pub id: DefId,
         pub flags: EntityDefFlags,
         pub tile_sprite: TileSprite,
         pub wants: Vec<DefId>,
+        pub on_collect: OnCollect,
     }
 
     #[derive(Clone, Debug)]
     pub struct Desire {
-        pub mob_def: EntityDef,
-        pub item_def: EntityDef,
+        pub mob_def: MiniEntityDef,
+        pub item_def: MiniEntityDef,
     }
 
     impl Desire {
@@ -268,8 +284,8 @@ pub mod config {
 
     #[derive(Clone, Copy, Debug)]
     pub struct DesireRef<'defs> {
-        pub mob_def: &'defs EntityDef,
-        pub item_def: &'defs EntityDef,
+        pub mob_def: &'defs MiniEntityDef,
+        pub item_def: &'defs MiniEntityDef,
     }
 
     impl <'defs> DesireRef<'defs> {
@@ -281,9 +297,13 @@ pub mod config {
         }
     }
 }
-pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE, STEPPABLE, VICTORY};
+pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START};
 
-pub fn to_entity(def: &EntityDef, x: X, y: Y) -> Entity {
+pub fn to_entity(
+    def: &MiniEntityDef,
+    x: X,
+    y: Y
+) -> Entity {
     let mut flags = 0;
 
     if def.flags & config::COLLECTABLE == config::COLLECTABLE {
@@ -300,8 +320,20 @@ pub fn to_entity(def: &EntityDef, x: X, y: Y) -> Entity {
         def.tile_sprite,
         def.id,
         def.wants.iter().map(|&def_id| models::Desire::new(def_id)).collect(),
+        def.on_collect.clone(),
         flags,
     )
+}
+
+fn transform_entity(entity: &mut Entity, def: &MiniEntityDef) {
+    // TODO? Is there anything else we'd want to keep during transformations besides position?
+    // TODO? Is it worth storing pre-processed entity Defs, instead of the whole thing? In terms of any of
+    //       reduced memory usage, less work needed to do these transforms, or reduced mixing of concerns?
+    *entity = to_entity(
+        def,
+        entity.x,
+        entity.y
+    );
 }
 
 mod random {
@@ -621,7 +653,28 @@ impl DoorAnimation {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
+pub struct MiniEntityDef {
+    pub id: DefId,
+    pub flags: EntityDefFlags,
+    pub tile_sprite: TileSprite,
+    pub wants: Vec<DefId>,
+    pub on_collect: models::OnCollect,
+}
+
+impl From<&EntityDef> for MiniEntityDef {
+    fn from(def: &EntityDef) -> Self {
+        Self {
+            id: def.id,
+            flags: def.flags,
+            tile_sprite: def.tile_sprite,
+            wants: def.wants.clone(),
+            on_collect: def.on_collect.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct State {
     pub rng: Xs,
     pub world: World,
@@ -629,8 +682,13 @@ pub struct State {
     pub mode: Mode,
     pub fade_message_specs: FadeMessageSpecs,
     pub shake_amount: ShakeAmount,
+    // Fairly direct from the config section {
+    // Is the lookup acceleration, reduced memory usage etc. worth the extra code vs 
+    // just storing the config here directly?
     pub speeches: Speeches,
     pub inventory_descriptions: Speeches,
+    pub entity_defs: Vec1<MiniEntityDef>,
+    // }
 }
 
 impl State {
@@ -643,12 +701,13 @@ impl State {
 pub enum Error {
     CannotPlacePlayer,
     CannotPlaceDoor,
+    NoEntityDefs,
     NoMobsFound,
     NoItemsFound,
     NoDoorsFound,
     CouldNotSatisfyDesire(config::Desire),
-    InvalidDesireID(EntityDef, SegmentId),
-    NonItemWasDesired(EntityDef, EntityDef, SegmentId),
+    InvalidDesireID(MiniEntityDef, SegmentId),
+    NonItemWasDesired(MiniEntityDef, MiniEntityDef, SegmentId),
     InvalidSpeeches(speeches::PushError),
     InvalidInventoryDescriptions(speeches::PushError),
 }
@@ -743,9 +802,18 @@ impl State {
             )
         );
 
+        let mut entity_defs = Vec::<MiniEntityDef>::with_capacity(config.entities.len());
+
         for i in 0..config.entities.len() {
             let def = &config.entities[i];
 
+            entity_defs.push(def.into());
+        }
+
+        // Don't shuffle this one! We use it later expecting def_id to be indexes!
+        let entity_defs: Vec1<_> = entity_defs.try_into().map_err(|_| Error::NoEntityDefs)?;
+
+        for def in &entity_defs {
             if def.flags & COLLECTABLE == COLLECTABLE {
                 item_defs.push(def.clone());
             } else if def.flags & STEPPABLE == STEPPABLE {
@@ -754,7 +822,7 @@ impl State {
                 mob_defs.push(def.clone());
 
                 for &wanted_id in &def.wants {
-                    if let Some(desired_def) = config.entities.get(wanted_id.into()) {
+                    if let Some(desired_def) = entity_defs.get(wanted_id.into()) {
                         if desired_def.flags & COLLECTABLE == COLLECTABLE {
                             all_desires.push(config::DesireRef {
                                 mob_def: def,
@@ -787,7 +855,34 @@ impl State {
         xs::shuffle(&mut rng, &mut item_defs);
         xs::shuffle(&mut rng, &mut door_defs);
 
+        // TEMP: Get the key to spawn for testing. Later, it should be given as a reward
+        for item_def in &item_defs {
+            if item_def.on_collect.is_empty() { continue }
+
+            let key_xy = random::tile_matching_flags_besides(
+                &mut rng,
+                &config_segment,
+                ITEM_START,
+                &placed_already,
+            ).ok_or(Error::CannotPlaceDoor)?;
+
+            world.steppables.insert(
+                first_segment.id,
+                to_entity(
+                    item_def,
+                    key_xy.x,
+                    key_xy.y
+                ),
+            );
+
+            placed_already.push(key_xy);
+        }
+
         for door_def in &door_defs {
+            if door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START {
+                continue
+            }
+
             let d_xy = random::tile_matching_flags_besides(
                 &mut rng,
                 &config_segment,
@@ -797,7 +892,11 @@ impl State {
     
             world.steppables.insert(
                 first_segment.id,
-                to_entity(door_def, d_xy.x, d_xy.y),
+                to_entity(
+                    door_def,
+                    d_xy.x,
+                    d_xy.y
+                ),
             );
 
             placed_already.push(d_xy);
@@ -862,12 +961,20 @@ impl State {
                     ) {
                         world.mobs.insert(
                             first_segment.id,
-                            to_entity(&desire.mob_def, npc_xy.x, npc_xy.y),
+                            to_entity(
+                                &desire.mob_def,
+                                npc_xy.x,
+                                npc_xy.y
+                            ),
                         );
 
                         world.steppables.insert(
                             first_segment.id,
-                            to_entity(&desire.item_def, item_xy.x, item_xy.y),
+                            to_entity(
+                                &desire.item_def,
+                                item_xy.x,
+                                item_xy.y
+                            ),
                         );
                         placed_already.push(item_xy);
 
@@ -886,9 +993,13 @@ impl State {
         Ok(State {
             rng,
             world,
+            player_inventory: <_>::default(),
+            mode: <_>::default(),
+            fade_message_specs: <_>::default(),
+            shake_amount: <_>::default(),
             speeches,
             inventory_descriptions,
-            .. <_>::default()
+            entity_defs,
         })
     }
 }
@@ -947,6 +1058,21 @@ impl State {
                 self.shake_amount = 5;
 
                 if steppable.is_collectable() {
+                    for action in &steppable.on_collect {
+                        match action {
+                            CollectAction::Transform { from, to } => {
+                                if let Some(to_def) = self.entity_defs.get((*to) as usize) {
+                                    for entity in self.world.all_entities_mut() {
+                                        if entity.def_id == *from {
+                                            transform_entity(entity, to_def);
+                                        }
+                                    }
+                                } else {
+                                    debug_assert!(false, "Why are we trying to transform something into something that doesn't exist? to {to}");
+                                }
+                            }
+                        }
+                    }
                     self.player_inventory.push(steppable);
                 } else if steppable.is_victory() {
                     self.mode = Mode::Victory(<_>::default());

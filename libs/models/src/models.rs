@@ -86,6 +86,13 @@ impl Desire {
 
 pub type Desires = Vec<Desire>;
 
+#[derive(Clone, Debug)]
+pub enum CollectAction {
+    Transform { from: DefId, to: DefId },
+}
+
+pub type OnCollect = Vec<CollectAction>;
+
 pub type EntityFlags = u8;
 
 pub const COLLECTABLE: EntityFlags = 1 << 0;
@@ -101,6 +108,7 @@ pub struct Entity {
     pub sprite: TileSprite,
     pub def_id: DefId,
     pub desires: Desires,
+    pub on_collect: OnCollect,
     pub flags: EntityFlags
 }
 
@@ -111,6 +119,7 @@ impl Entity {
         sprite: TileSprite,
         def_id: DefId,
         desires: Desires,
+        on_collect: OnCollect,
         flags: EntityFlags,
     ) -> Self {
         Self {
