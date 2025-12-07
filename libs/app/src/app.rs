@@ -67,16 +67,16 @@ impl State {
         const I = TF::FLOOR | TF::ITEM_START;
         const N = TF::FLOOR | TF::NPC_START;
         const W = TF::WALL;
-        
+
         import "entity_flags" as EF;
-        
+
         const MOB = 0;
         const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
         const END_DOOR = EF::STEPPABLE | EF::VICTORY;
-        
+
         import "default_spritesheet" as DS;
         import "entity_ids" as ID;
-        
+
         #{
             segments: [
                 #{
@@ -137,14 +137,14 @@ impl State {
 
         let override_config = params.config_loader.and_then(|f| f());
 
-        let game_state = 'game_state: {            
+        let game_state = 'game_state: {
             let config = match config::parse(override_config.as_ref().map_or(HARDCODED_CONFIG, |s| s)) {
                 Ok(c) => c,
                 Err(err) => {
                     break 'game_state Err(Error::Config(err))
                 }
             };
-    
+
             game::State::new(seed, config).map_err(Error::Game)
         }.map_err(ErrorState::from);
 
@@ -251,7 +251,7 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
         },
         Mode::Walking => {
             if input.pressed_this_frame(Button::START) {
-                state.mode = Mode::Inventory { 
+                state.mode = Mode::Inventory {
                     current_index: <_>::default(),
                     last_dir: <_>::default(),
                     dir_count: <_>::default(),
@@ -259,7 +259,7 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
                 };
                 return
             }
-        
+
             if input.pressed_this_frame(Button::UP) {
                 state.walk(Dir::Up);
             } else if input.pressed_this_frame(Button::DOWN) {
@@ -271,7 +271,7 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
             } else {
                 // Nothing to do
             };
-        
+
             if input.pressed_this_frame(Button::A) {
                 if input.gamepad.contains(Button::UP) {
                     state.interact(Dir::Up)
@@ -301,10 +301,10 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
                 }
 
                 return
-            } 
+            }
 
             if input.pressed_this_frame(Button::A) {
-                if let Some(item) = state.player_inventory.get(*current_index) {
+                if let Some(item) = state.world.player.inventory.get(*current_index) {
                     *description_talking = Some(TalkingState::new(item.speeches_key()));
                 }
             } else if input.gamepad.contains(Button::UP) {
@@ -366,24 +366,60 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
             if let Finished = talking_update(talking, &state.speeches, input) {
                 match talking.post_action {
                     PostTalkingAction::NoOp => {},
-                    PostTalkingAction::TakeItem(entity_key, def_id) => {
+                    PostTalkingAction::TakeItem(receiveing_entity_key, def_id) => 'take_item: {
+                        let giving_entity_key = state.world.player_key();
+                        let Some(giving_entity_len) = state.world.get_entity(giving_entity_key)
+                            .map(|g_e| g_e.inventory.len())
+                        else {
+                            break 'take_item
+                        };
+
                         // TODO? Worth checking if it's not there?
                         // TODO? Do we want to give every entity an inventory, and preserve every item?
                         // Iterate backward so we can remove without indexing errors
-                        for i in (0..state.player_inventory.len()).rev() {
-                            let item = &state.player_inventory[i];
+                        for i in (0..giving_entity_len).rev() {
+                            let Some(item_def_id) = state.world.get_entity(giving_entity_key)
+                                .map(|g_e| g_e.inventory[i].def_id)
+                            else {
+                                break 'take_item
+                            };
 
-                            if item.def_id == def_id {
-                                state.player_inventory.remove(i);
-                                if let Some(recieveing_entity) = state.world.get_entity_mut(entity_key) {
-                                    for desire in &mut recieveing_entity.desires {
+                            if item_def_id == def_id {
+                                let Some(taken) = state.world.get_entity_mut(giving_entity_key)
+                                    .map(|g_e| g_e.inventory.remove(i)) else {
+                                        break 'take_item
+                                    };
+
+                                // This option is a bit less hassle than implmenting a way to get mut refs to
+                                // two distinct entities.
+                                let mut reward_opt = None;
+
+                                if let Some(receiveing_entity) = state.world.get_entity_mut(receiveing_entity_key) {
+                                    for desire in &mut receiveing_entity.desires {
                                         if desire.def_id == def_id {
                                             desire.state = models::DesireState::Satisfied;
                                             break
                                         }
                                     }
+
+                                    // TODO? Allow associating particular desires with particular rewards
+                                    //       from the same NPC?
+
+                                    // Extract the reward before putting the taken item into the receiveing_entity's
+                                    // inventory, so they don't give it back.
+                                    if let Some(reward) = receiveing_entity.inventory.pop() {
+                                        reward_opt = Some(reward);
+                                    }
+
+                                    receiveing_entity.inventory.push(taken);
                                 } else {
                                     debug_assert!(false, "Why did the item get taken if no one wants it?!");
+                                }
+
+                                if let Some(reward) = reward_opt {
+                                    if let Some(g_e) = state.world.get_entity_mut(giving_entity_key) {
+                                        g_e.inventory.push(reward);
+                                    }
                                 }
                             }
                         }
@@ -451,7 +487,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
         for (_, steppable) in state.world.steppables.for_id(state.world.segment_id) {
             draw_entity(commands, steppable);
         }
-    
+
         for (_, mob) in state.world.mobs.for_id(state.world.segment_id) {
             draw_entity(commands, mob);
         }
@@ -550,12 +586,12 @@ fn game_render(commands: &mut Commands, state: &game::State) {
             // TODO move this into the config.
             const LOCKED_DOOR_1: TileSprite = 16;
             draw_tile_sprite_centered_at(commands, image_xy, LOCKED_DOOR_1);
-            
-   
+
+
             //
             //  Draw the inventory
             //
-            
+
             const CELL_W: unscaled::W = unscaled::W(24);
             const CELL_H: unscaled::H = unscaled::H(24);
 
@@ -594,7 +630,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                     );
                 }
 
-                if let Some(item) = state.player_inventory.get(inventory_index) {
+                if let Some(item) = state.world.player.inventory.get(inventory_index) {
                     draw_tile_sprite(commands, at + CELL_INSET, item.sprite);
                 };
 

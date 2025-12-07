@@ -93,6 +93,8 @@ pub enum CollectAction {
 
 pub type OnCollect = Vec<CollectAction>;
 
+pub type Inventory = Vec<Entity>;
+
 pub type EntityFlags = u8;
 
 pub const COLLECTABLE: EntityFlags = 1 << 0;
@@ -109,7 +111,8 @@ pub struct Entity {
     pub def_id: DefId,
     pub desires: Desires,
     pub on_collect: OnCollect,
-    pub flags: EntityFlags
+    pub flags: EntityFlags,
+    pub inventory: Inventory,
 }
 
 impl Entity {
@@ -129,6 +132,7 @@ impl Entity {
             def_id,
             desires,
             flags,
+            on_collect,
             ..<_>::default()
         }
     }

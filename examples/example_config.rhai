@@ -12,6 +12,7 @@ import "entity_flags" as EF;
 const MOB = 0;
 const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
 const END_DOOR = EF::STEPPABLE | EF::VICTORY | EF::NOT_SPAWNED_AT_START;
+const LOCKED_DOOR = EF::STEPPABLE;
 
 import "default_spritesheet" as DS;
 import "entity_ids" as ID;
@@ -72,7 +73,7 @@ import "collect_actions" as CA;
             tile_sprite: DS::OPEN_DOOR,
         },
         #{
-            flags: MOB,
+            flags: LOCKED_DOOR,
             tile_sprite: DS::LOCKED_DOOR_1,
         },
         #{

@@ -87,7 +87,7 @@ use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 // * Is now a good time for an inventory menu? ✔
 //    * How should the inventory work?
 //        * A grid, with a little description along the bottom?
-//            * Implies either like carefully fitting the description into a given space, or some way to scroll. 
+//            * Implies either like carefully fitting the description into a given space, or some way to scroll.
 //                * Automatic scrolling is an established thing, and we can make the scroll speed adjustable if needed.
 //    * Given items are entities, we'd need to support a way to show any entity in the inventory
 //        * Maybe they shouldn't be? Or is what we use to display them on the map enough already?
@@ -104,22 +104,22 @@ use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 //              annotaion described below?
 //        * Best way, given the implicit ID structure, seems to be to allow saying "The previous mob wants the previous item"
 //            * `wanted_by: relative(-1)`
-//                * So an absolute reference would be possible. We can have `relative` return a map with a kind field 
+//                * So an absolute reference would be possible. We can have `relative` return a map with a kind field
 //                  to check during parsing.
 //            * What about making the mob be marked as wanting the item? I don't think it makes a big difference
 //              to the parsing code, but I expect it might be more inuitive that way when writing the config.
 //                * `wants: relative(-1)`
 //    * Will also need a way to actually win the whole run, and  thus a way to determine that from the config file.
-//        * I like the idea of a random goal as an option. Like this time they just really want some donuts. 
-//          But then this time they need the secret codes to overthrow the facist government, or the last known 
+//        * I like the idea of a random goal as an option. Like this time they just really want some donuts.
+//          But then this time they need the secret codes to overthrow the facist government, or the last known
 //          wherabouts of the person they are investigating the disappearance of, or their mom wants the donuts.
 //        * Should also allow "triforce hunt" runs, where it's get N of M of a certain kind of item.
 //        * So an optional field on the root that indicates the goal I guess? Probably needs a specific GoalSpec type.
 //            * We will eventually want to have boss fights or "beat this minigame" as goals.
 //            * I guess minigame entrances can be represented as entities?
-//                * So maybe instead of a COLLECTABLE flag, it's a "steppable" flag, and the things have a 
+//                * So maybe instead of a COLLECTABLE flag, it's a "steppable" flag, and the things have a
 //                  "when_stepped_on" field that can be "collect" vs "start minigame"?
-//                    * Maybe doors can be placed on walls, and then still be "steppable"? Or does that 
+//                    * Maybe doors can be placed on walls, and then still be "steppable"? Or does that
 //                      complicate things, and they should just embed a wall into the sprite if they want
 //                      to look like that? Feels like the second one.
 //        * I think the goal for this next pass should be to get to a random item is on the ground, than one npc wants,
@@ -134,13 +134,14 @@ use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 //                * Let's do at least the most basic version: some text in the pause menu
 //            * Add a locked door/portal sprite ✔
 //            * Add a key sprite ✔
-//            * Ensure the key spawns
+//            * Ensure the key spawns ✔
 //                * Add to config as new item entry
-//            * Have the portal start locked
+//                    * Turned out to need more than that!
+//            * Have the portal start locked ✔
 //                * Spawn only the locked door at the start
 //                    * Have a "NOT_SPAWNED_AT_START" flag that defaults to false
 //                        * Less work than marking all the other entities
-//            * Make collecting the key open the corresponding door
+//            * Make collecting the key open the corresponding door ✔
 //                * Allow it to work for multiple doors in the future
 //                    * Markup key as transforming instances of one entity ID into another
 //            * Put items in the NPC's pockets, and have them actually give them to you when you give them a thing
@@ -160,9 +161,9 @@ use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 //    * All the standard Roguelike things
 //    * The standard set of "here's a how to make a game tutorial" easy genres
 //    * The thing where you start with people speaking in a weird unitelligble script, then you get letters one by one
-//      that transform the script into standard english. I think this is a good fit because you can go out of logic 
+//      that transform the script into standard english. I think this is a good fit because you can go out of logic
 //      with some good guesses about what is meant, which is often fun. Can scramble the glyph replacements so players
-//      can't learn the alternate script by heart, but maybe allow a setting to keep it the same. And obviously there 
+//      can't learn the alternate script by heart, but maybe allow a setting to keep it the same. And obviously there
 //      should be one to turn this mechanic off.
 //      * Eventually can expand this with something more linguistically complex.
 //    * Idleon seems to have a bunch of minigames, that are already based around getting a reward
@@ -177,7 +178,7 @@ pub mod config {
             $all_name: ident : $type: ty;
             $($name: ident = $value: expr),+ $(,)?
         ) => {
-            
+
 
             pub const $all_name: [(&str, $type); const {
                 let mut count = 0;
@@ -353,14 +354,14 @@ mod random {
         let offset = xs::range(rng, 0..len as u32) as usize;
         for index in 0..len {
             let i = (index + offset) % len;
-    
+
             let tile = &segment.tiles[i];
-    
+
             if is_passable(tile) {
                 return Some(i_to_xy(segment.width, i));
             }
         }
-    
+
         None
     }
 
@@ -375,9 +376,9 @@ mod random {
         let offset = xs::range(rng, 0..len as u32) as usize;
         for index in 0..len {
             let i = (index + offset) % len;
-    
+
             let current_tile_flags = &segment.tiles[i];
-    
+
             if current_tile_flags & needle_flags == needle_flags {
                 let current_xy = i_to_xy(segment.width, i);
                 if !filter_out.iter().any(|&xy| current_xy == xy) {
@@ -385,7 +386,7 @@ mod random {
                 }
             }
         }
-    
+
         None
     }
 
@@ -413,7 +414,7 @@ mod entities {
         pub id: SegmentId,
         pub xy: XY
     }
-    
+
     pub fn entity_key(id: SegmentId, x: X, y: Y) -> Key {
         Key {
             id,
@@ -425,7 +426,7 @@ mod entities {
     pub struct Entities {
         map: BTreeMap<Key, Entity>,
     }
-    
+
     impl Entities {
         pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
             self.map.values_mut()
@@ -456,37 +457,37 @@ mod entities {
     mod entities_works {
         use models::{xy::{x, y}};
         use super::*;
-    
+
         #[test]
         fn when_pulling_out_this_range() {
             let mut entities = Entities::default();
-    
+
             let id = 0;
-    
+
             let mut a = Entity::default();
             a.x = x(1);
             a.y = y(2);
-    
+
             let mut b = Entity::default();
             b.x = x(3);
             b.y = y(3);
-    
+
             let mut c = Entity::default();
             c.x = x(1);
             c.y = y(2);
-    
+
             entities.insert(id, a.clone());
             entities.insert(id, b.clone());
             entities.insert(id + 1, c);
-    
+
             let mut actual = vec![];
-    
+
             for (_, v) in entities.for_id(id) {
                 actual.push(v.xy());
             }
-    
+
             let expected = vec![a.xy(), b.xy()];
-    
+
             assert_eq!(actual, expected);
         }
     }
@@ -509,14 +510,16 @@ impl World {
         std::iter::once(&mut self.player).chain(self.steppables.all_entities_mut().chain(self.mobs.all_entities_mut()))
     }
 
-    pub fn get_entity(&self, key: entities::Key) -> Option<&Entity> {
-        let player_key = entity_key(
+    pub fn player_key(&self) -> entities::Key {
+        entity_key(
             self.segment_id,
             self.player.x,
             self.player.y,
-        );
+        )
+    }
 
-        if key == player_key {
+    pub fn get_entity(&self, key: entities::Key) -> Option<&Entity> {
+        if key == self.player_key() {
             return Some(&self.player)
         }
 
@@ -524,13 +527,7 @@ impl World {
     }
 
     pub fn get_entity_mut(&mut self, key: entities::Key) -> Option<&mut Entity> {
-        let player_key = entity_key(
-            self.segment_id,
-            self.player.x,
-            self.player.y,
-        );
-
-        if key == player_key {
+        if key == self.player_key() {
             return Some(&mut self.player)
         }
 
@@ -557,8 +554,6 @@ fn can_walk_onto(world: &World, id: SegmentId, x: X, y: Y) -> bool {
 
     false
 }
-
-pub type Inventory = Vec<Entity>;
 
 /// 64k speech boxes ought to be enough for anybody!
 pub type SpeechIndex = u16;
@@ -678,12 +673,11 @@ impl From<&EntityDef> for MiniEntityDef {
 pub struct State {
     pub rng: Xs,
     pub world: World,
-    pub player_inventory: Inventory,
     pub mode: Mode,
     pub fade_message_specs: FadeMessageSpecs,
     pub shake_amount: ShakeAmount,
     // Fairly direct from the config section {
-    // Is the lookup acceleration, reduced memory usage etc. worth the extra code vs 
+    // Is the lookup acceleration, reduced memory usage etc. worth the extra code vs
     // just storing the config here directly?
     pub speeches: Speeches,
     pub inventory_descriptions: Speeches,
@@ -855,29 +849,6 @@ impl State {
         xs::shuffle(&mut rng, &mut item_defs);
         xs::shuffle(&mut rng, &mut door_defs);
 
-        // TEMP: Get the key to spawn for testing. Later, it should be given as a reward
-        for item_def in &item_defs {
-            if item_def.on_collect.is_empty() { continue }
-
-            let key_xy = random::tile_matching_flags_besides(
-                &mut rng,
-                &config_segment,
-                ITEM_START,
-                &placed_already,
-            ).ok_or(Error::CannotPlaceDoor)?;
-
-            world.steppables.insert(
-                first_segment.id,
-                to_entity(
-                    item_def,
-                    key_xy.x,
-                    key_xy.y
-                ),
-            );
-
-            placed_already.push(key_xy);
-        }
-
         for door_def in &door_defs {
             if door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START {
                 continue
@@ -889,7 +860,7 @@ impl State {
                 FLOOR | DOOR_START,
                 &placed_already,
             ).ok_or(Error::CannotPlaceDoor)?;
-    
+
             world.steppables.insert(
                 first_segment.id,
                 to_entity(
@@ -902,6 +873,7 @@ impl State {
             placed_already.push(d_xy);
         }
 
+        #[derive(Debug)]
         struct Constraints<'desires> {
             desires: Vec<config::DesireRef<'desires>>,
         }
@@ -913,21 +885,27 @@ impl State {
 
             let mut desires: Vec<_> = Vec::with_capacity(target_len);
 
-            let mut index = initial_index;
-            while desires.len() < target_len {
-                // Select the index or not, at a rate proportional to how many we need.
-                if (xs::range(rng, 0..all_desires.len() as u32 + 1) as usize) < target_len {
-                    desires.push(all_desires[index]);
-                }
+            let mut tries = 0;
+            while desires.len() < target_len && tries < 16 {
+                tries += 1;
 
-                index += 1;
-                if index >= all_desires.len() {
-                    index = 0;
-                }
+                desires.clear();
+                let mut index = initial_index;
+                while desires.len() < target_len {
+                    // Select the index or not, at a rate proportional to how many we need.
+                    if (xs::range(rng, 0..all_desires.len() as u32 + 1) as usize) < target_len {
+                        desires.push(all_desires[index]);
+                    }
 
-                if index == initial_index {
-                    // Avoid using the value from any index more than once.
-                    break
+                    index += 1;
+                    if index >= all_desires.len() {
+                        index = 0;
+                    }
+
+                    if index == initial_index {
+                        // Avoid using the value from any index more than once.
+                        break
+                    }
                 }
             }
 
@@ -937,7 +915,7 @@ impl State {
         }
 
         let constraints: Constraints = select_constraints(&mut rng, &all_desires);
-
+        dbg!(&constraints);
         for desire in constraints.desires {
             let mut attempts = 0;
 
@@ -959,13 +937,27 @@ impl State {
                         ITEM_START,
                         &placed_already,
                     ) {
-                        world.mobs.insert(
-                            first_segment.id,
-                            to_entity(
-                                &desire.mob_def,
+                        let mut mob = to_entity(
+                            &desire.mob_def,
+                            npc_xy.x,
+                            npc_xy.y
+                        );
+
+                        // TEMP: Get the key in a pocket for testing. Later, we should chain things together
+                        for item_def in &item_defs {
+                            if item_def.on_collect.is_empty() { continue }
+
+                            mob.inventory.push(to_entity(
+                                item_def,
+                                // Just stuffing some x.y in here. Shouldn't ultimately matter what value we use.
                                 npc_xy.x,
                                 npc_xy.y
-                            ),
+                            ));
+                        }
+
+                        world.mobs.insert(
+                            first_segment.id,
+                            mob,
                         );
 
                         world.steppables.insert(
@@ -993,7 +985,6 @@ impl State {
         Ok(State {
             rng,
             world,
-            player_inventory: <_>::default(),
             mode: <_>::default(),
             fade_message_specs: <_>::default(),
             shake_amount: <_>::default(),
@@ -1053,7 +1044,7 @@ impl State {
             let key = entity_key(self.world.segment_id, self.world.player.x, self.world.player.y);
 
             if let Some(steppable) = self.world.steppables.remove(key) {
-                // Mostly for testing purposes until we get to combat or other things that make sense to cause 
+                // Mostly for testing purposes until we get to combat or other things that make sense to cause
                 // screenshake
                 self.shake_amount = 5;
 
@@ -1073,7 +1064,7 @@ impl State {
                             }
                         }
                     }
-                    self.player_inventory.push(steppable);
+                    self.world.player.inventory.push(steppable);
                 } else if steppable.is_victory() {
                     self.mode = Mode::Victory(<_>::default());
                 } else {
@@ -1105,8 +1096,8 @@ impl State {
         for desire in &mut mob.desires {
             use models::DesireState::*;
             // Check if mob should notice the player's item.
-            if desire.state == Unsatisfied 
-            && self.player_inventory.iter().any(|e| e.def_id == desire.def_id) {
+            if desire.state == Unsatisfied
+            && entity.inventory.iter().any(|e| e.def_id == desire.def_id) {
                 desire.state = SatisfactionInSight;
                 post_action = PostTalkingAction::TakeItem(key, desire.def_id);
             }
