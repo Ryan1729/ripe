@@ -98,7 +98,8 @@ pub type Inventory = Vec<Entity>;
 pub type EntityFlags = u8;
 
 pub const COLLECTABLE: EntityFlags = 1 << 0;
-pub const VICTORY: EntityFlags = 1 << 1;
+pub const STEPPABLE: EntityFlags = 1 << 1;
+pub const VICTORY: EntityFlags = 1 << 2;
 
 // Fat-struct for entities! Fat-struct for entities!
 #[derive(Clone, Default, Debug)]
@@ -162,6 +163,10 @@ impl Entity {
 
     pub fn is_collectable(&self) -> bool {
         self.flags & COLLECTABLE == COLLECTABLE
+    }
+
+    pub fn is_steppable(&self) -> bool {
+        self.flags & STEPPABLE == STEPPABLE
     }
 
     pub fn is_victory(&self) -> bool {

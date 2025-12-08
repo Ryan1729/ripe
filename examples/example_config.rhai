@@ -11,8 +11,8 @@ import "entity_flags" as EF;
 
 const MOB = 0;
 const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
-const END_DOOR = EF::STEPPABLE | EF::VICTORY | EF::NOT_SPAWNED_AT_START;
-const LOCKED_DOOR = EF::STEPPABLE;
+const END_DOOR = EF::DOOR | EF::STEPPABLE | EF::VICTORY | EF::NOT_SPAWNED_AT_START;
+const LOCKED_DOOR = EF::DOOR;
 
 import "default_spritesheet" as DS;
 import "entity_ids" as ID;
@@ -75,10 +75,16 @@ import "collect_actions" as CA;
         #{
             flags: LOCKED_DOOR,
             tile_sprite: DS::LOCKED_DOOR_1,
+            speeches: [
+                [ "A locked red-gold door. Bet the key is red-gold too." ],
+            ],
         },
         #{
             flags: ITEM,
             tile_sprite: DS::KEY_1,
+            inventory_description: [
+                ["A red-gold key. Bet it opens a red-gold door."],
+            ],
             on_collect: [
                 #{
                     kind: CA::TRANSFORM,

@@ -417,9 +417,7 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
                                 }
 
                                 if let Some(reward) = reward_opt {
-                                    if let Some(g_e) = state.world.get_entity_mut(giving_entity_key) {
-                                        g_e.inventory.push(reward);
-                                    }
+                                    state.push_inventory(giving_entity_key, reward);
                                 }
                             }
                         }

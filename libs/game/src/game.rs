@@ -144,7 +144,7 @@ use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 //            * Make collecting the key open the corresponding door ✔
 //                * Allow it to work for multiple doors in the future
 //                    * Markup key as transforming instances of one entity ID into another
-//            * Put items in the NPC's pockets, and have them actually give them to you when you give them a thing
+//            * Put items in the NPC's pockets, and have them actually give them to you when you give them a thing ✔
 //            * Once it has been shown to work for one door, actually make multiple doors
 
 // A note about eventual design:
@@ -240,6 +240,7 @@ pub mod config {
         STEPPABLE = 1 << 1,
         VICTORY = 1 << 2,
         NOT_SPAWNED_AT_START = 1 << 3,
+        DOOR = 1 << 4,
     }
 
     pub type EntityDefIdRefKind = u8;
@@ -298,7 +299,7 @@ pub mod config {
         }
     }
 }
-pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START};
+pub use config::{Config, EntityDef, EntityDefFlags, TileFlags, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START, DOOR};
 
 pub fn to_entity(
     def: &MiniEntityDef,
@@ -309,6 +310,10 @@ pub fn to_entity(
 
     if def.flags & config::COLLECTABLE == config::COLLECTABLE {
         flags |= models::COLLECTABLE;
+    }
+
+    if def.flags & config::STEPPABLE == config::STEPPABLE {
+        flags |= models::STEPPABLE;
     }
 
     if def.flags & config::VICTORY == config::VICTORY {
@@ -810,7 +815,7 @@ impl State {
         for def in &entity_defs {
             if def.flags & COLLECTABLE == COLLECTABLE {
                 item_defs.push(def.clone());
-            } else if def.flags & STEPPABLE == STEPPABLE {
+            } else if def.flags & DOOR == DOOR {
                 door_defs.push(def.clone());
             } else {
                 mob_defs.push(def.clone());
@@ -915,7 +920,7 @@ impl State {
         }
 
         let constraints: Constraints = select_constraints(&mut rng, &all_desires);
-        dbg!(&constraints);
+
         for desire in constraints.desires {
             let mut attempts = 0;
 
@@ -1034,6 +1039,16 @@ impl State {
         };
 
         if can_walk_onto(&self.world, self.world.segment_id, new_x, new_y) {
+            if let Some(steppable) = self.world.steppables.get(
+                entity_key(self.world.segment_id, new_x, new_y)
+            ) {
+                if steppable.flags & STEPPABLE != STEPPABLE {
+                    // Doors or other things which may become steppable, but aren't now.
+                    // TODO: Is the world.steppables/world.mobs distinction worth it?
+                    return
+                }
+            }
+
             // TODO? Worth making every update to any entities x/y update the offset?
             self.world.player.offset_x = offset::X::from(self.world.player.x) - offset::X::from(new_x);
             self.world.player.offset_y = offset::Y::from(self.world.player.y) - offset::Y::from(new_y);
@@ -1041,7 +1056,7 @@ impl State {
             self.world.player.x = new_x;
             self.world.player.y = new_y;
 
-            let key = entity_key(self.world.segment_id, self.world.player.x, self.world.player.y);
+            let key = self.world.player_key();
 
             if let Some(steppable) = self.world.steppables.remove(key) {
                 // Mostly for testing purposes until we get to combat or other things that make sense to cause
@@ -1049,22 +1064,7 @@ impl State {
                 self.shake_amount = 5;
 
                 if steppable.is_collectable() {
-                    for action in &steppable.on_collect {
-                        match action {
-                            CollectAction::Transform { from, to } => {
-                                if let Some(to_def) = self.entity_defs.get((*to) as usize) {
-                                    for entity in self.world.all_entities_mut() {
-                                        if entity.def_id == *from {
-                                            transform_entity(entity, to_def);
-                                        }
-                                    }
-                                } else {
-                                    debug_assert!(false, "Why are we trying to transform something into something that doesn't exist? to {to}");
-                                }
-                            }
-                        }
-                    }
-                    self.world.player.inventory.push(steppable);
+                    self.push_inventory(key, steppable);
                 } else if steppable.is_victory() {
                     self.mode = Mode::Victory(<_>::default());
                 } else {
@@ -1085,7 +1085,7 @@ impl State {
 
         let key = entity_key(self.world.segment_id, target_x, target_y);
 
-        let Some(mob) = self.world.mobs.get_mut(key) else {
+        let Some(interactable) = self.world.mobs.get_mut(key).or_else(|| self.world.steppables.get_mut(key)) else {
             self.fade_message_specs.push(
                 FadeMessageSpec::new(format!("there's nobody there."), entity.xy())
             );
@@ -1093,9 +1093,9 @@ impl State {
         };
 
         let mut post_action = PostTalkingAction::NoOp;
-        for desire in &mut mob.desires {
+        for desire in &mut interactable.desires {
             use models::DesireState::*;
-            // Check if mob should notice the player's item.
+            // Check if interactable should notice the player's item.
             if desire.state == Unsatisfied
             && entity.inventory.iter().any(|e| e.def_id == desire.def_id) {
                 desire.state = SatisfactionInSight;
@@ -1103,7 +1103,7 @@ impl State {
             }
         }
 
-        let speeches_key = mob.speeches_key();
+        let speeches_key = interactable.speeches_key();
 
         if let Some(speeches) = self.speeches.get(speeches_key) {
             if !speeches.is_empty() {
@@ -1116,7 +1116,7 @@ impl State {
             FadeMessageSpec::new(
                 format!(
                     "what do you want me to do with {}?",
-                    models::entity_article_phrase(mob),
+                    models::entity_article_phrase(interactable),
                 ),
                 entity.xy()
             )
@@ -1158,6 +1158,30 @@ impl State {
 
             entity.offset_x -= sign(entity.offset_x) * DECAY_RATE;
             entity.offset_y -= sign(entity.offset_y) * DECAY_RATE;
+        }
+    }
+
+    pub fn push_inventory(&mut self, target_key: entities::Key, item: Entity) {
+        if target_key == self.world.player_key() {
+            for action in &item.on_collect {
+                match action {
+                    CollectAction::Transform { from, to } => {
+                        if let Some(to_def) = self.entity_defs.get((*to) as usize) {
+                            for entity in self.world.all_entities_mut() {
+                                if entity.def_id == *from {
+                                    transform_entity(entity, to_def);
+                                }
+                            }
+                        } else {
+                            debug_assert!(false, "Why are we trying to transform something into something that doesn't exist? to {to}");
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(target) = self.world.get_entity_mut(target_key) {
+            target.inventory.push(item);
         }
     }
 }
