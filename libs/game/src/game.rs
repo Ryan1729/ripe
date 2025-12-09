@@ -145,7 +145,26 @@ use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 //                * Allow it to work for multiple doors in the future
 //                    * Markup key as transforming instances of one entity ID into another
 //            * Put items in the NPC's pockets, and have them actually give them to you when you give them a thing ✔
-//            * Once it has been shown to work for one door, actually make multiple doors
+//            * Once it has been shown to work for one door, actually make multiple doors, where only one key works on each ✔
+//                * Initially, they can both be victory doors
+//            * Actually chain the desires together, so one NPC has what the other wants, and the other has the key, and the first item is on the ground
+//                * pull in mini_kanren for this, and see if that works out
+
+// Steps for "Add hallways between rooms that we'll figure out a way to make more interesting later"
+// * Define a second room. Have going through a door take you there
+//    * Make that door always open for now
+// * Spawn a return door in that room
+//    * Spawn next to it when entering
+// * Allow entities to spawn in either room, relying on the door being always open to make things solvable
+// * firgure out how to handle the door
+// * Add a hallway between the two rooms, which doesn't need to participate in the puzzle at all.
+//    * For now, every hallway can be the same, short of like one tile between doors or whatever
+// * Define more NPCs and items, confirm that larger puzzles still work
+// * Add more possible rooms, and connect them with open hallways for now
+//    * if it helps, can have them all spoke off the first room to start with. 
+//      But once that's working, the next step is allowing arbitrary connections between rooms.
+// * Allow hallways between the rooms to be locked by keys. Do some checking to confirm that seeds are solvable, if that seems in doubt
+
 
 // A note about eventual design:
 // This bit about Mewgenics having one massive Character class makes me want to support that kind of thing:
@@ -987,6 +1006,28 @@ impl State {
             }
         }
 
+        // TEMP: spawn the keys on the ground to test things
+        for item_def in &item_defs {
+            if item_def.on_collect.is_empty() { continue }
+
+            if let Some(item_xy) = random::tile_matching_flags_besides(
+                &mut rng,
+                &config_segment,
+                ITEM_START,
+                &placed_already,
+            ) {
+                world.steppables.insert(
+                    first_segment.id,
+                    to_entity(
+                        item_def,
+                        item_xy.x,
+                        item_xy.y
+                    ),
+                );
+                placed_already.push(item_xy);
+            }
+        }
+        
         Ok(State {
             rng,
             world,

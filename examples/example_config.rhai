@@ -93,5 +93,26 @@ import "collect_actions" as CA;
                 }
             ],
         },
+        #{
+            flags: LOCKED_DOOR,
+            tile_sprite: DS::LOCKED_DOOR_2,
+            speeches: [
+                [ "A locked blue-grey door. Bet the key is blue-grey too." ],
+            ],
+        },
+        #{
+            flags: ITEM,
+            tile_sprite: DS::KEY_2,
+            inventory_description: [
+                ["A blue-grey key. Bet it opens a blue-grey door."],
+            ],
+            on_collect: [
+                #{
+                    kind: CA::TRANSFORM,
+                    from: ID::relative(-1),
+                    to: ID::relative(-4),
+                }
+            ],
+        },
     ],
 }
