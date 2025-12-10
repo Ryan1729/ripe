@@ -147,8 +147,14 @@ use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 //            * Put items in the NPC's pockets, and have them actually give them to you when you give them a thing ✔
 //            * Once it has been shown to work for one door, actually make multiple doors, where only one key works on each ✔
 //                * Initially, they can both be victory doors
-//            * Actually chain the desires together, so one NPC has what the other wants, and the other has the key, and the first item is on the ground
+//            * Actually chain the desires together, so one NPC has what the other wants, and the other has the key, and the first item is on the ground ✔
 //                * pull in mini_kanren for this, and see if that works out
+//                    * Verdict: Too many weird, unclear-how-to-debug issues to make that a good idea.
+//                * mini_kanren output was  in the form of a list of item, astract-location pairs. 
+//                  Like `[("floor", "item 1"), ("npc 1", "item 2"), ("npc 2", "goal")]`
+//                  I think a list of structs like that, which will likely have a segment number later, makes sense as 
+//                  an output format. The Constriants struct close but not exactly a list of those already.
+
 
 // Steps for "Add hallways between rooms that we'll figure out a way to make more interesting later"
 // * Define a second room. Have going through a door take you there
@@ -723,7 +729,8 @@ pub enum Error {
     NoMobsFound,
     NoItemsFound,
     NoDoorsFound,
-    CouldNotSatisfyDesire(config::Desire),
+    NoGoalItemFound,
+    CouldNotPlaceItem(MiniEntityDef),
     InvalidDesireID(MiniEntityDef, SegmentId),
     NonItemWasDesired(MiniEntityDef, MiniEntityDef, SegmentId),
     InvalidSpeeches(speeches::PushError),
@@ -898,27 +905,65 @@ impl State {
         }
 
         #[derive(Debug)]
-        struct Constraints<'desires> {
-            desires: Vec<config::DesireRef<'desires>>,
+        enum AbstractLocation<'defs> {
+            Floor,
+            NpcPocket(&'defs MiniEntityDef),
         }
 
-        // Select a random subset of the desires to make into constriants
-        fn select_constraints<'defs>(rng: &mut Xs, all_desires: &[config::DesireRef<'defs>]) -> Constraints<'defs> {
-            let target_len = xs::range(rng, 1..all_desires.len() as u32 + 1) as usize;
+        #[derive(Debug)]
+        struct ItemSpec<'defs> {
+            // segment_id: SegmentId, // Expected to be added later
+            item_def: &'defs MiniEntityDef,
+            location: AbstractLocation<'defs>,
+        }
+
+        #[derive(Debug)]
+        struct Constraints<'defs> {
+            item_specs: Vec<ItemSpec<'defs>>,
+        }
+
+        fn select_constraints<'defs>(
+            rng: &mut Xs,
+            all_desires: &[config::DesireRef<'defs>],
+            goal_item_def: &'defs MiniEntityDef,
+        ) -> Constraints<'defs> {
+            let desire_count_to_use = xs::range(rng, 1..all_desires.len() as u32 + 1) as usize;
+            // We end up with 1 more spec than the desires we use, becauase we start with one that doesn't use any.
+            let target_len = desire_count_to_use + 1;
             let initial_index = xs::range(rng, 0..all_desires.len() as u32) as usize;
 
-            let mut desires: Vec<_> = Vec::with_capacity(target_len);
+            let mut item_specs: Vec<_> = Vec::with_capacity(target_len);
 
             let mut tries = 0;
-            while desires.len() < target_len && tries < 16 {
+            while item_specs.len() < target_len && tries < 16 {
                 tries += 1;
+                item_specs.clear();
 
-                desires.clear();
+                item_specs.push(ItemSpec{
+                    item_def: goal_item_def,
+                    location: AbstractLocation::Floor,
+                });
+
                 let mut index = initial_index;
-                while desires.len() < target_len {
+                while item_specs.len() < target_len {
                     // Select the index or not, at a rate proportional to how many we need.
                     if (xs::range(rng, 0..all_desires.len() as u32 + 1) as usize) < target_len {
-                        desires.push(all_desires[index]);
+                        let Some(last) = item_specs.pop() else {
+                            debug_assert!(false, "item_specs.pop() == None");
+                            continue
+                        };
+
+                        let desire = all_desires[index];
+                        
+                        item_specs.push(ItemSpec{
+                            item_def: desire.item_def,
+                            location: last.location,
+                        });
+
+                        item_specs.push(ItemSpec{
+                            item_def: last.item_def,
+                            location: AbstractLocation::NpcPocket(desire.mob_def),
+                        });
                     }
 
                     index += 1;
@@ -934,75 +979,89 @@ impl State {
             }
 
             Constraints {
-                desires,
+                item_specs,
             }
         }
 
-        let constraints: Constraints = select_constraints(&mut rng, &all_desires);
+        let mut goal_item_def = None;
 
-        for desire in constraints.desires {
+        // TODO mark up the goal item in the config?
+        for item_def in &item_defs {
+            if item_def.on_collect.is_empty() { continue }
+
+            goal_item_def = Some(item_def.into());
+            break
+        }
+
+        let Some(goal_item_def) = goal_item_def else {
+            return Err(Error::NoGoalItemFound);
+        };
+
+        let constraints: Constraints = select_constraints(&mut rng, &all_desires, goal_item_def);
+
+        for item_spec in constraints.item_specs {
             let mut attempts = 0;
 
             while attempts < 16 {
                 attempts += 1;
 
-                // TODO? Is there a nicer way to do this nested checking, and handle `placed_already`?
-                if let Some(npc_xy) = random::tile_matching_flags_besides(
-                    &mut rng,
-                    &config_segment,
-                    NPC_START,
-                    &placed_already,
-                ) {
-                    placed_already.push(npc_xy);
-
-                    if let Some(item_xy) = random::tile_matching_flags_besides(
-                        &mut rng,
-                        &config_segment,
-                        ITEM_START,
-                        &placed_already,
-                    ) {
-                        let mut mob = to_entity(
-                            &desire.mob_def,
-                            npc_xy.x,
-                            npc_xy.y
-                        );
-
-                        // TEMP: Get the key in a pocket for testing. Later, we should chain things together
-                        for item_def in &item_defs {
-                            if item_def.on_collect.is_empty() { continue }
-
-                            mob.inventory.push(to_entity(
-                                item_def,
-                                // Just stuffing some x.y in here. Shouldn't ultimately matter what value we use.
+                use AbstractLocation::*;
+                match item_spec.location {
+                    Floor => {
+                        if let Some(item_xy) = random::tile_matching_flags_besides(
+                            &mut rng,
+                            &config_segment,
+                            ITEM_START,
+                            &placed_already,
+                        ) {
+                            world.steppables.insert(
+                                first_segment.id,
+                                to_entity(
+                                    item_spec.item_def,
+                                    item_xy.x,
+                                    item_xy.y
+                                ),
+                            );
+                            placed_already.push(item_xy);
+                            break
+                        }
+                    },
+                    NpcPocket(npc_def) => {
+                        if let Some(npc_xy) = random::tile_matching_flags_besides(
+                            &mut rng,
+                            &config_segment,
+                            NPC_START,
+                            &placed_already,
+                        ) {
+                            placed_already.push(npc_xy);
+        
+                            let mut mob = to_entity(
+                                npc_def,
                                 npc_xy.x,
                                 npc_xy.y
-                            ));
+                            );
+
+                            mob.inventory.push(
+                                to_entity(
+                                    item_spec.item_def,
+                                    npc_xy.x,
+                                    npc_xy.y
+                                )
+                            );
+
+                            world.mobs.insert(
+                                first_segment.id,
+                                mob,
+                            );
+    
+                            break
                         }
-
-                        world.mobs.insert(
-                            first_segment.id,
-                            mob,
-                        );
-
-                        world.steppables.insert(
-                            first_segment.id,
-                            to_entity(
-                                &desire.item_def,
-                                item_xy.x,
-                                item_xy.y
-                            ),
-                        );
-                        placed_already.push(item_xy);
-
-                        break
-                    } else {
-                        placed_already.pop();
                     }
                 }
             }
 
             if attempts >= 16 {
-                return Err(Error::CouldNotSatisfyDesire(desire.to_owned()));
+                return Err(Error::CouldNotPlaceItem(item_spec.item_def.to_owned()));
             }
         }
 
