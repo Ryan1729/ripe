@@ -72,10 +72,12 @@ impl State {
 
         const MOB = 0;
         const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
-        const END_DOOR = EF::STEPPABLE | EF::VICTORY;
+        const END_DOOR = EF::DOOR | EF::STEPPABLE | EF::VICTORY | EF::NOT_SPAWNED_AT_START;
+        const LOCKED_DOOR = EF::DOOR;
 
         import "default_spritesheet" as DS;
         import "entity_ids" as ID;
+        import "collect_actions" as CA;
 
         #{
             segments: [
@@ -130,6 +132,48 @@ impl State {
                 #{
                     flags: END_DOOR,
                     tile_sprite: DS::OPEN_DOOR,
+                },
+                #{
+                    flags: LOCKED_DOOR,
+                    tile_sprite: DS::LOCKED_DOOR_1,
+                    speeches: [
+                        [ "A locked red-gold door. Bet the key is red-gold too." ],
+                    ],
+                },
+                #{
+                    flags: ITEM,
+                    tile_sprite: DS::KEY_1,
+                    inventory_description: [
+                        ["A red-gold key. Bet it opens a red-gold door."],
+                    ],
+                    on_collect: [
+                        #{
+                            kind: CA::TRANSFORM,
+                            from: ID::relative(-1),
+                            to: ID::relative(-2),
+                        }
+                    ],
+                },
+                #{
+                    flags: LOCKED_DOOR,
+                    tile_sprite: DS::LOCKED_DOOR_2,
+                    speeches: [
+                        [ "A locked blue-grey door. Bet the key is blue-grey too." ],
+                    ],
+                },
+                #{
+                    flags: ITEM,
+                    tile_sprite: DS::KEY_2,
+                    inventory_description: [
+                        ["A blue-grey key. Bet it opens a blue-grey door."],
+                    ],
+                    on_collect: [
+                        #{
+                            kind: CA::TRANSFORM,
+                            from: ID::relative(-1),
+                            to: ID::relative(-4),
+                        }
+                    ],
                 },
             ],
         }
@@ -204,7 +248,7 @@ pub fn release(state: &mut State, button: Button) {
     state.input.gamepad.remove(button);
 }
 
-const INVENTORY_WIDTH_CELLS: usize = 18;
+const INVENTORY_WIDTH_CELLS: usize = 13;
 const INVENTORY_HEIGHT_CELLS: usize = 8;
 const INVENTORY_MAX_INDEX: usize = (INVENTORY_WIDTH_CELLS * INVENTORY_HEIGHT_CELLS) - 1;
 
@@ -581,9 +625,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                 y: goal_inner_rect.y + goal_inner_rect.h.halve(),
             };
 
-            // TODO move this into the config.
-            const LOCKED_DOOR_1: TileSprite = 16;
-            draw_tile_sprite_centered_at(commands, image_xy, LOCKED_DOOR_1);
+            draw_tile_sprite_centered_at(commands, image_xy, state.goal_door_tile_sprite);
 
 
             //

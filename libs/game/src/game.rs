@@ -22,7 +22,7 @@ use xs::{Xs, Seed};
 use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 
 // Proposed Steps
-// * Make the simplest task: Go find a thing and bring it to the person who wants it
+// * Make the simplest task: Go find a thing and bring it to the person who wants it ✔
 //     * I think baking in things being parsed from a file early, makes sense
 //         * Can start with an embedded string, just to exercise the parsing
 //             * JSON I guess? OR is our own format better?
@@ -30,12 +30,14 @@ use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 //     * Make the theme changeable, including graphics for now
 //     * Will need to figure out how this works for the wasm version. Uploadable file?
 //     * Will need to implement for desktop too, even if how it works is a little more clear
-// * Fill out the other interactions:
+// * Fill out the other interactions: ✔
 //    * Get told that there is a specific thing by the one that wants it
 //    * A proper "You won" screen
 //        * Probably make this customizable too
-// * Make it more complex by having a locked door that you get the key for by getting one person a thing, that prevents you from getting a second person a thing
-// * Add a way to have just collecting a thing unlock a door
+// * Make it more complex by having a locked door that you get the key for by getting one person a thing, that prevents you from getting a second person a thing ✘
+//    * Went in a different direction: doors are all portals to other places at the moment, as opposed to walls that can be removed
+//        * Could be worth coming back to that kind of door later
+// * Add a way to have just collecting a thing unlock a door ✔
 // * Add hallways between rooms that we'll figure out a way to make more interesting later
 //    * Drain some resource, probably. Say HP that can be restored at the safe rooms
 //        * So like a random hallway with like one monster in it, for now
@@ -150,10 +152,10 @@ use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 //            * Actually chain the desires together, so one NPC has what the other wants, and the other has the key, and the first item is on the ground ✔
 //                * pull in mini_kanren for this, and see if that works out
 //                    * Verdict: Too many weird, unclear-how-to-debug issues to make that a good idea.
-//                * mini_kanren output was  in the form of a list of item, astract-location pairs. 
+//                * mini_kanren output was  in the form of a list of item, astract-location pairs.
 //                  Like `[("floor", "item 1"), ("npc 1", "item 2"), ("npc 2", "goal")]`
-//                  I think a list of structs like that, which will likely have a segment number later, makes sense as 
-//                  an output format. The Constriants struct close but not exactly a list of those already.
+//                  I think a list of structs like that, which will likely have a segment number later, makes sense as
+//                  an output format. The Constraints struct close but not exactly a list of those already.
 
 
 // Steps for "Add hallways between rooms that we'll figure out a way to make more interesting later"
@@ -167,7 +169,7 @@ use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 //    * For now, every hallway can be the same, short of like one tile between doors or whatever
 // * Define more NPCs and items, confirm that larger puzzles still work
 // * Add more possible rooms, and connect them with open hallways for now
-//    * if it helps, can have them all spoke off the first room to start with. 
+//    * if it helps, can have them all spoke off the first room to start with.
 //      But once that's working, the next step is allowing arbitrary connections between rooms.
 // * Allow hallways between the rooms to be locked by keys. Do some checking to confirm that seeds are solvable, if that seems in doubt
 
@@ -713,6 +715,7 @@ pub struct State {
     pub inventory_descriptions: Speeches,
     pub entity_defs: Vec1<MiniEntityDef>,
     // }
+    pub goal_door_tile_sprite: TileSprite,
 }
 
 impl State {
@@ -880,29 +883,63 @@ impl State {
         xs::shuffle(&mut rng, &mut item_defs);
         xs::shuffle(&mut rng, &mut door_defs);
 
-        for door_def in &door_defs {
-            if door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START {
-                continue
+        let mut goal_info = None;
+
+        // TODO? mark up the goal items in the config?
+        // TODO? Helper for this pattern of "find a random place to start iterating?"
+        let index_offset = xs::range(&mut rng, 0..item_defs.len() as u32) as usize;
+        'find_goal: for iteration_index in 0..item_defs.len() {
+            let index = (iteration_index + index_offset) % item_defs.len();
+
+            let item_def = &item_defs[index];
+
+            if item_def.on_collect.is_empty() { continue }
+
+            for action in &item_def.on_collect {
+                match action {
+                    CollectAction::Transform{ from, to: _ } => {
+                        let Some(door_def) = door_defs.iter().find(|d| d.id == *from) else {
+                            continue
+                        };
+
+                        if door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START {
+                            continue
+                        }
+
+                        let d_xy = random::tile_matching_flags_besides(
+                            &mut rng,
+                            &config_segment,
+                            FLOOR | DOOR_START,
+                            &placed_already,
+                        ).ok_or(Error::CannotPlaceDoor)?;
+
+                        world.steppables.insert(
+                            first_segment.id,
+                            to_entity(
+                                door_def,
+                                d_xy.x,
+                                d_xy.y
+                            ),
+                        );
+
+                        placed_already.push(d_xy);
+
+                        let goal_door_tile_sprite = door_def.tile_sprite;
+
+                        goal_info = Some((
+                            item_def.into(),
+                            goal_door_tile_sprite,
+                        ));
+
+                        break 'find_goal
+                    }
+                }
             }
-
-            let d_xy = random::tile_matching_flags_besides(
-                &mut rng,
-                &config_segment,
-                FLOOR | DOOR_START,
-                &placed_already,
-            ).ok_or(Error::CannotPlaceDoor)?;
-
-            world.steppables.insert(
-                first_segment.id,
-                to_entity(
-                    door_def,
-                    d_xy.x,
-                    d_xy.y
-                ),
-            );
-
-            placed_already.push(d_xy);
         }
+
+        let Some((goal_item_def, goal_door_tile_sprite)) = goal_info else {
+            return Err(Error::NoGoalItemFound);
+        };
 
         #[derive(Debug)]
         enum AbstractLocation<'defs> {
@@ -954,7 +991,7 @@ impl State {
                         };
 
                         let desire = all_desires[index];
-                        
+
                         item_specs.push(ItemSpec{
                             item_def: desire.item_def,
                             location: last.location,
@@ -982,20 +1019,6 @@ impl State {
                 item_specs,
             }
         }
-
-        let mut goal_item_def = None;
-
-        // TODO mark up the goal item in the config?
-        for item_def in &item_defs {
-            if item_def.on_collect.is_empty() { continue }
-
-            goal_item_def = Some(item_def.into());
-            break
-        }
-
-        let Some(goal_item_def) = goal_item_def else {
-            return Err(Error::NoGoalItemFound);
-        };
 
         let constraints: Constraints = select_constraints(&mut rng, &all_desires, goal_item_def);
 
@@ -1034,7 +1057,7 @@ impl State {
                             &placed_already,
                         ) {
                             placed_already.push(npc_xy);
-        
+
                             let mut mob = to_entity(
                                 npc_def,
                                 npc_xy.x,
@@ -1053,7 +1076,7 @@ impl State {
                                 first_segment.id,
                                 mob,
                             );
-    
+
                             break
                         }
                     }
@@ -1065,28 +1088,6 @@ impl State {
             }
         }
 
-        // TEMP: spawn the keys on the ground to test things
-        for item_def in &item_defs {
-            if item_def.on_collect.is_empty() { continue }
-
-            if let Some(item_xy) = random::tile_matching_flags_besides(
-                &mut rng,
-                &config_segment,
-                ITEM_START,
-                &placed_already,
-            ) {
-                world.steppables.insert(
-                    first_segment.id,
-                    to_entity(
-                        item_def,
-                        item_xy.x,
-                        item_xy.y
-                    ),
-                );
-                placed_already.push(item_xy);
-            }
-        }
-        
         Ok(State {
             rng,
             world,
@@ -1096,6 +1097,7 @@ impl State {
             speeches,
             inventory_descriptions,
             entity_defs,
+            goal_door_tile_sprite,
         })
     }
 }
