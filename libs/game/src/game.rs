@@ -3,6 +3,7 @@ use models::{
     speeches,
     CollectAction,
     DefId,
+    DoorTarget,
     Entity,
     Speech,
     Speeches,
@@ -19,7 +20,7 @@ use models::{
 };
 use xs::{Xs, Seed};
 
-use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
+use platform_types::{arrow_timer::{ArrowTimer}, Vec1, vec1::vec1};
 
 // Proposed Steps
 // * Make the simplest task: Go find a thing and bring it to the person who wants it ✔
@@ -263,11 +264,11 @@ pub mod config {
 
     consts_def!{
         ALL_ENTITY_FLAGS: EntityDefFlags;
-        COLLECTABLE = 1 << 0,
-        STEPPABLE = 1 << 1,
-        VICTORY = 1 << 2,
-        NOT_SPAWNED_AT_START = 1 << 3,
-        DOOR = 1 << 4,
+        COLLECTABLE = models::COLLECTABLE,
+        STEPPABLE = models::STEPPABLE,
+        VICTORY = models::VICTORY,
+        DOOR = models::DOOR,
+        NOT_SPAWNED_AT_START = 1 << 4,
     }
 
     pub type EntityDefIdRefKind = u8;
@@ -333,20 +334,6 @@ pub fn to_entity(
     x: X,
     y: Y
 ) -> Entity {
-    let mut flags = 0;
-
-    if def.flags & config::COLLECTABLE == config::COLLECTABLE {
-        flags |= models::COLLECTABLE;
-    }
-
-    if def.flags & config::STEPPABLE == config::STEPPABLE {
-        flags |= models::STEPPABLE;
-    }
-
-    if def.flags & config::VICTORY == config::VICTORY {
-        flags |= models::VICTORY;
-    }
-
     Entity::new(
         x,
         y,
@@ -354,7 +341,8 @@ pub fn to_entity(
         def.id,
         def.wants.iter().map(|&def_id| models::Desire::new(def_id)).collect(),
         def.on_collect.clone(),
-        flags,
+        // This relies on the entity flags being a subset of the entity def flags.
+        def.flags,
     )
 }
 
@@ -447,12 +435,23 @@ mod entities {
         pub xy: XY
     }
 
+    impl Key {
+        pub fn xy(&self) -> XY {
+            self.xy
+        }
+    }
+
     pub fn entity_key(id: SegmentId, x: X, y: Y) -> Key {
         Key {
             id,
             xy: XY{x, y}
         }
     }
+
+    // Reminder, we're going with Fat Struct for Entities on this project. So, if you are here looking to
+    // add an data structure besides Entities that uses entity keys, say some kind of ByEntityKey<A>,
+    // then instead consider just adding a field to Entity. If we actually run into perf issues due to
+    // entities being large, then we'll know better then than now how to deal with them.
 
     #[derive(Clone, Debug, Default)]
     pub struct Entities {
@@ -476,8 +475,8 @@ mod entities {
             self.map.range(entity_key(id, X::MIN, Y::MIN)..=entity_key(id, X::MAX, Y::MAX))
         }
 
-        pub fn insert(&mut self, id: SegmentId, entity: Entity) -> Option<Entity> {
-            self.map.insert(entity_key(id, entity.x, entity.y), entity)
+        pub fn insert(&mut self, id: SegmentId, entity: Entity) {
+            self.map.insert(entity_key(id, entity.x, entity.y), entity);
         }
 
         pub fn remove(&mut self, key: Key) -> Option<Entity> {
@@ -528,8 +527,7 @@ use entities::{Entities, entity_key};
 
 #[derive(Clone, Default)]
 pub struct World {
-    // TODO a graph structure of `WorldSegment`s instead of just one
-    pub segment: WorldSegment,
+    pub segments: Vec1<WorldSegment>,
     /// The ID of the current segment we are in.
     pub segment_id: SegmentId,
     pub player: Entity,
@@ -565,14 +563,26 @@ impl World {
 
         self.mobs.get_mut(key).or_else(|| self.steppables.get_mut(key))
     }
+
+    pub fn warp_player_to(&mut self, target: &DoorTarget) {
+        self.segment_id = target.id;
+        self.player.x = target.xy.x;
+        self.player.y = target.xy.y;
+
+        self.player.offset_x = 0.;
+        self.player.offset_y = 0.;
+    }
 }
 
 fn can_walk_onto(world: &World, id: SegmentId, x: X, y: Y) -> bool {
-    let Ok(i) = xy_to_i(&world.segment, x, y) else {
+    let Some(segment) = world.segments.get(id as usize) else {
+        return false;
+    };
+    let Ok(i) = xy_to_i(segment, x, y) else {
         return false;
     };
 
-    if let Some(tile) = &world.segment.tiles.get(i) {
+    if let Some(tile) = segment.tiles.get(i) {
         let key = entity_key(id, x, y);
 
         if let Some(_) = world.mobs.get(key) {
@@ -634,6 +644,7 @@ pub enum Mode {
         description_talking: Option<TalkingState>,
     },
     Talking(TalkingState),
+    DoorTo(DoorTarget, DoorAnimation),
     Victory(DoorAnimation),
 }
 
@@ -738,19 +749,13 @@ pub enum Error {
     NonItemWasDesired(MiniEntityDef, MiniEntityDef, SegmentId),
     InvalidSpeeches(speeches::PushError),
     InvalidInventoryDescriptions(speeches::PushError),
+    // TODO? Push this back into the config, with a limited length Vec type?
+    TooManySegments,
 }
 
 impl State {
     pub fn new(seed: Seed, config: Config) -> Result<State, Error> {
         use config::{FLOOR, DOOR_START, PLAYER_START, NPC_START, ITEM_START};
-
-        let mut next_free_segment_id = 0;
-
-        let mut new_segment_id = || {
-            let output = next_free_segment_id;
-            next_free_segment_id += 1;
-            output
-        };
 
         let mut rng = xs::from_seed(seed);
 
@@ -759,7 +764,7 @@ impl State {
 
         let config_segment = &config.segments[index];
 
-        let tiles = config_segment.tiles.iter().map(
+        let tiles: Vec<_> = config_segment.tiles.iter().map(
             |tile_flags| {
                 Tile {
                     sprite: if tile_flags & FLOOR != 0 {
@@ -771,35 +776,25 @@ impl State {
             }
         ).collect();
 
-        let segment = WorldSegment {
-            id: new_segment_id(),
-            width: config_segment.width,
-            tiles,
+        // TODO randomize the amount here, and roll a different config segment for each one
+        let segments = vec1![
+            WorldSegment {
+                width: config_segment.width,
+                tiles: tiles.clone(),
+            },
+            WorldSegment {
+                width: config_segment.width,
+                tiles,
+            }
+        ];
+        let config_segments = vec![
+            config_segment,
+            config_segment
+        ];
+
+        let Ok(segments_count) = SegmentId::try_from(segments.len()) else {
+            return Err(Error::TooManySegments);
         };
-
-        let player = Entity {
-            sprite: models::PLAYER_SPRITE,
-            ..<_>::default()
-        };
-
-        let mut world = World {
-            player,
-            segment_id: segment.id,
-            segment,
-            steppables: <_>::default(),
-            mobs: <_>::default(),
-        };
-
-        let first_segment = &world.segment;
-
-        let p_xy = random::tile_matching_flags(&mut rng, &config_segment, PLAYER_START)
-            .or_else(|| random::passable_tile(&mut rng, first_segment))
-            .ok_or(Error::CannotPlacePlayer)?;
-        world.player.x = p_xy.x;
-        world.player.y = p_xy.y;
-
-        let mut placed_already = Vec::with_capacity(16);
-        placed_already.push(p_xy);
 
         let mut mob_defs = Vec::with_capacity(16);
         let mut item_defs = Vec::with_capacity(16);
@@ -883,6 +878,82 @@ impl State {
         xs::shuffle(&mut rng, &mut item_defs);
         xs::shuffle(&mut rng, &mut door_defs);
 
+        let player = Entity {
+            sprite: models::PLAYER_SPRITE,
+            ..<_>::default()
+        };
+
+        let mut world = World {
+            player,
+            segment_id: <_>::default(),
+            segments,
+            steppables: <_>::default(),
+            mobs: <_>::default(),
+        };
+
+        let first_segment = world.segments.first();
+        let first_segment_id = 0;
+
+        let mut placed_already = Vec::with_capacity(16);
+
+        let p_xy = random::tile_matching_flags(&mut rng, &config_segment, PLAYER_START)
+            .or_else(|| random::passable_tile(&mut rng, first_segment))
+            .ok_or(Error::CannotPlacePlayer)?;
+        world.player.x = p_xy.x;
+        world.player.y = p_xy.y;
+        placed_already.push(p_xy);
+
+        for door_def in &door_defs {
+            if door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START { continue }
+            if door_def.flags & STEPPABLE != STEPPABLE { continue }
+
+            for i in 0..segments_count {
+                for j in i..segments_count {
+                    if i == j { continue }
+
+                    let config_segment_1 = &config_segments[i as usize];
+                    let config_segment_2 = &config_segments[j as usize];
+
+                    let d_1_xy = random::tile_matching_flags_besides(
+                        &mut rng,
+                        config_segment_1,
+                        FLOOR | DOOR_START,
+                        &placed_already,
+                    ).ok_or(Error::CannotPlaceDoor)?;
+                    placed_already.push(d_1_xy);
+
+                    let d_2_xy = random::tile_matching_flags_besides(
+                        &mut rng,
+                        config_segment_2,
+                        FLOOR | DOOR_START,
+                        &placed_already,
+                    ).ok_or(Error::CannotPlaceDoor)?;
+                    placed_already.push(d_2_xy);
+        
+                    let mut door_1 = to_entity(
+                        door_def,
+                        d_1_xy.x,
+                        d_1_xy.y
+                    );
+                    door_1.door_target.id = j;
+                    door_1.door_target.xy = d_2_xy;
+
+                    world.steppables.insert(i, door_1);
+
+                    let mut door_2 = to_entity(
+                        door_def,
+                        d_2_xy.x,
+                        d_2_xy.y
+                    );
+
+                    door_2.door_target.id = i;
+                    door_2.door_target.xy = d_1_xy;
+
+                    world.steppables.insert(j, door_2);
+                }
+            }
+        }
+
         let mut goal_info = None;
 
         // TODO? mark up the goal items in the config?
@@ -914,7 +985,7 @@ impl State {
                         ).ok_or(Error::CannotPlaceDoor)?;
 
                         world.steppables.insert(
-                            first_segment.id,
+                            first_segment_id,
                             to_entity(
                                 door_def,
                                 d_xy.x,
@@ -1038,7 +1109,7 @@ impl State {
                             &placed_already,
                         ) {
                             world.steppables.insert(
-                                first_segment.id,
+                                first_segment_id,
                                 to_entity(
                                     item_spec.item_def,
                                     item_xy.x,
@@ -1073,7 +1144,7 @@ impl State {
                             );
 
                             world.mobs.insert(
-                                first_segment.id,
+                                first_segment_id,
                                 mob,
                             );
 
@@ -1160,17 +1231,22 @@ impl State {
 
             let key = self.world.player_key();
 
-            if let Some(steppable) = self.world.steppables.remove(key) {
-                // Mostly for testing purposes until we get to combat or other things that make sense to cause
-                // screenshake
-                self.shake_amount = 5;
-
+            if let Some(steppable) = self.world.steppables.get(key) {
                 if steppable.is_collectable() {
+                    self.shake_amount = 5;
+
+                    let steppable = self.world.steppables.remove(key)
+                        // Yes, this relies on game updates being on a single thread, 
+                        // but we'd presumbably need to change a bunch of other things
+                        // too, to make multiple threads work.
+                        .expect("We just checked for it a moment ago!");
                     self.push_inventory(key, steppable);
                 } else if steppable.is_victory() {
                     self.mode = Mode::Victory(<_>::default());
+                } else if steppable.is_door() {
+                    self.mode = Mode::DoorTo(steppable.door_target, <_>::default());
                 } else {
-                    // Effectively just disappearing scenery. Could make this not go away if we have a reason to.
+                    // Effectively just scenery.
                 }
             }
         }
@@ -1226,17 +1302,33 @@ impl State {
     }
 
     pub fn tick(&mut self) {
+        macro_rules! advance_door_animation {
+            ($animation: expr) => ({
+                let player = &self.world.player;
+
+                // Wait until the player animating towrads a door has settled first.
+                if player.offset_x == 0. && player.offset_y == 0. {
+                    $animation.advance_frame();
+                }
+            })
+        }
+
         match &mut self.mode {
+            Mode::DoorTo(target, animation) => {
+                advance_door_animation!(animation);
+
+                if animation.is_done() {
+                    self.world.warp_player_to(target);
+                }
+            }
             Mode::Victory(animation) => {
-                animation.advance_frame();
+                advance_door_animation!(animation);
+
+                /* fall through to rest of method */
             },
             Mode::Walking => { /* fall through to rest of method */ }
             Mode::Inventory { .. }
             | Mode::Talking(..) => return,
-        }
-
-        if ! matches!(self.mode, Mode::Walking) {
-            return
         }
 
         //

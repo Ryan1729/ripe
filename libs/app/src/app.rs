@@ -285,7 +285,14 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
     state.tick();
 
     match &mut state.mode {
+        Mode::DoorTo(_, animation) => {
+            // TODO? Allow cancelling going in the door?
+            if animation.is_done() {
+                state.mode = Mode::Walking;
+            }
+        },
         Mode::Victory(animation) => {
+            // TODO? Allow cancelling going in the door?
             if animation.is_done() {
                 // Do we want to do something else here? Back to a main menu?
                 if input.pressed_this_frame(Button::START) {
@@ -518,11 +525,16 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     }
 
     fn render_world(commands: &mut Commands, state: &game::State) {
-        for i in 0..state.world.segment.tiles.len() {
+        let Some(segment) = state.world.segments.get(state.world.segment_id as usize) else {
+            debug_assert!(false, "We somehow went to a non-existant segment?!");
+            return
+        };
+
+        for i in 0..segment.tiles.len() {
             draw_tile(
                 commands,
-                i_to_xy(state.world.segment.width, i),
-                state.world.segment.tiles[i].sprite,
+                i_to_xy(segment.width, i),
+                segment.tiles[i].sprite,
             );
         }
 
@@ -546,6 +558,13 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     //
 
     match &state.mode {
+        Mode::DoorTo(_, animation) => {
+            render_world(commands, state);
+
+            if !animation.is_done() {
+                draw_tile(commands, state.world.player.xy(), animation.sprite());
+            }
+        },
         Mode::Victory(animation) => {
             if animation.is_done() {
                 commands.print_lines(

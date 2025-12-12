@@ -1338,6 +1338,13 @@ pub mod vec1 {
         }
     }
 
+    impl<T: Default> Default for Vec1<T> {
+        #[track_caller]
+        fn default() -> Self {
+            Self(vec![T::default()])
+        }
+    }
+
     impl <T> Vec1<T> {
         // TODO? A len1 that returns a NonZeroUsize?
         pub fn len(&self) -> usize {
@@ -1350,6 +1357,10 @@ pub mod vec1 {
 
         pub fn get(&self, index: usize) -> Option<&T> {
             self.0.get(index)
+        }
+
+        pub fn first(&self) -> &T {
+            self.0.first().expect("Invalid Vec1 was created!")
         }
     }
 

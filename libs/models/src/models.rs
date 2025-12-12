@@ -100,6 +100,13 @@ pub type EntityFlags = u8;
 pub const COLLECTABLE: EntityFlags = 1 << 0;
 pub const STEPPABLE: EntityFlags = 1 << 1;
 pub const VICTORY: EntityFlags = 1 << 2;
+pub const DOOR: EntityFlags = 1 << 3;
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DoorTarget {
+    pub id: SegmentId,
+    pub xy: XY,
+}
 
 // Fat-struct for entities! Fat-struct for entities!
 #[derive(Clone, Default, Debug)]
@@ -114,6 +121,8 @@ pub struct Entity {
     pub on_collect: OnCollect,
     pub flags: EntityFlags,
     pub inventory: Inventory,
+    // TODO? Have a goal where it's a journey to discover that the path was inside you all along?
+    pub door_target: DoorTarget,
 }
 
 impl Entity {
@@ -171,6 +180,10 @@ impl Entity {
 
     pub fn is_victory(&self) -> bool {
         self.flags & VICTORY == VICTORY
+    }
+
+    pub fn is_door(&self) -> bool {
+        self.flags & DOOR == DOOR
     }
 }
 
@@ -465,10 +478,9 @@ pub fn is_passable(tile: &Tile) -> bool {
 
 #[derive(Clone, Default)]
 pub struct WorldSegment {
-    pub id: SegmentId,
     pub width: SegmentWidth,
     // TODO? Nonempty Vec?
-    // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that rsstriction clear, so we
+    // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that restriction clear, so we
     // can't have like PC only worlds that break in weird ways online. Probably no one will ever need that
     // many tiles per segment. Plus, then xs conversions go away.
     pub tiles: Vec<Tile>,

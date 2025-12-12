@@ -11,7 +11,8 @@ import "entity_flags" as EF;
 
 const MOB = 0;
 const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
-const END_DOOR = EF::DOOR | EF::STEPPABLE | EF::VICTORY | EF::NOT_SPAWNED_AT_START;
+const OPEN_DOOR = EF::DOOR | EF::STEPPABLE;
+const END_DOOR = OPEN_DOOR | EF::VICTORY | EF::NOT_SPAWNED_AT_START;
 const LOCKED_DOOR = EF::DOOR;
 
 import "default_spritesheet" as DS;
@@ -70,7 +71,7 @@ import "collect_actions" as CA;
         },
         #{
             flags: END_DOOR,
-            tile_sprite: DS::OPEN_DOOR,
+            tile_sprite: DS::OPEN_END_DOOR,
         },
         #{
             flags: LOCKED_DOOR,
@@ -94,6 +95,10 @@ import "collect_actions" as CA;
             ],
         },
         #{
+            flags: OPEN_DOOR,
+            tile_sprite: DS::OPEN_DOOR,
+        },
+        #{
             flags: LOCKED_DOOR,
             tile_sprite: DS::LOCKED_DOOR_2,
             speeches: [
@@ -110,7 +115,7 @@ import "collect_actions" as CA;
                 #{
                     kind: CA::TRANSFORM,
                     from: ID::relative(-1),
-                    to: ID::relative(-4),
+                    to: ID::relative(-2),
                 }
             ],
         },

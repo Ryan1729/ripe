@@ -163,6 +163,7 @@ fn init_engine() -> Engine {
         // TODO: Define walls, floor, door animation, and player here too
 
         export const OPEN_DOOR = tile_sprite_xy(0, 1);
+        export const OPEN_END_DOOR = tile_sprite_xy(1, 1);
         export const LOCKED_DOOR_1 = tile_sprite_xy(0, 2);
         export const LOCKED_DOOR_2 = tile_sprite_xy(0, 3);
 
