@@ -3,8 +3,8 @@ use models::{
     speeches,
     CollectAction,
     DefId,
-    DoorTarget,
     Entity,
+    Location,
     Speech,
     Speeches,
     Tile,
@@ -18,6 +18,8 @@ use models::{
     is_passable,
     xy_to_i,
 };
+type DoorTarget = Location;
+
 use xs::{Xs, Seed};
 
 use platform_types::{arrow_timer::{ArrowTimer}, Vec1, vec1::vec1};
@@ -358,6 +360,7 @@ fn transform_entity(entity: &mut Entity, def: &MiniEntityDef) {
 }
 
 mod random {
+    use models::Location;
     use xs::{Xs};
     use crate::config::{self, TileFlags};
 
@@ -388,9 +391,10 @@ mod random {
     pub fn tile_matching_flags_besides(
         rng: &mut Xs,
         segment: &config::WorldSegment,
+        segment_id: models::SegmentId,
         needle_flags: TileFlags,
-        filter_out: &[XY],
-    ) -> Option<XY> {
+        filter_out: &[Location],
+    ) -> Option<Location> {
         // TODO? Cap tiles length or accept this giving a messed up probabilty for large segments?
         let len = segment.tiles.len();
         let offset = xs::range(rng, 0..len as u32) as usize;
@@ -401,8 +405,11 @@ mod random {
 
             if current_tile_flags & needle_flags == needle_flags {
                 let current_xy = i_to_xy(segment.width, i);
-                if !filter_out.iter().any(|&xy| current_xy == xy) {
-                    return Some(current_xy);
+                let current_loc = Location{ xy: current_xy, id: segment_id };
+
+                if !filter_out.iter()
+                    .any(|&loc| current_loc == loc) {
+                    return Some(current_loc);
                 }
             }
         }
@@ -413,11 +420,13 @@ mod random {
     pub fn tile_matching_flags(
         rng: &mut Xs,
         segment: &config::WorldSegment,
+        segment_id: models::SegmentId,
         needle_flags: TileFlags
-    ) -> Option<XY> {
+    ) -> Option<Location> {
         tile_matching_flags_besides(
             rng,
             segment,
+            segment_id,
             needle_flags,
             &[],
         )
@@ -429,17 +438,7 @@ mod entities {
 
     use std::collections::{BTreeMap};
 
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct Key {
-        pub id: SegmentId,
-        pub xy: XY
-    }
-
-    impl Key {
-        pub fn xy(&self) -> XY {
-            self.xy
-        }
-    }
+    pub type Key = models::Location;
 
     pub fn entity_key(id: SegmentId, x: X, y: Y) -> Key {
         Key {
@@ -666,9 +665,12 @@ impl FadeMessageSpec {
 // TODO? Put a hard limit on the amount of these? Like this could perhaps be just an Option?
 pub type FadeMessageSpecs = Vec<FadeMessageSpec>;
 
+type FrameCount = u16;
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DoorAnimation {
-    frame: u16
+    frame: FrameCount,
+    is_dramatic: bool,
 }
 
 impl DoorAnimation {
@@ -677,17 +679,23 @@ impl DoorAnimation {
     }
 
     pub fn is_done(&self) -> bool {
-        self.frame >= 150
+        self.frame >= self.multiple() * 3
     }
 
     // TODO: reference the config file somehow to determine this.
     //     Probably copy the frames somewhere, instead of referencing it every frame
     pub fn sprite(&self) -> models::TileSprite {
+        let multiple = self.multiple();
+
         match self.frame {
-            x if x < 50 => models::DOOR_ANIMATION_FRAME_1,
-            x if x < 100 => models::DOOR_ANIMATION_FRAME_2,
+            x if x < multiple => models::DOOR_ANIMATION_FRAME_1,
+            x if x < multiple * 2 => models::DOOR_ANIMATION_FRAME_2,
             _ => models::DOOR_ANIMATION_FRAME_3,
         }
+    }
+
+    fn multiple(&self) -> FrameCount {
+        if self.is_dramatic { 50 } else { 10 }
     }
 }
 
@@ -751,6 +759,7 @@ pub enum Error {
     InvalidInventoryDescriptions(speeches::PushError),
     // TODO? Push this back into the config, with a limited length Vec type?
     TooManySegments,
+    ZeroSegments,
 }
 
 impl State {
@@ -759,38 +768,46 @@ impl State {
 
         let mut rng = xs::from_seed(seed);
 
-        // TODO? Cap the number of segments, or just be okay with the first room never being in the 5 billions, etc?
-        let index = xs::range(&mut rng, 0..config.segments.len() as u32) as usize;
+        let mut segments = Vec::with_capacity(16);
+        let mut config_segments = Vec::with_capacity(16);
 
-        let config_segment = &config.segments[index];
-
-        let tiles: Vec<_> = config_segment.tiles.iter().map(
-            |tile_flags| {
-                Tile {
-                    sprite: if tile_flags & FLOOR != 0 {
-                        models::FLOOR_SPRITE
-                    } else {
-                        models::WALL_SPRITE
-                    },
+        // TODO randomize the amount here
+        for _ in 0..4 {
+            // TODO? Cap the number of segments, or just be okay with the first room never being in the 5 billions, etc?
+            let index = xs::range(&mut rng, 0..config.segments.len() as u32) as usize;
+    
+            let config_segment = &config.segments[index];
+    
+            let tiles: Vec<_> = config_segment.tiles.iter().map(
+                |tile_flags| {
+                    Tile {
+                        sprite: if tile_flags & FLOOR != 0 {
+                            models::FLOOR_SPRITE
+                        } else {
+                            models::WALL_SPRITE
+                        },
+                    }
                 }
-            }
-        ).collect();
+            ).collect();
 
-        // TODO randomize the amount here, and roll a different config segment for each one
-        let segments = vec1![
-            WorldSegment {
-                width: config_segment.width,
-                tiles: tiles.clone(),
-            },
-            WorldSegment {
-                width: config_segment.width,
-                tiles,
-            }
-        ];
-        let config_segments = vec![
-            config_segment,
-            config_segment
-        ];
+            segments.push(
+                WorldSegment {
+                    width: config_segment.width,
+                    tiles,
+                },
+            );
+            config_segments.push(
+                config_segment
+            );
+        }
+
+        let Ok(segments) = Vec1::try_from(segments) else {
+            return Err(Error::ZeroSegments);
+        };
+
+        let Ok(config_segments) = Vec1::try_from(config_segments) else {
+            return Err(Error::ZeroSegments);
+        };
 
         let Ok(segments_count) = SegmentId::try_from(segments.len()) else {
             return Err(Error::TooManySegments);
@@ -892,16 +909,20 @@ impl State {
         };
 
         let first_segment = world.segments.first();
+        let first_config_segment = config_segments.first();
         let first_segment_id = 0;
 
         let mut placed_already = Vec::with_capacity(16);
 
-        let p_xy = random::tile_matching_flags(&mut rng, &config_segment, PLAYER_START)
-            .or_else(|| random::passable_tile(&mut rng, first_segment))
+        let p_loc = random::tile_matching_flags(&mut rng, first_config_segment, first_segment_id, PLAYER_START)
+            .or_else(|| 
+                random::passable_tile(&mut rng, first_segment)
+                    .map(|xy| Location { xy, id: first_segment_id, })
+            )
             .ok_or(Error::CannotPlacePlayer)?;
-        world.player.x = p_xy.x;
-        world.player.y = p_xy.y;
-        placed_already.push(p_xy);
+        world.player.x = p_loc.xy.x;
+        world.player.y = p_loc.xy.y;
+        placed_already.push(p_loc);
 
         for door_def in &door_defs {
             if door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START { continue }
@@ -914,40 +935,40 @@ impl State {
                     let config_segment_1 = &config_segments[i as usize];
                     let config_segment_2 = &config_segments[j as usize];
 
-                    let d_1_xy = random::tile_matching_flags_besides(
+                    let d_1_loc = random::tile_matching_flags_besides(
                         &mut rng,
                         config_segment_1,
+                        i,
                         FLOOR | DOOR_START,
                         &placed_already,
                     ).ok_or(Error::CannotPlaceDoor)?;
-                    placed_already.push(d_1_xy);
+                    placed_already.push(d_1_loc);
 
-                    let d_2_xy = random::tile_matching_flags_besides(
+                    let d_2_loc = random::tile_matching_flags_besides(
                         &mut rng,
                         config_segment_2,
+                        j,
                         FLOOR | DOOR_START,
                         &placed_already,
                     ).ok_or(Error::CannotPlaceDoor)?;
-                    placed_already.push(d_2_xy);
+                    placed_already.push(d_2_loc);
         
                     let mut door_1 = to_entity(
                         door_def,
-                        d_1_xy.x,
-                        d_1_xy.y
+                        d_1_loc.xy.x,
+                        d_1_loc.xy.y
                     );
-                    door_1.door_target.id = j;
-                    door_1.door_target.xy = d_2_xy;
+                    door_1.door_target = d_2_loc;
 
                     world.steppables.insert(i, door_1);
 
                     let mut door_2 = to_entity(
                         door_def,
-                        d_2_xy.x,
-                        d_2_xy.y
+                        d_2_loc.xy.x,
+                        d_2_loc.xy.y
                     );
 
-                    door_2.door_target.id = i;
-                    door_2.door_target.xy = d_1_xy;
+                    door_2.door_target = d_1_loc;
 
                     world.steppables.insert(j, door_2);
                 }
@@ -977,9 +998,10 @@ impl State {
                             continue
                         }
 
-                        let d_xy = random::tile_matching_flags_besides(
+                        let d_loc = random::tile_matching_flags_besides(
                             &mut rng,
-                            &config_segment,
+                            first_config_segment,
+                            first_segment_id,
                             FLOOR | DOOR_START,
                             &placed_already,
                         ).ok_or(Error::CannotPlaceDoor)?;
@@ -988,12 +1010,12 @@ impl State {
                             first_segment_id,
                             to_entity(
                                 door_def,
-                                d_xy.x,
-                                d_xy.y
+                                d_loc.xy.x,
+                                d_loc.xy.y
                             ),
                         );
 
-                        placed_already.push(d_xy);
+                        placed_already.push(d_loc);
 
                         let goal_door_tile_sprite = door_def.tile_sprite;
 
@@ -1102,9 +1124,10 @@ impl State {
                 use AbstractLocation::*;
                 match item_spec.location {
                     Floor => {
-                        if let Some(item_xy) = random::tile_matching_flags_besides(
+                        if let Some(item_loc) = random::tile_matching_flags_besides(
                             &mut rng,
-                            &config_segment,
+                            first_config_segment,
+                            first_segment_id,
                             ITEM_START,
                             &placed_already,
                         ) {
@@ -1112,34 +1135,35 @@ impl State {
                                 first_segment_id,
                                 to_entity(
                                     item_spec.item_def,
-                                    item_xy.x,
-                                    item_xy.y
+                                    item_loc.xy.x,
+                                    item_loc.xy.y
                                 ),
                             );
-                            placed_already.push(item_xy);
+                            placed_already.push(item_loc);
                             break
                         }
                     },
                     NpcPocket(npc_def) => {
-                        if let Some(npc_xy) = random::tile_matching_flags_besides(
+                        if let Some(npc_loc) = random::tile_matching_flags_besides(
                             &mut rng,
-                            &config_segment,
+                            first_config_segment,
+                            first_segment_id,
                             NPC_START,
                             &placed_already,
                         ) {
-                            placed_already.push(npc_xy);
+                            placed_already.push(npc_loc);
 
                             let mut mob = to_entity(
                                 npc_def,
-                                npc_xy.x,
-                                npc_xy.y
+                                npc_loc.xy.x,
+                                npc_loc.xy.y
                             );
 
                             mob.inventory.push(
                                 to_entity(
                                     item_spec.item_def,
-                                    npc_xy.x,
-                                    npc_xy.y
+                                    npc_loc.xy.x,
+                                    npc_loc.xy.y
                                 )
                             );
 
@@ -1242,7 +1266,9 @@ impl State {
                         .expect("We just checked for it a moment ago!");
                     self.push_inventory(key, steppable);
                 } else if steppable.is_victory() {
-                    self.mode = Mode::Victory(<_>::default());
+                    let mut animation = DoorAnimation::default();
+                    animation.is_dramatic = true;
+                    self.mode = Mode::Victory(animation);
                 } else if steppable.is_door() {
                     self.mode = Mode::DoorTo(steppable.door_target, <_>::default());
                 } else {

@@ -103,9 +103,15 @@ pub const VICTORY: EntityFlags = 1 << 2;
 pub const DOOR: EntityFlags = 1 << 3;
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct DoorTarget {
+pub struct Location {
     pub id: SegmentId,
     pub xy: XY,
+}
+
+impl Location {
+    pub fn xy(&self) -> XY {
+        self.xy
+    }
 }
 
 // Fat-struct for entities! Fat-struct for entities!
@@ -122,7 +128,7 @@ pub struct Entity {
     pub flags: EntityFlags,
     pub inventory: Inventory,
     // TODO? Have a goal where it's a journey to discover that the path was inside you all along?
-    pub door_target: DoorTarget,
+    pub door_target: Location,
 }
 
 impl Entity {

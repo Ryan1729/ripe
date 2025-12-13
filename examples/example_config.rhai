@@ -33,6 +33,18 @@ import "collect_actions" as CA;
                 F, F, F, F, F, F, F, F, F, F, F, F, F, D,
             ],
         },
+        #{
+            width: 7,
+            tiles: [
+                W, W, W, W, W, W, W,
+                W, D, F, B, W, D, W,
+                W, W, W, B, A, F, W,
+                W, D, B, F, A, F, W,
+                W, W, W, B, A, F, W,
+                W, D, F, F, W, D, W,
+                W, W, W, W, W, W, W,
+            ],
+        },
     ],
     entities: [
         #{
