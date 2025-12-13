@@ -115,7 +115,7 @@ import "collect_actions" as CA;
                 #{
                     kind: CA::TRANSFORM,
                     from: ID::relative(-1),
-                    to: ID::relative(-2),
+                    to: ID::relative(-5),
                 }
             ],
         },
