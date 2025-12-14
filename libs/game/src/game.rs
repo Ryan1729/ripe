@@ -162,14 +162,28 @@ use platform_types::{arrow_timer::{ArrowTimer}, Vec1, vec1::vec1};
 
 
 // Steps for "Add hallways between rooms that we'll figure out a way to make more interesting later"
-// * Define a second room. Have going through a door take you there
+// * Define a second room. Have going through a door take you there ✔
 //    * Make that door always open for now
-// * Spawn a return door in that room
+// * Spawn a return door in that room ✔
 //    * Spawn next to it when entering
+//        * On top is good enough, and so far doesn't cause issues like sending you back. We can change later if needed.
 // * Allow entities to spawn in either room, relying on the door being always open to make things solvable
-// * firgure out how to handle the door
+// * Figure out how to handle the doors with keys, in the generation
+//    * I think figuring out the rooms first, then door and key placements next, then deciding on NPCs should work.
+//    * Oh, no wait! Cyclic generation like from Unexplored! Yes, let's do that!
+//        * Generation Steps:
+//            * Produce a random undirected graph of the right size, where each node has at least two edges to different nodes.
+//            * Make paritiions of the graph into spheres, where they are blocked from each other by locks. Assign keys to each lock
+//            * Place the key for each lock within the inner sphere where the way out is locked by it
+//                * Can sort the rooms in a sphere by distance and pick ones further in, but not to far, say 70%
+//                * Steps here would be pick a spot for the npc to be, then pick another spot in the sphere for their desire to be
+//                    Can make the key tending to be far or near to the npc a parameter
+//        * Implementation steps:
+//            * More or less backwards. That is, start with the usage code, and figure out what the spheres and graph structure should
+//              be like, based on how it's accessed. Then work backwards from there.
 // * Add a hallway between the two rooms, which doesn't need to participate in the puzzle at all.
 //    * For now, every hallway can be the same, short of like one tile between doors or whatever
+//        * A null hallway that just jumps you there should be an option too
 // * Define more NPCs and items, confirm that larger puzzles still work
 // * Add more possible rooms, and connect them with open hallways for now
 //    * if it helps, can have them all spoke off the first room to start with.
@@ -775,9 +789,9 @@ impl State {
         for _ in 0..4 {
             // TODO? Cap the number of segments, or just be okay with the first room never being in the 5 billions, etc?
             let index = xs::range(&mut rng, 0..config.segments.len() as u32) as usize;
-    
+
             let config_segment = &config.segments[index];
-    
+
             let tiles: Vec<_> = config_segment.tiles.iter().map(
                 |tile_flags| {
                     Tile {
@@ -915,7 +929,7 @@ impl State {
         let mut placed_already = Vec::with_capacity(16);
 
         let p_loc = random::tile_matching_flags(&mut rng, first_config_segment, first_segment_id, PLAYER_START)
-            .or_else(|| 
+            .or_else(||
                 random::passable_tile(&mut rng, first_segment)
                     .map(|xy| Location { xy, id: first_segment_id, })
             )
@@ -952,7 +966,7 @@ impl State {
                         &placed_already,
                     ).ok_or(Error::CannotPlaceDoor)?;
                     placed_already.push(d_2_loc);
-        
+
                     let mut door_1 = to_entity(
                         door_def,
                         d_1_loc.xy.x,
@@ -1036,8 +1050,8 @@ impl State {
 
         #[derive(Debug)]
         enum AbstractLocation<'defs> {
-            Floor,
-            NpcPocket(&'defs MiniEntityDef),
+            Floor(SegmentId),
+            NpcPocket(&'defs MiniEntityDef, SegmentId),
         }
 
         #[derive(Debug)]
@@ -1054,6 +1068,7 @@ impl State {
 
         fn select_constraints<'defs>(
             rng: &mut Xs,
+            world: &World,
             all_desires: &[config::DesireRef<'defs>],
             goal_item_def: &'defs MiniEntityDef,
         ) -> Constraints<'defs> {
@@ -1069,9 +1084,27 @@ impl State {
                 tries += 1;
                 item_specs.clear();
 
+                // TODO: have multiple spheres, delineated by locked doors.
+                // Treat each sphere as a separate puzzle, with unlocking
+                // the next door as the goal.
+                // Keep track of the used desires, so we don't use the same one twice.
+                // We can randomly push some things back into previous spheresm for variety.
+
+                // TODO Determine the available segments from the current sphere
+                debug_assert!(world.segments.len() <= SegmentId::MAX as usize);
+                let segment_ids = (0..world.segments.len() as SegmentId).collect::<Vec<_>>();
+                debug_assert!(segment_ids.len() <= u32::MAX as usize);
+
+                macro_rules! random_segment_id {
+                    () => {
+                        segment_ids[xs::range(rng, 0..segment_ids.len() as u32) as usize]
+                    }
+                }
+
+                // Start with a solvable puzzle, then add steps, keeping it solvable
                 item_specs.push(ItemSpec{
                     item_def: goal_item_def,
-                    location: AbstractLocation::Floor,
+                    location: AbstractLocation::Floor(random_segment_id!()),
                 });
 
                 let mut index = initial_index;
@@ -1092,7 +1125,7 @@ impl State {
 
                         item_specs.push(ItemSpec{
                             item_def: last.item_def,
-                            location: AbstractLocation::NpcPocket(desire.mob_def),
+                            location: AbstractLocation::NpcPocket(desire.mob_def, random_segment_id!()),
                         });
                     }
 
@@ -1113,7 +1146,7 @@ impl State {
             }
         }
 
-        let constraints: Constraints = select_constraints(&mut rng, &all_desires, goal_item_def);
+        let constraints: Constraints = select_constraints(&mut rng, &world, &all_desires, goal_item_def);
 
         for item_spec in constraints.item_specs {
             let mut attempts = 0;
@@ -1123,16 +1156,16 @@ impl State {
 
                 use AbstractLocation::*;
                 match item_spec.location {
-                    Floor => {
+                    Floor(segment_id) => {
                         if let Some(item_loc) = random::tile_matching_flags_besides(
                             &mut rng,
-                            first_config_segment,
-                            first_segment_id,
+                            &config_segments[usize::from(segment_id)],
+                            segment_id,
                             ITEM_START,
                             &placed_already,
                         ) {
                             world.steppables.insert(
-                                first_segment_id,
+                                item_loc.id,
                                 to_entity(
                                     item_spec.item_def,
                                     item_loc.xy.x,
@@ -1143,11 +1176,11 @@ impl State {
                             break
                         }
                     },
-                    NpcPocket(npc_def) => {
+                    NpcPocket(npc_def, segment_id) => {
                         if let Some(npc_loc) = random::tile_matching_flags_besides(
                             &mut rng,
-                            first_config_segment,
-                            first_segment_id,
+                            &config_segments[usize::from(segment_id)],
+                            segment_id,
                             NPC_START,
                             &placed_already,
                         ) {
@@ -1168,7 +1201,7 @@ impl State {
                             );
 
                             world.mobs.insert(
-                                first_segment_id,
+                                segment_id,
                                 mob,
                             );
 
@@ -1260,7 +1293,7 @@ impl State {
                     self.shake_amount = 5;
 
                     let steppable = self.world.steppables.remove(key)
-                        // Yes, this relies on game updates being on a single thread, 
+                        // Yes, this relies on game updates being on a single thread,
                         // but we'd presumbably need to change a bunch of other things
                         // too, to make multiple threads work.
                         .expect("We just checked for it a moment ago!");
