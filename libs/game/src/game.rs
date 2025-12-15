@@ -22,7 +22,7 @@ type DoorTarget = Location;
 
 use xs::{Xs, Seed};
 
-use platform_types::{arrow_timer::{ArrowTimer}, Vec1, vec1::vec1};
+use platform_types::{arrow_timer::{ArrowTimer}, Vec1};
 
 // Proposed Steps
 // * Make the simplest task: Go find a thing and bring it to the person who wants it ✔
@@ -217,48 +217,6 @@ pub mod config {
     use models::{DefId, OnCollect, SegmentWidth, Speech, TileSprite};
     use crate::MiniEntityDef;
 
-    macro_rules! consts_def {
-        (
-            $all_name: ident : $type: ty;
-            $($name: ident = $value: expr),+ $(,)?
-        ) => {
-
-
-            pub const $all_name: [(&str, $type); const {
-                let mut count = 0;
-
-                $(
-                    // Use the repetition for something so we can take the count
-                    const _: $type = $value;
-                    count += 1;
-                )+
-
-                count
-            }] = [
-                $(
-                    (stringify!($name), $value),
-                )+
-            ];
-
-            $(
-                pub const $name: $type = $value;
-            )+
-        };
-    }
-
-    pub type TileFlags = u32;
-
-    consts_def!{
-        ALL_TILE_FLAGS: TileFlags;
-        // Can't be anything but a blocker
-        WALL = 0,
-        FLOOR = 1 << 0,
-        PLAYER_START = 1 << 2,
-        ITEM_START = 1 << 3,
-        NPC_START = 1 << 4,
-        DOOR_START = 1 << 5,
-    }
-
     /// A configuration WorldSegment that can be used to contruct game::WorldSegments later.
     #[derive(Clone)]
     pub struct WorldSegment {
@@ -274,32 +232,6 @@ pub mod config {
     pub struct Config {
         pub segments: Vec1<WorldSegment>,
         pub entities: Vec1<EntityDef>,
-    }
-
-    pub type EntityDefFlags = u8;
-
-    consts_def!{
-        ALL_ENTITY_FLAGS: EntityDefFlags;
-        COLLECTABLE = models::COLLECTABLE,
-        STEPPABLE = models::STEPPABLE,
-        VICTORY = models::VICTORY,
-        DOOR = models::DOOR,
-        NOT_SPAWNED_AT_START = 1 << 4,
-    }
-
-    pub type EntityDefIdRefKind = u8;
-
-    consts_def!{
-        ALL_ENTITY_ID_REFERENCE_KINDS: EntityDefIdRefKind;
-        RELATIVE = 1,
-        ABSOLUTE = 2,
-    }
-
-    pub type CollectActionKind = u8;
-
-    consts_def!{
-        ALL_COLLECT_ACTION_KINDS: CollectActionKind;
-        TRANSFORM = 1,
     }
 
     #[derive(Clone, Debug)]
@@ -447,147 +379,16 @@ mod random {
     }
 }
 
-mod entities {
-    use models::{Entity, X, Y, XY, SegmentId};
+fn warp_player_to(world: &mut World, target: &DoorTarget) {
+    world.segment_id = target.id;
+    world.player.x = target.xy.x;
+    world.player.y = target.xy.y;
 
-    use std::collections::{BTreeMap};
-
-    pub type Key = models::Location;
-
-    pub fn entity_key(id: SegmentId, x: X, y: Y) -> Key {
-        Key {
-            id,
-            xy: XY{x, y}
-        }
-    }
-
-    // Reminder, we're going with Fat Struct for Entities on this project. So, if you are here looking to
-    // add an data structure besides Entities that uses entity keys, say some kind of ByEntityKey<A>,
-    // then instead consider just adding a field to Entity. If we actually run into perf issues due to
-    // entities being large, then we'll know better then than now how to deal with them.
-
-    #[derive(Clone, Debug, Default)]
-    pub struct Entities {
-        map: BTreeMap<Key, Entity>,
-    }
-
-    impl Entities {
-        pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
-            self.map.values_mut()
-        }
-
-        pub fn get(&self, key: Key) -> Option<&Entity> {
-            self.map.get(&key)
-        }
-
-        pub fn get_mut(&mut self, key: Key) -> Option<&mut Entity> {
-            self.map.get_mut(&key)
-        }
-
-        pub fn for_id(&self, id: SegmentId) -> impl Iterator<Item=(&Key, &Entity)> {
-            self.map.range(entity_key(id, X::MIN, Y::MIN)..=entity_key(id, X::MAX, Y::MAX))
-        }
-
-        pub fn insert(&mut self, id: SegmentId, entity: Entity) {
-            self.map.insert(entity_key(id, entity.x, entity.y), entity);
-        }
-
-        pub fn remove(&mut self, key: Key) -> Option<Entity> {
-            self.map.remove(&key)
-        }
-    }
-
-    #[cfg(test)]
-    mod entities_works {
-        use models::{xy::{x, y}};
-        use super::*;
-
-        #[test]
-        fn when_pulling_out_this_range() {
-            let mut entities = Entities::default();
-
-            let id = 0;
-
-            let mut a = Entity::default();
-            a.x = x(1);
-            a.y = y(2);
-
-            let mut b = Entity::default();
-            b.x = x(3);
-            b.y = y(3);
-
-            let mut c = Entity::default();
-            c.x = x(1);
-            c.y = y(2);
-
-            entities.insert(id, a.clone());
-            entities.insert(id, b.clone());
-            entities.insert(id + 1, c);
-
-            let mut actual = vec![];
-
-            for (_, v) in entities.for_id(id) {
-                actual.push(v.xy());
-            }
-
-            let expected = vec![a.xy(), b.xy()];
-
-            assert_eq!(actual, expected);
-        }
-    }
-}
-use entities::{Entities, entity_key};
-
-#[derive(Clone, Default)]
-pub struct World {
-    pub segments: Vec1<WorldSegment>,
-    /// The ID of the current segment we are in.
-    pub segment_id: SegmentId,
-    pub player: Entity,
-    pub steppables: Entities,
-    pub mobs: Entities,
+    world.player.offset_x = 0.;
+    world.player.offset_y = 0.;
 }
 
-impl World {
-    pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
-        std::iter::once(&mut self.player).chain(self.steppables.all_entities_mut().chain(self.mobs.all_entities_mut()))
-    }
-
-    pub fn player_key(&self) -> entities::Key {
-        entity_key(
-            self.segment_id,
-            self.player.x,
-            self.player.y,
-        )
-    }
-
-    pub fn get_entity(&self, key: entities::Key) -> Option<&Entity> {
-        if key == self.player_key() {
-            return Some(&self.player)
-        }
-
-        self.mobs.get(key).or_else(|| self.steppables.get(key))
-    }
-
-    pub fn get_entity_mut(&mut self, key: entities::Key) -> Option<&mut Entity> {
-        if key == self.player_key() {
-            return Some(&mut self.player)
-        }
-
-        self.mobs.get_mut(key).or_else(|| self.steppables.get_mut(key))
-    }
-
-    pub fn warp_player_to(&mut self, target: &DoorTarget) {
-        self.segment_id = target.id;
-        self.player.x = target.xy.x;
-        self.player.y = target.xy.y;
-
-        self.player.offset_x = 0.;
-        self.player.offset_y = 0.;
-    }
-}
-
-fn can_walk_onto(world: &World, id: SegmentId, x: X, y: Y) -> bool {
+fn can_walk_onto(world: &World, key @ EntityKey { id, xy: XY{ x, y } }: EntityKey) -> bool {
     let Some(segment) = world.segments.get(id as usize) else {
         return false;
     };
@@ -596,8 +397,6 @@ fn can_walk_onto(world: &World, id: SegmentId, x: X, y: Y) -> bool {
     };
 
     if let Some(tile) = segment.tiles.get(i) {
-        let key = entity_key(id, x, y);
-
         if let Some(_) = world.mobs.get(key) {
             return false;
         }
@@ -617,7 +416,7 @@ pub type SpeechIndex = u16;
 pub enum PostTalkingAction {
     #[default]
     NoOp,
-    TakeItem(entities::Key, DefId),
+    TakeItem(EntityKey, DefId),
 }
 
 #[derive(Clone, Debug)]
@@ -713,6 +512,76 @@ impl DoorAnimation {
     }
 }
 
+mod consts {
+    macro_rules! consts_def {
+        (
+            $all_name: ident : $type: ty;
+            $($name: ident = $value: expr),+ $(,)?
+        ) => {
+    
+    
+            pub const $all_name: [(&str, $type); const {
+                let mut count = 0;
+    
+                $(
+                    // Use the repetition for something so we can take the count
+                    const _: $type = $value;
+                    count += 1;
+                )+
+    
+                count
+            }] = [
+                $(
+                    (stringify!($name), $value),
+                )+
+            ];
+    
+            $(
+                pub const $name: $type = $value;
+            )+
+        };
+    }
+    
+    pub type TileFlags = u32;
+    
+    consts_def!{
+        ALL_TILE_FLAGS: TileFlags;
+        // Can't be anything but a blocker
+        WALL = 0,
+        FLOOR = 1 << 0,
+        PLAYER_START = 1 << 2,
+        ITEM_START = 1 << 3,
+        NPC_START = 1 << 4,
+        DOOR_START = 1 << 5,
+    }
+    
+    pub type EntityDefFlags = u8;
+    
+    consts_def!{
+        ALL_ENTITY_FLAGS: EntityDefFlags;
+        COLLECTABLE = models::COLLECTABLE,
+        STEPPABLE = models::STEPPABLE,
+        VICTORY = models::VICTORY,
+        DOOR = models::DOOR,
+        NOT_SPAWNED_AT_START = 1 << 4,
+    }
+    
+    pub type EntityDefIdRefKind = u8;
+    
+    consts_def!{
+        ALL_ENTITY_ID_REFERENCE_KINDS: EntityDefIdRefKind;
+        RELATIVE = 1,
+        ABSOLUTE = 2,
+    }
+    
+    pub type CollectActionKind = u8;
+    
+    consts_def!{
+        ALL_COLLECT_ACTION_KINDS: CollectActionKind;
+        TRANSFORM = 1,
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct MiniEntityDef {
     pub id: DefId,
@@ -757,31 +626,183 @@ impl State {
     }
 }
 
-#[derive(Debug)]
-pub enum Error {
-    CannotPlacePlayer,
-    CannotPlaceDoor,
-    NoEntityDefs,
-    NoMobsFound,
-    NoItemsFound,
-    NoDoorsFound,
-    NoGoalItemFound,
-    CouldNotPlaceItem(MiniEntityDef),
-    InvalidDesireID(MiniEntityDef, SegmentId),
-    NonItemWasDesired(MiniEntityDef, MiniEntityDef, SegmentId),
-    InvalidSpeeches(speeches::PushError),
-    InvalidInventoryDescriptions(speeches::PushError),
-    // TODO? Push this back into the config, with a limited length Vec type?
-    TooManySegments,
-    ZeroSegments,
-}
+mod world {
+    use models::{Entity, WorldSegment, X, Y, SegmentId};
+    use platform_types::Vec1;
 
-impl State {
-    pub fn new(seed: Seed, config: Config) -> Result<State, Error> {
-        use config::{FLOOR, DOOR_START, PLAYER_START, NPC_START, ITEM_START};
+    mod entities {
+        use models::{Entity, X, Y, XY, SegmentId};
 
-        let mut rng = xs::from_seed(seed);
+        use std::collections::{BTreeMap};
 
+        pub type Key = models::Location;
+
+        pub fn entity_key(id: SegmentId, x: X, y: Y) -> Key {
+            Key {
+                id,
+                xy: XY{x, y}
+            }
+        }
+
+        // Reminder, we're going with Fat Struct for Entities on this project. So, if you are here looking to
+        // add an data structure besides Entities that uses entity keys, say some kind of ByEntityKey<A>,
+        // then instead consider just adding a field to Entity. If we actually run into perf issues due to
+        // entities being large, then we'll know better then than now how to deal with them.
+
+        #[derive(Clone, Debug, Default)]
+        pub struct Entities {
+            map: BTreeMap<Key, Entity>,
+        }
+
+        impl Entities {
+            pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
+                self.map.values_mut()
+            }
+
+            pub fn get(&self, key: Key) -> Option<&Entity> {
+                self.map.get(&key)
+            }
+
+            pub fn get_mut(&mut self, key: Key) -> Option<&mut Entity> {
+                self.map.get_mut(&key)
+            }
+
+            pub fn for_id(&self, id: SegmentId) -> impl Iterator<Item=(&Key, &Entity)> {
+                self.map.range(entity_key(id, X::MIN, Y::MIN)..=entity_key(id, X::MAX, Y::MAX))
+            }
+
+            pub fn insert(&mut self, id: SegmentId, entity: Entity) {
+                self.map.insert(entity_key(id, entity.x, entity.y), entity);
+            }
+
+            pub fn remove(&mut self, key: Key) -> Option<Entity> {
+                self.map.remove(&key)
+            }
+        }
+
+        #[cfg(test)]
+        mod entities_works {
+            use models::{xy::{x, y}};
+            use super::*;
+
+            #[test]
+            fn when_pulling_out_this_range() {
+                let mut entities = Entities::default();
+
+                let id = 0;
+
+                let mut a = Entity::default();
+                a.x = x(1);
+                a.y = y(2);
+
+                let mut b = Entity::default();
+                b.x = x(3);
+                b.y = y(3);
+
+                let mut c = Entity::default();
+                c.x = x(1);
+                c.y = y(2);
+
+                entities.insert(id, a.clone());
+                entities.insert(id, b.clone());
+                entities.insert(id + 1, c);
+
+                let mut actual = vec![];
+
+                for (_, v) in entities.for_id(id) {
+                    actual.push(v.xy());
+                }
+
+                let expected = vec![a.xy(), b.xy()];
+
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+    use entities::{Entities, entity_key};
+
+    pub type EntityKey = entities::Key;
+
+    #[derive(Clone, Default)]
+    pub struct World {
+        pub segments: Vec1<WorldSegment>,
+        /// The ID of the current segment we are in.
+        pub segment_id: SegmentId,
+        pub player: Entity,
+        pub steppables: Entities,
+        pub mobs: Entities,
+    }
+
+    impl World {
+        pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
+            std::iter::once(&mut self.player).chain(self.steppables.all_entities_mut().chain(self.mobs.all_entities_mut()))
+        }
+
+        pub fn player_key(&self) -> EntityKey {
+            entity_key(
+                self.segment_id,
+                self.player.x,
+                self.player.y,
+            )
+        }
+
+        pub fn local_key(&self, x: X, y: Y) -> EntityKey {
+            entity_key(
+                self.segment_id,
+                x,
+                y,
+            )
+        }
+
+        pub fn get_entity(&self, key: EntityKey) -> Option<&Entity> {
+            if key == self.player_key() {
+                return Some(&self.player)
+            }
+
+            self.mobs.get(key).or_else(|| self.steppables.get(key))
+        }
+
+        pub fn get_entity_mut(&mut self, key: EntityKey) -> Option<&mut Entity> {
+            if key == self.player_key() {
+                return Some(&mut self.player)
+            }
+
+            self.mobs.get_mut(key).or_else(|| self.steppables.get_mut(key))
+        }
+    }
+
+    #[derive(Debug)]
+    pub enum Error {
+        CannotPlacePlayer,
+        CannotPlaceDoor,
+        NoEntityDefs,
+        NoMobsFound,
+        NoItemsFound,
+        NoDoorsFound,
+        NoGoalItemFound,
+        CouldNotPlaceItem(MiniEntityDef),
+        InvalidDesireID(MiniEntityDef, SegmentId),
+        NonItemWasDesired(MiniEntityDef, MiniEntityDef, SegmentId),
+        InvalidSpeeches(speeches::PushError),
+        InvalidInventoryDescriptions(speeches::PushError),
+        // TODO? Push this back into the config, with a limited length Vec type?
+        TooManySegments,
+        ZeroSegments,
+    }
+
+    pub struct Generated {
+        pub world: World,
+        // Fairly direct from the config section {
+        // Is the lookup acceleration, reduced memory usage etc. worth the extra code vs
+        // just storing the config here directly?
+        pub speeches: Speeches,
+        pub inventory_descriptions: Speeches,
+        pub entity_defs: Vec1<MiniEntityDef>,
+        // }
+        pub goal_door_tile_sprite: TileSprite,
+    }
+
+    pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         let mut segments = Vec::with_capacity(16);
         let mut config_segments = Vec::with_capacity(16);
 
@@ -1216,6 +1237,31 @@ impl State {
             }
         }
 
+        Ok(Generated{
+            world,
+            speeches,
+            inventory_descriptions,
+            entity_defs,
+            goal_door_tile_sprite,
+        })
+    }
+}
+pub use world::{World, EntityKey};
+
+impl State {
+    pub fn new(seed: Seed, config: Config) -> Result<State, world::Error> {
+        use config::{FLOOR, DOOR_START, PLAYER_START, NPC_START, ITEM_START};
+
+        let mut rng = xs::from_seed(seed);
+
+        let world::Generated {
+            world,
+            speeches,
+            inventory_descriptions,
+            entity_defs,
+            goal_door_tile_sprite,
+        } = world::generate(&mut rng, &config)?;
+
         Ok(State {
             rng,
             world,
@@ -1268,10 +1314,10 @@ impl State {
             return
         };
 
-        if can_walk_onto(&self.world, self.world.segment_id, new_x, new_y) {
-            if let Some(steppable) = self.world.steppables.get(
-                entity_key(self.world.segment_id, new_x, new_y)
-            ) {
+        let new_key = self.world.local_key(new_x, new_y);
+
+        if can_walk_onto(&self.world, new_key) {
+            if let Some(steppable) = self.world.steppables.get(new_key) {
                 if steppable.flags & STEPPABLE != STEPPABLE {
                     // Doors or other things which may become steppable, but aren't now.
                     // TODO: Is the world.steppables/world.mobs distinction worth it?
@@ -1313,14 +1359,16 @@ impl State {
 
     #[must_use]
     pub fn interact(&mut self, dir: Dir) {
-        let entity = &mut self.world.player;
+        let entity = &self.world.player;
 
         let Some(XY { x: target_x, y: target_y }) = xy_in_dir(entity.x, entity.y, dir) else {
             self.fade_message_specs.push(FadeMessageSpec::new(format!("there's nothing there."), entity.xy()));
             return
         };
 
-        let key = entity_key(self.world.segment_id, target_x, target_y);
+        let key = self.world.local_key(target_x, target_y);
+
+        let entity = &mut self.world.player;
 
         let Some(interactable) = self.world.mobs.get_mut(key).or_else(|| self.world.steppables.get_mut(key)) else {
             self.fade_message_specs.push(
@@ -1377,7 +1425,7 @@ impl State {
                 advance_door_animation!(animation);
 
                 if animation.is_done() {
-                    self.world.warp_player_to(target);
+                    warp_player_to(&mut self.world, target);
                 }
             }
             Mode::Victory(animation) => {
@@ -1414,7 +1462,7 @@ impl State {
         }
     }
 
-    pub fn push_inventory(&mut self, target_key: entities::Key, item: Entity) {
+    pub fn push_inventory(&mut self, target_key: EntityKey, item: Entity) {
         if target_key == self.world.player_key() {
             for action in &item.on_collect {
                 match action {
