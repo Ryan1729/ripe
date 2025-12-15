@@ -6,8 +6,12 @@ edition = "2021"
 [lib]
 path="src/models.rs"
 
+
 [dependencies.text]
 path = "../text"
+
+[dependencies.vec1]
+path = "../vec1"
 
 [dependencies.xs]
 path = "../xs"

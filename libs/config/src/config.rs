@@ -3,9 +3,12 @@ use rhai::{Engine, EvalAltResult};
 
 use std::sync::LazyLock;
 
-use models::{DefId, DefIdDelta};
-use game::{Config};
-use game::config::{TileFlags, WorldSegment};
+use models::{
+    config::{Config, WorldSegment},
+    consts::{TileFlags},
+    DefId,
+    DefIdDelta
+};
 
 pub const TILES_PER_ROW: u8 = 8;
 
@@ -88,12 +91,12 @@ pub enum Error {
     UnknownEntityDefIdRefKind {
         key: &'static str,
         parent_key: IndexableKey,
-        kind: game::config::EntityDefIdRefKind,
+        kind: models::consts::EntityDefIdRefKind,
     },
     UnknownCollectActionKind {
         key: &'static str,
         parent_key: IndexableKey,
-        kind: game::config::CollectActionKind,
+        kind: models::consts::CollectActionKind,
     },
     DefIdOverflow{
         key: &'static str,
@@ -132,7 +135,7 @@ fn init_engine() -> Engine {
 
     let mut tile_flags_string = String::with_capacity(128);
 
-    for (name, value) in game::config::ALL_TILE_FLAGS {
+    for (name, value) in models::consts::ALL_TILE_FLAGS {
         tile_flags_string += &format!("export const {name} = {value};\n");
     }
 
@@ -140,7 +143,7 @@ fn init_engine() -> Engine {
 
     let mut entity_flags_string = String::with_capacity(128);
 
-    for (name, value) in game::config::ALL_ENTITY_FLAGS {
+    for (name, value) in models::consts::ALL_ENTITY_FLAGS {
         entity_flags_string += &format!("export const {name} = {value};\n");
     }
 
@@ -175,7 +178,7 @@ fn init_engine() -> Engine {
 
     let mut entity_ids_string = String::with_capacity(256);
 
-    for (name, value) in game::config::ALL_ENTITY_ID_REFERENCE_KINDS {
+    for (name, value) in models::consts::ALL_ENTITY_ID_REFERENCE_KINDS {
         entity_ids_string += &format!("export const {name} = {value};\n");
     }
 
@@ -183,7 +186,7 @@ fn init_engine() -> Engine {
         fn relative(n) {
     "#;
 
-    for (name, value) in game::config::ALL_ENTITY_ID_REFERENCE_KINDS {
+    for (name, value) in models::consts::ALL_ENTITY_ID_REFERENCE_KINDS {
         entity_ids_string += &format!("const {name} = {value};\n");
     }
 
@@ -199,7 +202,7 @@ fn init_engine() -> Engine {
         fn absolute(n) {
     "#;
 
-    for (name, value) in game::config::ALL_ENTITY_ID_REFERENCE_KINDS {
+    for (name, value) in models::consts::ALL_ENTITY_ID_REFERENCE_KINDS {
         entity_ids_string += &format!("const {name} = {value};\n");
     }
 
@@ -215,7 +218,7 @@ fn init_engine() -> Engine {
 
     let mut collect_actions_string = String::with_capacity(256);
 
-    for (name, value) in game::config::ALL_COLLECT_ACTION_KINDS {
+    for (name, value) in models::consts::ALL_COLLECT_ACTION_KINDS {
         collect_actions_string += &format!("export const {name} = {value};\n");
     }
 
@@ -235,8 +238,7 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(init_engine);
 
 pub fn parse(code: &str) -> Result<Config, Error> {
     use std::ops::Deref;
-    use models::{DefId, Speech, CollectAction};
-    use game::{EntityDef, config::{EntityDefIdRefKind, CollectActionKind}};
+    use models::{consts::{EntityDefIdRefKind, CollectActionKind}, DefId, EntityDef, Speech, CollectAction};
 
     macro_rules! convert_to {
         ($from: expr => $to: ty, $key: expr, $parent_key: expr) => {
@@ -350,12 +352,12 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             let value: models::DefIdNextLargerSigned = get_int!(*map, key, parent_key);
 
             let def_id = match kind {
-                game::config::RELATIVE => {
+                models::consts::RELATIVE => {
                     let delta = convert_to!(value => DefIdDelta, key, parent_key);
 
                     base.checked_add_signed(delta).ok_or(Error::DefIdOverflow{ key, parent_key, base, delta })?
                 },
-                game::config::ABSOLUTE => convert_to!(value => DefId, key, parent_key),
+                models::consts::ABSOLUTE => convert_to!(value => DefId, key, parent_key),
                 _ => return Err(Error::UnknownEntityDefIdRefKind { key, parent_key, kind }),
             };
 
@@ -488,7 +490,7 @@ pub fn parse(code: &str) -> Result<Config, Error> {
                 let kind: CollectActionKind = get_int!(action_map, "kind", parent_key);
 
                 match kind {
-                    game::config::TRANSFORM => {
+                    models::consts::TRANSFORM => {
                         let from_map = get_map!(action_map, "from", parent_key);
 
                         let from = deref_def_id(

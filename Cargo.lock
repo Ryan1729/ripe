@@ -232,7 +232,6 @@ dependencies = [
 name = "config"
 version = "0.1.0"
 dependencies = [
- "game",
  "getrandom 0.3.3",
  "models",
  "rhai",
@@ -592,6 +591,8 @@ version = "0.1.0"
 dependencies = [
  "models",
  "platform_types",
+ "vec1",
+ "world",
  "xs",
 ]
 
@@ -986,6 +987,7 @@ name = "models"
 version = "0.1.0"
 dependencies = [
  "text",
+ "vec1",
  "xs",
 ]
 
@@ -1843,6 +1845,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f63a545481291138910575129486daeaf8ac54aee4387fe7906919f7830c7d9d"
 
 [[package]]
+name = "vec1"
+version = "0.1.0"
+
+[[package]]
 name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2353,6 +2359,15 @@ name = "wit-bindgen"
 version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
+
+[[package]]
+name = "world"
+version = "0.1.0"
+dependencies = [
+ "models",
+ "vec1",
+ "xs",
+]
 
 [[package]]
 name = "x11-dl"

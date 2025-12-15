@@ -1,0 +1,18 @@
+[package]
+name = "world"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/world.rs"
+
+[dependencies]
+
+[dependencies.models]
+path = "../models"
+
+[dependencies.vec1]
+path = "../vec1"
+
+[dependencies.xs]
+path = "../xs"

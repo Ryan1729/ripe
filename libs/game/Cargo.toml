@@ -13,5 +13,11 @@ path = "../models"
 [dependencies.platform_types]
 path = "../platform_types"
 
+[dependencies.vec1]
+path = "../vec1"
+
+[dependencies.world]
+path = "../world"
+
 [dependencies.xs]
 path = "../xs"

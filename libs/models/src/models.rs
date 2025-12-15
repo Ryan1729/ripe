@@ -86,6 +86,15 @@ impl Desire {
 
 pub type Desires = Vec<Desire>;
 
+#[derive(Clone, Debug, Default)]
+pub struct MiniEntityDef {
+    pub id: DefId,
+    pub flags: consts::EntityDefFlags,
+    pub tile_sprite: TileSprite,
+    pub wants: Vec<DefId>,
+    pub on_collect: OnCollect,
+}
+
 #[derive(Clone, Debug)]
 pub enum CollectAction {
     Transform { from: DefId, to: DefId },
@@ -94,6 +103,76 @@ pub enum CollectAction {
 pub type OnCollect = Vec<CollectAction>;
 
 pub type Inventory = Vec<Entity>;
+
+pub mod consts {
+    macro_rules! consts_def {
+        (
+            $all_name: ident : $type: ty;
+            $($name: ident = $value: expr),+ $(,)?
+        ) => {
+    
+    
+            pub const $all_name: [(&str, $type); const {
+                let mut count = 0;
+    
+                $(
+                    // Use the repetition for something so we can take the count
+                    const _: $type = $value;
+                    count += 1;
+                )+
+    
+                count
+            }] = [
+                $(
+                    (stringify!($name), $value),
+                )+
+            ];
+    
+            $(
+                pub const $name: $type = $value;
+            )+
+        };
+    }
+    
+    pub type TileFlags = u32;
+    
+    consts_def!{
+        ALL_TILE_FLAGS: TileFlags;
+        // Can't be anything but a blocker
+        WALL = 0,
+        FLOOR = 1 << 0,
+        PLAYER_START = 1 << 2,
+        ITEM_START = 1 << 3,
+        NPC_START = 1 << 4,
+        DOOR_START = 1 << 5,
+    }
+    
+    pub type EntityDefFlags = u8;
+    
+    consts_def!{
+        ALL_ENTITY_FLAGS: EntityDefFlags;
+        COLLECTABLE = super::COLLECTABLE,
+        STEPPABLE = super::STEPPABLE,
+        VICTORY = super::VICTORY,
+        DOOR = super::DOOR,
+        NOT_SPAWNED_AT_START = 1 << 4,
+    }
+    
+    pub type EntityDefIdRefKind = u8;
+    
+    consts_def!{
+        ALL_ENTITY_ID_REFERENCE_KINDS: EntityDefIdRefKind;
+        RELATIVE = 1,
+        ABSOLUTE = 2,
+    }
+    
+    pub type CollectActionKind = u8;
+    
+    consts_def!{
+        ALL_COLLECT_ACTION_KINDS: CollectActionKind;
+        TRANSFORM = 1,
+    }
+}
 
 pub type EntityFlags = u8;
 
@@ -511,6 +590,54 @@ pub fn i_to_xy(segment_width: SegmentWidth, index: Index) -> XY {
     XY {
         x: xy::x((index % segment_width) as _),
         y: xy::y((index / segment_width) as _),
+    }
+}
+
+pub mod config {
+    use vec1::{Vec1};
+    use crate::{
+        consts::{EntityDefFlags, TileFlags}, DefId, OnCollect, SegmentWidth, Speech, TileSprite
+    };
+
+    /// A configuration WorldSegment that can be used to contruct game::WorldSegments later.
+    #[derive(Clone)]
+    pub struct WorldSegment {
+        pub width: SegmentWidth,
+        // TODO? Nonempty Vec?
+        // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that rsstriction clear, so we
+        // can't have like PC only worlds that break in weird ways online. Probably no one will ever need that
+        // many tiles per segment. Plus, then xs conversions go away.
+        pub tiles: Vec<TileFlags>,
+    }
+
+    #[derive(Clone)]
+    pub struct Config {
+        pub segments: Vec1<WorldSegment>,
+        pub entities: Vec1<EntityDef>,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct EntityDef {
+        pub speeches: Vec<Vec<Speech>>,
+        pub inventory_description: Vec<Vec<Speech>>,
+        pub id: DefId,
+        pub flags: EntityDefFlags,
+        pub tile_sprite: TileSprite,
+        pub wants: Vec<DefId>,
+        pub on_collect: OnCollect,
+    }
+}
+pub use config::{Config, EntityDef};
+
+impl From<&EntityDef> for MiniEntityDef {
+    fn from(def: &EntityDef) -> Self {
+        Self {
+            id: def.id,
+            flags: def.flags,
+            tile_sprite: def.tile_sprite,
+            wants: def.wants.clone(),
+            on_collect: def.on_collect.clone(),
+        }
     }
 }
 
