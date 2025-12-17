@@ -1,5 +1,5 @@
 use models::{config::{Config}, speeches, DefId, Entity, CollectAction, Location, MiniEntityDef, Speeches, Tile, TileSprite, WorldSegment, X, Y, SegmentId};
-use models::consts::{ITEM_START, NPC_START, PLAYER_START, COLLECTABLE, STEPPABLE, NOT_SPAWNED_AT_START, DOOR, FLOOR, DOOR_START};
+use models::consts::{ITEM_START, NPC_START, PLAYER_START, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START, DOOR, FLOOR, DOOR_START};
 use vec1::Vec1;
 use xs::{Xs};
 
@@ -267,6 +267,7 @@ pub enum Error {
     NoItemsFound,
     NoDoorsFound,
     NoGoalItemFound,
+    NotEnoughNonFinalLockAndKeysFound,
     CouldNotPlaceItem(MiniEntityDef),
     InvalidDesireID(MiniEntityDef, SegmentId),
     NonItemWasDesired(MiniEntityDef, MiniEntityDef, SegmentId),
@@ -433,6 +434,9 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     let first_segment = world.segments.first();
     let first_config_segment = config_segments.first();
     let first_segment_id = 0;
+    debug_assert!(world.segments.len() <= SegmentId::MAX.into());
+    let last_segment_id: SegmentId = (world.segments.len() - 1) as SegmentId;
+    let last_config_segment = config_segments.last();
 
     let mut placed_already = Vec::with_capacity(16);
 
@@ -446,58 +450,12 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     world.player.y = p_loc.xy.y;
     placed_already.push(p_loc);
 
-    for door_def in &door_defs {
-        if door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START { continue }
-        if door_def.flags & STEPPABLE != STEPPABLE { continue }
-
-        for i in 0..segments_count {
-            for j in i..segments_count {
-                if i == j { continue }
-
-                let config_segment_1 = &config_segments[i as usize];
-                let config_segment_2 = &config_segments[j as usize];
-
-                let d_1_loc = random::tile_matching_flags_besides(
-                    rng,
-                    config_segment_1,
-                    i,
-                    FLOOR | DOOR_START,
-                    &placed_already,
-                ).ok_or(Error::CannotPlaceDoor)?;
-                placed_already.push(d_1_loc);
-
-                let d_2_loc = random::tile_matching_flags_besides(
-                    rng,
-                    config_segment_2,
-                    j,
-                    FLOOR | DOOR_START,
-                    &placed_already,
-                ).ok_or(Error::CannotPlaceDoor)?;
-                placed_already.push(d_2_loc);
-
-                let mut door_1 = to_entity(
-                    door_def,
-                    d_1_loc.xy.x,
-                    d_1_loc.xy.y
-                );
-                door_1.door_target = d_2_loc;
-
-                world.steppables.insert(i, door_1);
-
-                let mut door_2 = to_entity(
-                    door_def,
-                    d_2_loc.xy.x,
-                    d_2_loc.xy.y
-                );
-
-                door_2.door_target = d_1_loc;
-
-                world.steppables.insert(j, door_2);
-            }
-        }
-    }
-
     let mut goal_info = None;
+
+    struct LockAndKey<'defs> {
+        lock: &'defs MiniEntityDef,
+        key: &'defs MiniEntityDef,
+    }
 
     // TODO? mark up the goal items in the config?
     // TODO? Helper for this pattern of "find a random place to start iterating?"
@@ -516,20 +474,21 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                         continue
                     };
 
-                    if door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START {
+                    // We are looking for the key to the victory door.
+                    if door_def.flags & VICTORY == 0 {
                         continue
                     }
 
                     let d_loc = random::tile_matching_flags_besides(
                         rng,
-                        first_config_segment,
-                        first_segment_id,
+                        last_config_segment,
+                        last_segment_id,
                         FLOOR | DOOR_START,
                         &placed_already,
                     ).ok_or(Error::CannotPlaceDoor)?;
 
                     world.steppables.insert(
-                        first_segment_id,
+                        last_segment_id,
                         to_entity(
                             door_def,
                             d_loc.xy.x,
@@ -557,6 +516,126 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     };
 
     #[derive(Debug)]
+    struct Sphere<'defs> {
+        segment_ids: Vec<SegmentId>,
+        goal_item_def: &'defs MiniEntityDef,
+    }
+
+    let mut non_final_lock_and_keys = Vec::with_capacity(16);
+
+    for i in 0..item_defs.len() {
+        let item_def = &item_defs[i];
+
+        if item_def.on_collect.is_empty() { continue }
+
+        for action in &item_def.on_collect {
+            match action {
+                CollectAction::Transform{ from, to: _ } => {
+                    let Some(door_def) = door_defs.iter().find(|d| d.id == *from) else {
+                        continue
+                    };
+
+                    // We are looking for all the non-victory doors.
+                    if door_def.flags & VICTORY == VICTORY {
+                        continue
+                    }
+                    if door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START { continue }
+                    if door_def.flags & STEPPABLE != STEPPABLE { continue }
+
+                    non_final_lock_and_keys.push(
+                        LockAndKey {
+                            lock: door_def,
+                            key: item_def,
+                        }
+                    );
+
+                    break
+                }
+            }
+        }
+    }
+
+    let Ok(non_final_lock_and_keys) = Vec1::try_from(non_final_lock_and_keys) else {
+        return Err(Error::NotEnoughNonFinalLockAndKeysFound);
+    };
+
+    let mut spheres = Vec::with_capacity(16);
+
+    {
+        let initial_lak_index = xs::range(rng, 0..non_final_lock_and_keys.len() as u32) as usize;
+        let mut lak_index = initial_lak_index;
+
+        // TODO make spheres variable amounts of segments
+        // From the first to the second last segment ...
+        for i in 0..(segments_count - 1) {
+            // ... so we can talk about the next segment
+            let j = i + 1;
+
+            let edge_lak = &non_final_lock_and_keys[lak_index];
+
+            lak_index += 1;
+            if lak_index > non_final_lock_and_keys.len() {
+                lak_index = 0;
+            }
+
+            if lak_index == initial_lak_index {
+                return Err(Error::NotEnoughNonFinalLockAndKeysFound);
+            }
+
+            let config_segment_1 = &config_segments[i as usize];
+            let config_segment_2 = &config_segments[j as usize];
+
+            let d_1_loc = random::tile_matching_flags_besides(
+                rng,
+                config_segment_1,
+                i,
+                FLOOR | DOOR_START,
+                &placed_already,
+            ).ok_or(Error::CannotPlaceDoor)?;
+            placed_already.push(d_1_loc);
+
+            let d_2_loc = random::tile_matching_flags_besides(
+                rng,
+                config_segment_2,
+                j,
+                FLOOR | DOOR_START,
+                &placed_already,
+            ).ok_or(Error::CannotPlaceDoor)?;
+            placed_already.push(d_2_loc);
+
+            let mut door_1 = to_entity(
+                edge_lak.lock,
+                d_1_loc.xy.x,
+                d_1_loc.xy.y
+            );
+            door_1.door_target = d_2_loc;
+
+            world.steppables.insert(i, door_1);
+
+            let mut door_2 = to_entity(
+                edge_lak.lock,
+                d_2_loc.xy.x,
+                d_2_loc.xy.y
+            );
+
+            door_2.door_target = d_1_loc;
+
+            world.steppables.insert(j, door_2);
+
+            spheres.push(Sphere {
+                segment_ids: vec![i],
+                goal_item_def: edge_lak.key,
+            });
+        }
+
+        // Add the last sphere with the goal key and door in it
+        spheres.push(Sphere {
+            segment_ids: vec![last_segment_id],
+            goal_item_def,
+        });
+    }
+
+    #[derive(Debug)]
     enum AbstractLocation<'defs> {
         Floor(SegmentId),
         NpcPocket(&'defs MiniEntityDef, SegmentId),
@@ -577,74 +656,86 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     fn select_constraints<'defs>(
         rng: &mut Xs,
         world: &World,
+        spheres: &[Sphere<'defs>],
         all_desires: &[DesireRef<'defs>],
-        goal_item_def: &'defs MiniEntityDef,
     ) -> Constraints<'defs> {
+        debug_assert!(world.segments.len() <= SegmentId::MAX as usize);
+
         let desire_count_to_use = xs::range(rng, 1..all_desires.len() as u32 + 1) as usize;
         // We end up with 1 more spec than the desires we use, becauase we start with one that doesn't use any.
-        let target_len = desire_count_to_use + 1;
+        let overall_target_len = desire_count_to_use + 1;
+
+        let average_target_len = core::cmp::max(overall_target_len / spheres.len(), 1);
+        let max_sub_target_len = average_target_len * 2;
+        debug_assert!(max_sub_target_len <= u32::MAX as usize); // For random selection later
+
         let initial_index = xs::range(rng, 0..all_desires.len() as u32) as usize;
 
-        let mut item_specs: Vec<_> = Vec::with_capacity(target_len);
+        let mut item_specs: Vec<_> = Vec::with_capacity(overall_target_len);
 
         let mut tries = 0;
-        while item_specs.len() < target_len && tries < 16 {
+        while item_specs.len() < overall_target_len && tries < 16 {
             tries += 1;
             item_specs.clear();
 
-            // TODO: have multiple spheres, delineated by locked doors.
-            // Treat each sphere as a separate puzzle, with unlocking
-            // the next door as the goal.
-            // Keep track of the used desires, so we don't use the same one twice.
-            // We can randomly push some things back into previous spheresm for variety.
+            for sphere in spheres {
+                // TODO: have multiple spheres, delineated by locked doors.
+                // Treat each sphere as a separate puzzle, with unlocking
+                // the next door as the goal.
+                // Keep track of the used desires, so we don't use the same one twice.
+    
+                let segment_ids = &sphere.segment_ids;
+                debug_assert!(segment_ids.len() <= u32::MAX as usize);
 
-            // TODO Determine the available segments from the current sphere
-            debug_assert!(world.segments.len() <= SegmentId::MAX as usize);
-            let segment_ids = (0..world.segments.len() as SegmentId).collect::<Vec<_>>();
-            debug_assert!(segment_ids.len() <= u32::MAX as usize);
-
-            macro_rules! random_segment_id {
-                () => {
-                    segment_ids[xs::range(rng, 0..segment_ids.len() as u32) as usize]
-                }
-            }
-
-            // Start with a solvable puzzle, then add steps, keeping it solvable
-            item_specs.push(ItemSpec{
-                item_def: goal_item_def,
-                location: AbstractLocation::Floor(random_segment_id!()),
-            });
-
-            let mut index = initial_index;
-            while item_specs.len() < target_len {
-                // Select the index or not, at a rate proportional to how many we need.
-                if (xs::range(rng, 0..all_desires.len() as u32 + 1) as usize) < target_len {
-                    let Some(last) = item_specs.pop() else {
-                        debug_assert!(false, "item_specs.pop() == None");
-                        continue
-                    };
-
-                    let desire = all_desires[index];
-
-                    item_specs.push(ItemSpec{
-                        item_def: desire.item_def,
-                        location: last.location,
-                    });
-
-                    item_specs.push(ItemSpec{
-                        item_def: last.item_def,
-                        location: AbstractLocation::NpcPocket(desire.mob_def, random_segment_id!()),
-                    });
+                macro_rules! random_segment_id {
+                    () => {
+                        // TODO: We can randomly push some things back into previous spheres, for variety.
+                        segment_ids[xs::range(rng, 0..segment_ids.len() as u32) as usize]
+                    }
                 }
 
-                index += 1;
-                if index >= all_desires.len() {
-                    index = 0;
-                }
+                // Start with a solvable puzzle, then add steps, keeping it solvable
+                item_specs.push(ItemSpec{
+                    item_def: sphere.goal_item_def,
+                    location: AbstractLocation::Floor(random_segment_id!()),
+                });
 
-                if index == initial_index {
-                    // Avoid using the value from any index more than once.
-                    break
+                let sub_target_len = xs::range(rng, 1..max_sub_target_len as u32) as usize;
+
+                let mut index = xs::range(rng, 0..all_desires.len() as u32) as usize;
+
+                let initial_spec_len = item_specs.len();
+
+                while item_specs.len() - initial_spec_len < sub_target_len {
+                    // Select the index or not, at a rate proportional to how many we need.
+                    if (xs::range(rng, 0..all_desires.len() as u32 + 1) as usize) < sub_target_len {
+                        let Some(last) = item_specs.pop() else {
+                            debug_assert!(false, "item_specs.pop() == None");
+                            continue
+                        };
+    
+                        let desire = all_desires[index];
+    
+                        item_specs.push(ItemSpec{
+                            item_def: desire.item_def,
+                            location: last.location,
+                        });
+    
+                        item_specs.push(ItemSpec{
+                            item_def: last.item_def,
+                            location: AbstractLocation::NpcPocket(desire.mob_def, random_segment_id!()),
+                        });
+                    }
+    
+                    index += 1;
+                    if index >= all_desires.len() {
+                        index = 0;
+                    }
+    
+                    if index == initial_index {
+                        // Avoid using the value from any index more than once.
+                        break
+                    }
                 }
             }
         }
@@ -654,7 +745,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         }
     }
 
-    let constraints: Constraints = select_constraints(rng, &world, &all_desires, goal_item_def);
+    let constraints: Constraints = select_constraints(rng, &world, &spheres, &all_desires);
 
     for item_spec in constraints.item_specs {
         let mut attempts = 0;

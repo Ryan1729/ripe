@@ -33,6 +33,10 @@ impl <T> Vec1<T> {
     pub fn first(&self) -> &T {
         self.0.first().expect("Invalid Vec1 was created!")
     }
+
+    pub fn last(&self) -> &T {
+        self.0.last().expect("Invalid Vec1 was created!")
+    }
 }
 
 impl<T, I: std::slice::SliceIndex<[T]>> Index<I> for Vec1<T> {
