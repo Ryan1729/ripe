@@ -474,11 +474,6 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                         continue
                     };
 
-                    // We are looking for the key to the victory door.
-                    if door_def.flags & VICTORY == 0 {
-                        continue
-                    }
-
                     let d_loc = random::tile_matching_flags_besides(
                         rng,
                         last_config_segment,
@@ -539,8 +534,10 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                     if door_def.flags & VICTORY == VICTORY {
                         continue
                     }
+                    // We are planning to spawn these at the start
                     if door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START { continue }
-                    if door_def.flags & STEPPABLE != STEPPABLE { continue }
+                    // We want locked doors
+                    if door_def.flags & STEPPABLE == STEPPABLE { continue }
 
                     non_final_lock_and_keys.push(
                         LockAndKey {

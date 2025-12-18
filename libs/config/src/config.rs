@@ -117,6 +117,7 @@ fn init_engine() -> Engine {
     use rhai::module_resolvers::StaticModuleResolver;
 
     let mut engine = Engine::new();
+    engine.set_max_expr_depths(32, 32);
 
     let mut resolver = StaticModuleResolver::new();
 
@@ -130,8 +131,23 @@ fn init_engine() -> Engine {
                 .expect(concat!(stringify!($name), " should eval as a module"));
 
             resolver.insert(stringify!($name), module);
+
+            // This is neded to allow the added moduels to import previously added modules
+            engine.set_module_resolver(resolver.clone());
         }};
     }
+
+    let result_str = r#"
+        fn ok(value) {
+            #{ ok: value }
+        }
+
+        fn err(value) {
+            #{ err: value }
+        }
+    "#;
+
+    add_module!(result = result_str);
 
     let mut tile_flags_string = String::with_capacity(128);
 
@@ -151,6 +167,8 @@ fn init_engine() -> Engine {
 
     // Rhai not allowing you to access consts outside the function scope without using `function_name!` is annoying.
     let default_spritesheet_string = format!(r#"
+        import "result" as result;
+
         private fn tile_sprite_xy(x, y) {{
             const TILES_PER_ROW = {TILES_PER_ROW};
             y * TILES_PER_ROW + x
@@ -167,11 +185,35 @@ fn init_engine() -> Engine {
 
         export const OPEN_DOOR = tile_sprite_xy(0, 1);
         export const OPEN_END_DOOR = tile_sprite_xy(1, 1);
-        export const LOCKED_DOOR_1 = tile_sprite_xy(0, 2);
-        export const LOCKED_DOOR_2 = tile_sprite_xy(0, 3);
 
-        export const KEY_1 = tile_sprite_xy(1, 2);
-        export const KEY_2 = tile_sprite_xy(1, 3);
+        export const DOOR_MATERIALS = ["gold", "iron", "carbon-steel"];
+        export const DOOR_COLOURS = ["red", "green", "blue"];
+
+        // short for door and key xy.
+        // Takes the door's xy, and assumes the key is one in the positive x direction.
+        private fn dak_xy(door_x, door_y) {{
+            #{{
+                door: tile_sprite_xy(door_x, door_y),
+                key: tile_sprite_xy(door_x + 1, door_y)
+            }}
+        }}
+
+        fn door_and_key_by_material_and_colour(material, colour) {{
+            result::ok(
+                switch [material, colour] {{
+                    ["gold", "red"] => dak_xy(0, 2),
+                    ["gold", "green"] => dak_xy(0, 3),
+                    ["gold", "blue"] => dak_xy(6, 0),
+                    ["iron", "red"] => dak_xy(6, 1),
+                    ["iron", "green"] => dak_xy(6, 2),
+                    ["iron", "blue"] => dak_xy(6, 3),
+                    ["carbon-steel", "red"] => dak_xy(6, 4),
+                    ["carbon-steel", "green"] => dak_xy(6, 5),
+                    ["carbon-steel", "blue"] => dak_xy(6, 6),
+                    _ => return result::err("No door and key found for \"" + material + "\"" + "and \"" + colour + "\""),
+                }}
+            )
+        }}
     "#);
 
     add_module!(default_spritesheet = default_spritesheet_string);
@@ -224,14 +266,39 @@ fn init_engine() -> Engine {
 
     add_module!(collect_actions = collect_actions_string);
 
-    engine.set_module_resolver(resolver);
-
     engine
 }
 
 #[test]
 fn init_engine_does_not_panic() {
     init_engine();
+}
+
+#[test]
+fn default_spritesheet_tests_pass() {
+    let code = r#"
+        import "default_spritesheet" as DS;
+
+        for material in DS::DOOR_MATERIALS {
+            for colour in DS::DOOR_COLOURS {
+                let result = DS::door_and_key_by_material_and_colour(material, colour);
+
+                if result.ok == () {
+                    throw result.err;
+                }
+
+                if result.ok.door == () {
+                    throw ("No door found for " + material + ", " + colour);
+                }
+
+                if result.ok.key == () {
+                    throw ("No key found for " + material + ", " + colour);
+                }
+            }
+        }
+    "#;
+
+    let _ = ENGINE.eval::<()>(code).expect("should eval without errors");
 }
 
 static ENGINE: LazyLock<Engine> = LazyLock::new(init_engine);

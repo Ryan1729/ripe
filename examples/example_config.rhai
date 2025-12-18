@@ -54,7 +54,7 @@ let entities = [
         ],
         tile_sprite: DS::item(1),
     },
-]
+];
 
 let open_end_door_id = ID::absolute(entities.len);
 entities.push(
@@ -71,52 +71,6 @@ entities.push(
         tile_sprite: DS::OPEN_DOOR,
     },
 );
-
-
-    #{
-        flags: LOCKED_DOOR,
-        tile_sprite: DS::LOCKED_DOOR_1,
-        speeches: [
-            [ "A locked red-gold door. Bet the key is red-gold too." ],
-        ],
-    },
-    #{
-        flags: ITEM,
-        tile_sprite: DS::KEY_1,
-        inventory_description: [
-            ["A red-gold key. Bet it opens a red-gold door."],
-        ],
-        on_collect: [
-            #{
-                kind: CA::TRANSFORM,
-                from: ID::relative(-1),
-                to: ID::relative(-2),
-            }
-        ],
-    },
-    #{
-        flags: LOCKED_DOOR,
-        tile_sprite: DS::LOCKED_DOOR_2,
-        speeches: [
-            [ "A locked blue-grey door. Bet the key is blue-grey too." ],
-        ],
-    },
-    #{
-        flags: ITEM,
-        tile_sprite: DS::KEY_2,
-        inventory_description: [
-            ["A blue-grey key. Bet it opens a blue-grey door."],
-        ],
-        on_collect: [
-            #{
-                kind: CA::TRANSFORM,
-                from: ID::relative(-1),
-                //to: ID::relative(-5),
-                to: ID::relative(-2),
-            }
-        ],
-    },
-];
 
 const DOOR_MATERIALS = ["gold", "iron", "high-carbon steel"];
 const DOOR_COLOURS = ["red", "green", "blue"];
