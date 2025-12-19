@@ -7,6 +7,9 @@ edition = "2021"
 [lib]
 path = "src/game.rs"
 
+[dependencies.features]
+path = "../features"
+
 [dependencies.models]
 path = "../models"
 
@@ -21,3 +24,4 @@ path = "../world"
 
 [dependencies.xs]
 path = "../xs"
+

@@ -460,7 +460,7 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
                         // Iterate backward so we can remove without indexing errors
                         for i in (0..giving_entity_len).rev() {
                             let Some(item_def_id) = state.world.get_entity(giving_entity_key)
-                                .map(|g_e| g_e.inventory[i].def_id)
+                                .map(|g_e| g_e.inventory[i].transformable.id)
                             else {
                                 break 'take_item
                             };
@@ -476,7 +476,7 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
                                 let mut reward_opt = None;
 
                                 if let Some(receiveing_entity) = state.world.get_entity_mut(receiveing_entity_key) {
-                                    for desire in &mut receiveing_entity.desires {
+                                    for desire in &mut receiveing_entity.transformable.wants {
                                         if desire.def_id == def_id {
                                             desire.state = models::DesireState::Satisfied;
                                             break
@@ -549,7 +549,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
 
     fn draw_entity(commands: &mut Commands, entity: &Entity) {
         commands.sspr(
-            to_tile::sprite_xy(entity.sprite),
+            to_tile::sprite_xy(entity.transformable.tile_sprite),
             command::Rect::from_unscaled(to_tile::entity_rect(entity)),
         );
     }
@@ -614,7 +614,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                         x: unscaled::X(200),
                         y: unscaled::Y(150),
                     },
-                    state.world.player.sprite
+                    state.world.player.transformable.tile_sprite
                 );
             } else {
                 render_world(commands, state);
@@ -720,7 +720,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                 }
 
                 if let Some(item) = state.world.player.inventory.get(inventory_index) {
-                    draw_tile_sprite(commands, at + CELL_INSET, item.sprite);
+                    draw_tile_sprite(commands, at + CELL_INSET, item.transformable.tile_sprite);
                 };
 
                 at.x += CELL_W;

@@ -1,4 +1,5 @@
-use models::{config::{Config}, speeches, DefId, Entity, CollectAction, Location, MiniEntityDef, Speeches, Tile, TileSprite, WorldSegment, X, Y, SegmentId};
+use features::{invariant_assert};
+use models::{config::{Config}, speeches, CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Speeches, Tile, TileSprite, WorldSegment, X, Y, SegmentId};
 use models::consts::{ITEM_START, NPC_START, PLAYER_START, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START, DOOR, FLOOR, DOOR_START};
 use vec1::Vec1;
 use xs::{Xs};
@@ -152,29 +153,22 @@ pub fn to_entity(
     Entity::new(
         x,
         y,
-        def.tile_sprite,
-        def.id,
-        def.wants.iter().map(|&def_id| models::Desire::new(def_id)).collect(),
-        def.on_collect.clone(),
-        // This relies on the entity flags being a subset of the entity def flags.
-        def.flags,
+        def.into(),
     )
 }
 
 fn transform_entity(entity: &mut Entity, def: &MiniEntityDef) {
-    // TODO? Is there anything else we'd want to keep during transformations besides position?
     // TODO? Is it worth storing pre-processed entity Defs, instead of the whole thing? In terms of any of
     //       reduced memory usage, less work needed to do these transforms, or reduced mixing of concerns?
-    *entity = to_entity(
-        def,
-        entity.x,
-        entity.y
-    );
+    // We intentionally keep everything we dont want to be affected by this function in different fields.
+    // This decision makes maintaining this function a non-issue, where it would othersie be a pain each
+    // time we add fields anywhere.
+    entity.transformable = def.into();
 }
 
 pub fn transform_all_matching(world: &mut World, from_def_id: DefId, to_def: &MiniEntityDef) {
     for entity in world.all_entities_mut() {
-        if entity.def_id == from_def_id {
+        if entity.transformable.id == from_def_id {
             transform_entity(entity, to_def);
         }
     }
@@ -419,7 +413,10 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     xs::shuffle(rng, &mut door_defs);
 
     let player = Entity {
-        sprite: models::PLAYER_SPRITE,
+        transformable: EntityTransformable {
+            tile_sprite: models::PLAYER_SPRITE,
+            ..<_>::default()
+        },
         ..<_>::default()
     };
 
@@ -434,7 +431,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     let first_segment = world.segments.first();
     let first_config_segment = config_segments.first();
     let first_segment_id = 0;
-    debug_assert!(world.segments.len() <= SegmentId::MAX.into());
+    invariant_assert!(world.segments.len() <= SegmentId::MAX.into());
     let last_segment_id: SegmentId = (world.segments.len() - 1) as SegmentId;
     let last_config_segment = config_segments.last();
 
@@ -652,11 +649,12 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
 
     fn select_constraints<'defs>(
         rng: &mut Xs,
-        world: &World,
+        // TODO: Why did we pass this again? Should we still be doing that?
+        _world: &World,
         spheres: &[Sphere<'defs>],
         all_desires: &[DesireRef<'defs>],
     ) -> Constraints<'defs> {
-        debug_assert!(world.segments.len() <= SegmentId::MAX as usize);
+        invariant_assert!(_world.segments.len() <= SegmentId::MAX as usize);
 
         let desire_count_to_use = xs::range(rng, 1..all_desires.len() as u32 + 1) as usize;
         // We end up with 1 more spec than the desires we use, becauase we start with one that doesn't use any.
@@ -664,7 +662,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
 
         let average_target_len = core::cmp::max(overall_target_len / spheres.len(), 1);
         let max_sub_target_len = average_target_len * 2;
-        debug_assert!(max_sub_target_len <= u32::MAX as usize); // For random selection later
+        invariant_assert!(max_sub_target_len <= u32::MAX as usize); // For random selection later
 
         let initial_index = xs::range(rng, 0..all_desires.len() as u32) as usize;
 
@@ -682,7 +680,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 // Keep track of the used desires, so we don't use the same one twice.
     
                 let segment_ids = &sphere.segment_ids;
-                debug_assert!(segment_ids.len() <= u32::MAX as usize);
+                invariant_assert!(segment_ids.len() <= u32::MAX as usize);
 
                 macro_rules! random_segment_id {
                     () => {
@@ -707,7 +705,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                     // Select the index or not, at a rate proportional to how many we need.
                     if (xs::range(rng, 0..all_desires.len() as u32 + 1) as usize) < sub_target_len {
                         let Some(last) = item_specs.pop() else {
-                            debug_assert!(false, "item_specs.pop() == None");
+                            invariant_assert!(false, "item_specs.pop() == None");
                             continue
                         };
     

@@ -1,3 +1,4 @@
+use features::invariant_assert;
 use models::{
     config::{Config},
     offset,
@@ -439,7 +440,7 @@ impl State {
 
         if can_walk_onto(&self.world, new_key) {
             if let Some(steppable) = self.world.steppables.get(new_key) {
-                if steppable.flags & models::STEPPABLE != models::STEPPABLE {
+                if !steppable.is_steppable() {
                     // Doors or other things which may become steppable, but aren't now.
                     // TODO: Is the world.steppables/world.mobs distinction worth it?
                     return
@@ -499,11 +500,11 @@ impl State {
         };
 
         let mut post_action = PostTalkingAction::NoOp;
-        for desire in &mut interactable.desires {
+        for desire in &mut interactable.transformable.wants {
             use models::DesireState::*;
             // Check if interactable should notice the player's item.
             if desire.state == Unsatisfied
-            && entity.inventory.iter().any(|e| e.def_id == desire.def_id) {
+            && entity.inventory.iter().any(|e| e.transformable.id == desire.def_id) {
                 desire.state = SatisfactionInSight;
                 post_action = PostTalkingAction::TakeItem(key, desire.def_id);
             }
@@ -585,13 +586,13 @@ impl State {
 
     pub fn push_inventory(&mut self, target_key: EntityKey, item: Entity) {
         if target_key == self.world.player_key() {
-            for action in &item.on_collect {
+            for action in &item.transformable.on_collect {
                 match action {
                     CollectAction::Transform { from, to } => {
                         if let Some(to_def) = self.entity_defs.get((*to) as usize) {
                             world::transform_all_matching(&mut self.world, *from, to_def);
                         } else {
-                            debug_assert!(false, "Why are we trying to transform something into something that doesn't exist? to {to}");
+                            invariant_assert!(false, "Why are we trying to transform something into something that doesn't exist? to {to}");
                         }
                     }
                 }

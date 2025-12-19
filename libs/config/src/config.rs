@@ -183,8 +183,8 @@ fn init_engine() -> Engine {
         }}
         // TODO: Define walls, floor, door animation, and player here too
 
-        export const OPEN_DOOR = tile_sprite_xy(0, 1);
-        export const OPEN_END_DOOR = tile_sprite_xy(1, 1);
+        export const OPEN_DOOR = tile_sprite_xy(0, 5);
+        export const OPEN_END_DOOR = tile_sprite_xy(1, 5);
 
         export const DOOR_MATERIALS = ["gold", "iron", "carbon-steel"];
         export const DOOR_COLOURS = ["red", "green", "blue"];
@@ -293,6 +293,14 @@ fn default_spritesheet_tests_pass() {
 
                 if result.ok.key == () {
                     throw ("No key found for " + material + ", " + colour);
+                }
+
+                if result.ok.door < 0 {
+                    throw ("Negative door sprite for " + material + ", " + colour + ": " + result.ok.door);
+                }
+
+                if result.ok.key < 0 {
+                    throw ("Negative key sprite for " + material + ", " + colour + ": " + result.ok.key);
                 }
             }
         }
@@ -442,9 +450,9 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             .as_map_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
 
         let flags = get_int!(entity, "flags", parent_key);
-
+        dbg!(entity.get("tile_sprite",), id, );
         let tile_sprite = get_int!(entity, "tile_sprite", parent_key);
-
+        dbg!();
         let speeches: Vec<Vec<Speech>> = 'speeches: {
             let key = "speeches";
             let raw_speeches_list = match entity.get(key) {

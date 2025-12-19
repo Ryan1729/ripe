@@ -5,10 +5,10 @@ pub type SegmentId = u16;
 
 pub type TileSprite = u8;
 
-pub const WALL_SPRITE: TileSprite = 0;
-pub const FLOOR_SPRITE: TileSprite = 1;
-pub const PLAYER_SPRITE: TileSprite = 2;
-pub const DOOR_ANIMATION_FRAME_1: TileSprite = 10;
+pub const WALL_SPRITE: TileSprite = 32;
+pub const FLOOR_SPRITE: TileSprite = 33;
+pub const PLAYER_SPRITE: TileSprite = 34;
+pub const DOOR_ANIMATION_FRAME_1: TileSprite = 42;
 pub const DOOR_ANIMATION_FRAME_2: TileSprite = DOOR_ANIMATION_FRAME_1 + 8;
 pub const DOOR_ANIMATION_FRAME_3: TileSprite = DOOR_ANIMATION_FRAME_2 + 8;
 
@@ -91,8 +91,30 @@ pub struct MiniEntityDef {
     pub id: DefId,
     pub flags: consts::EntityDefFlags,
     pub tile_sprite: TileSprite,
-    pub wants: Vec<DefId>,
     pub on_collect: OnCollect,
+    pub wants: Vec<DefId>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct EntityTransformable {
+    pub id: DefId,
+    pub flags: consts::EntityDefFlags,
+    pub tile_sprite: TileSprite,    
+    pub on_collect: OnCollect,
+    pub wants: Desires,
+}
+
+impl From<&MiniEntityDef> for EntityTransformable {
+    fn from(def: &MiniEntityDef) -> Self {
+        Self {
+            id: def.id,
+            // This relies on the entity flags being a subset of the entity def flags.
+            flags: def.flags,
+            tile_sprite: def.tile_sprite,
+            on_collect: def.on_collect.clone(),
+            wants: def.wants.iter().map(|&id| Desire::new(id)).collect::<Vec<_>>(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -200,11 +222,7 @@ pub struct Entity {
     pub y: Y,
     pub offset_x: offset::X,
     pub offset_y: offset::Y,
-    pub sprite: TileSprite,
-    pub def_id: DefId,
-    pub desires: Desires,
-    pub on_collect: OnCollect,
-    pub flags: EntityFlags,
+    pub transformable: EntityTransformable,
     pub inventory: Inventory,
     // TODO? Have a goal where it's a journey to discover that the path was inside you all along?
     pub door_target: Location,
@@ -214,20 +232,12 @@ impl Entity {
     pub fn new(
         x: X,
         y: Y,
-        sprite: TileSprite,
-        def_id: DefId,
-        desires: Desires,
-        on_collect: OnCollect,
-        flags: EntityFlags,
+        transformable: EntityTransformable,
     ) -> Self {
         Self {
             x,
             y,
-            sprite,
-            def_id,
-            desires,
-            flags,
-            on_collect,
+            transformable,
             ..<_>::default()
         }
     }
@@ -240,7 +250,7 @@ impl Entity {
         let mut current_speeches_state = <_>::default(); 
         let mut current_precedence = 0;
 
-        for desire in &self.desires {
+        for desire in &self.transformable.wants {
             let SpeechSelection{ speeches_state, precedence } = desire.speech_selection();
 
             if precedence > current_precedence {
@@ -250,31 +260,31 @@ impl Entity {
         }
 
         speeches::Key {
-            def_id: self.def_id,
+            def_id: self.transformable.id,
             state: current_speeches_state,
         }
     }
 
     pub fn is_collectable(&self) -> bool {
-        self.flags & COLLECTABLE == COLLECTABLE
+        self.transformable.flags & COLLECTABLE == COLLECTABLE
     }
 
     pub fn is_steppable(&self) -> bool {
-        self.flags & STEPPABLE == STEPPABLE
+        self.transformable.flags & STEPPABLE == STEPPABLE
     }
 
     pub fn is_victory(&self) -> bool {
-        self.flags & VICTORY == VICTORY
+        self.transformable.flags & VICTORY == VICTORY
     }
 
     pub fn is_door(&self) -> bool {
-        self.flags & DOOR == DOOR
+        self.transformable.flags & DOOR == DOOR
     }
 }
 
 /// Returns a phrase like "a thing" or "an entity".
 pub fn entity_article_phrase(entity: &Entity) -> &str {
-    match entity.sprite {
+    match entity.transformable.tile_sprite {
         WALL_SPRITE => "a wall",
         FLOOR_SPRITE => "a floor",
         PLAYER_SPRITE => "a me(?!)",

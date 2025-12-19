@@ -8,7 +8,7 @@ const TILE_W: unscaled::W = unscaled::W(16);
 const TILE_H: unscaled::H = unscaled::H(16);
 pub const TILES_PER_ROW: sprite::Inner = 8;
 /// Where the tiles start on the spreadsheet.
-const TILES_Y: sprite::Y = sprite::Y(64);
+const TILES_Y: sprite::Y = sprite::Y(0);
 // }
 
 const CENTER_OFFSET: unscaled::WH = unscaled::WH{
