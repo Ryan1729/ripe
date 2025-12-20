@@ -25,3 +25,7 @@ path = "../world"
 [dependencies.xs]
 path = "../xs"
 
+[features]
+default = []
+invariant-checking = ["world/invariant-checking"]
+logging = ["world/logging"]

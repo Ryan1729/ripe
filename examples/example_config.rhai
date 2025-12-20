@@ -91,7 +91,7 @@ for material in DS::DOOR_MATERIALS {
                     flags: LOCKED_DOOR,
                     tile_sprite: result.ok.door,
                     speeches: [
-                        [ `A locked {colour}-{material} door. Bet the key is {colour}-{material} too.` ],
+                        [ `A locked ${colour}-${material} door. Bet the key is ${colour}-${material} too.` ],
                     ],
                 },
             );
@@ -100,7 +100,7 @@ for material in DS::DOOR_MATERIALS {
                     flags: ITEM,
                     tile_sprite: result.ok.key,
                     inventory_description: [
-                        [`A {colour}-{material} key. Bet it opens a {colour}-{material} door.`],
+                        [`A ${colour}-${material} key. Bet it opens a ${colour}-${material} door.`],
                     ],
                     on_collect: [
                         #{

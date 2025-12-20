@@ -117,9 +117,15 @@ impl From<&MiniEntityDef> for EntityTransformable {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Transform {
+    pub from: DefId, 
+    pub to: DefId,
+}
+
 #[derive(Clone, Debug)]
 pub enum CollectAction {
-    Transform { from: DefId, to: DefId },
+    Transform(Transform),
 }
 
 pub type OnCollect = Vec<CollectAction>;
@@ -246,6 +252,10 @@ impl Entity {
         XY { x: self.x, y: self.y }
     }
 
+    pub fn def_id(&self) -> DefId {
+        self.transformable.id
+    }
+
     pub fn speeches_key(&self) -> speeches::Key {
         let mut current_speeches_state = <_>::default(); 
         let mut current_precedence = 0;
@@ -260,7 +270,7 @@ impl Entity {
         }
 
         speeches::Key {
-            def_id: self.transformable.id,
+            def_id: self.def_id(),
             state: current_speeches_state,
         }
     }

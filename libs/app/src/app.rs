@@ -86,7 +86,7 @@ impl State {
                 inventory_description: [
                     ["a chest, probably with something cool in it.", "can't seem to open it, so it'll stay at least probably cool forever."]
                 ],
-                tile_sprite: DS::item(0),
+                tile_sprite: DS::item(4),
             },
             #{
                 flags: MOB,
@@ -95,7 +95,7 @@ impl State {
                     ["A chest, for me? That's probably cool of you bro!", "I gotta be probably cool back. Here have this thing I found." ],
                     ["I am probably living the life with my probably cool thing in this chest!"],
                 ],
-                tile_sprite: DS::mob(0),
+                tile_sprite: DS::mob(4),
                 wants: [ID::relative(-1)],
             },
             #{
@@ -105,7 +105,7 @@ impl State {
                     [ "You're giving me these bayer-dollars? I want them to be mine, so they must be mine!", "I also want everyone to give rewards when people return stuff like this. So I have to too. Here you go!" ],
                     [ "Thanks for being the conduit to bring my destined-for-me bayer dollars back!" ],
                 ],
-                tile_sprite: DS::mob(1),
+                tile_sprite: DS::mob(5),
                 wants: [ID::relative(1)],
             },
             #{
@@ -113,9 +113,9 @@ impl State {
                 inventory_description: [
                     ["some bayer-dollars. you can tell because of the pattern in the middle."],
                 ],
-                tile_sprite: DS::item(1),
+                tile_sprite: DS::item(5),
             },
-        ]
+        ];
         
         let open_end_door_id = ID::absolute(entities.len);
         entities.push(
@@ -152,7 +152,7 @@ impl State {
                             flags: LOCKED_DOOR,
                             tile_sprite: result.ok.door,
                             speeches: [
-                                [ `A locked {colour}-{material} door. Bet the key is {colour}-{material} too.` ],
+                                [ `A locked ${colour}-${material} door. Bet the key is ${colour}-${material} too.` ],
                             ],
                         },
                     );
@@ -161,7 +161,7 @@ impl State {
                             flags: ITEM,
                             tile_sprite: result.ok.key,
                             inventory_description: [
-                                [`A {colour}-{material} key. Bet it opens a {colour}-{material} door.`],
+                                [`A ${colour}-${material} key. Bet it opens a ${colour}-${material} door.`],
                             ],
                             on_collect: [
                                 #{

@@ -201,8 +201,8 @@ fn init_engine() -> Engine {
         fn door_and_key_by_material_and_colour(material, colour) {{
             result::ok(
                 switch [material, colour] {{
-                    ["gold", "red"] => dak_xy(0, 2),
-                    ["gold", "green"] => dak_xy(0, 3),
+                    ["gold", "red"] => dak_xy(0, 6),
+                    ["gold", "green"] => dak_xy(0, 7),
                     ["gold", "blue"] => dak_xy(6, 0),
                     ["iron", "red"] => dak_xy(6, 1),
                     ["iron", "green"] => dak_xy(6, 2),
@@ -450,9 +450,9 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             .as_map_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
 
         let flags = get_int!(entity, "flags", parent_key);
-        dbg!(entity.get("tile_sprite",), id, );
+
         let tile_sprite = get_int!(entity, "tile_sprite", parent_key);
-        dbg!();
+
         let speeches: Vec<Vec<Speech>> = 'speeches: {
             let key = "speeches";
             let raw_speeches_list = match entity.get(key) {
@@ -584,7 +584,7 @@ pub fn parse(code: &str) -> Result<Config, Error> {
                             parent_key,
                         )?;
 
-                        on_collect.push(CollectAction::Transform { from, to });
+                        on_collect.push(CollectAction::Transform(models::Transform{ from, to }));
                     },
                     _ => return Err(Error::UnknownCollectActionKind { key, parent_key, kind }),
                 }

@@ -1,4 +1,4 @@
-use std::ops::Index;
+use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 pub struct Vec1<T>(Vec<T>);
 
@@ -45,6 +45,27 @@ impl<T, I: std::slice::SliceIndex<[T]>> Index<I> for Vec1<T> {
     #[inline]
     fn index(&self, index: I) -> &Self::Output {
         &self.0[index]
+    }
+}
+
+impl<T, I: std::slice::SliceIndex<[T]>> IndexMut<I> for Vec1<T> {
+    #[inline]
+    fn index_mut(&mut self, index: I) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
+
+impl<T> Deref for Vec1<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        &self[..]
+    }
+}
+
+impl<T> DerefMut for Vec1<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self[..]
     }
 }
 

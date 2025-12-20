@@ -28,8 +28,8 @@ path = "../platform_types"
 
 [features]
 default = []
-invariant-checking = ["features/invariant-checking"]
-logging = ["features/logging"]
+invariant-checking = ["features/invariant-checking", "game/invariant-checking"]
+logging = ["features/logging", "game/logging"]
 wasm = ["config/wasm"]
 reload = []
 refresh = ["platform_types/refresh"]

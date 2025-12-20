@@ -19,3 +19,9 @@ path = "../vec1"
 
 [dependencies.xs]
 path = "../xs"
+
+[features]
+default = []
+invariant-checking = ["features/invariant-checking"]
+logging = ["features/logging"]
+

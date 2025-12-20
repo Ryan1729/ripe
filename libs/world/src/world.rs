@@ -1,5 +1,5 @@
 use features::{invariant_assert};
-use models::{config::{Config}, speeches, CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Speeches, Tile, TileSprite, WorldSegment, X, Y, SegmentId};
+use models::{config::{Config}, speeches, CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Speeches, Tile, TileSprite, Transform, WorldSegment, X, Y, SegmentId};
 use models::consts::{ITEM_START, NPC_START, PLAYER_START, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START, DOOR, FLOOR, DOOR_START};
 use vec1::Vec1;
 use xs::{Xs};
@@ -168,7 +168,7 @@ fn transform_entity(entity: &mut Entity, def: &MiniEntityDef) {
 
 pub fn transform_all_matching(world: &mut World, from_def_id: DefId, to_def: &MiniEntityDef) {
     for entity in world.all_entities_mut() {
-        if entity.transformable.id == from_def_id {
+        if entity.def_id() == from_def_id {
             transform_entity(entity, to_def);
         }
     }
@@ -285,6 +285,20 @@ pub struct Generated {
 }
 
 pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
+    #[cfg(feature = "invariant-checking")]
+    let mut door_target_set = std::collections::HashSet::<DefId>::with_capacity(16);
+
+    macro_rules! track_door_target_set {
+        ($door_entity: ident) => {
+            #[cfg(feature = "invariant-checking")]
+            {
+                let door_entity = &$door_entity;
+            
+                door_target_set.insert(door_entity.def_id());
+            }
+        }
+    }
+
     let mut segments = Vec::with_capacity(16);
     let mut config_segments = Vec::with_capacity(16);
 
@@ -395,20 +409,12 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         }
     }
 
-    // TODO? Non-empty Vec
-    if mob_defs.is_empty() {
-        return Err(Error::NoMobsFound);
-    }
-
-    if item_defs.is_empty() {
-        return Err(Error::NoItemsFound);
-    }
-
-    if door_defs.is_empty() {
-        return Err(Error::NoDoorsFound);
-    }
+    let mut mob_defs: Vec1<_> = mob_defs.try_into().map_err(|_| Error::NoMobsFound)?;
+    let mut item_defs: Vec1<_> = item_defs.try_into().map_err(|_| Error::NoItemsFound)?;
+    let mut door_defs: Vec1<_> = door_defs.try_into().map_err(|_| Error::NoDoorsFound)?;
 
     xs::shuffle(rng, &mut mob_defs);
+    drop(mob_defs); // Wait, do we need this?
     xs::shuffle(rng, &mut item_defs);
     xs::shuffle(rng, &mut door_defs);
 
@@ -454,6 +460,19 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         key: &'defs MiniEntityDef,
     }
 
+    fn find_def_if_locked_victory_door(
+        door_defs: &[MiniEntityDef],
+        Transform { from, to }: Transform,
+    ) -> Option<&MiniEntityDef> {
+        let final_door_def = door_defs.iter().find(|d| d.id == to)?;
+
+        if final_door_def.flags & VICTORY != VICTORY {
+            return None
+        }
+
+        door_defs.iter().find(|d| d.id == from)
+    }
+
     // TODO? mark up the goal items in the config?
     // TODO? Helper for this pattern of "find a random place to start iterating?"
     let index_offset = xs::range(rng, 0..item_defs.len() as u32) as usize;
@@ -466,8 +485,8 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
 
         for action in &item_def.on_collect {
             match action {
-                CollectAction::Transform{ from, to: _ } => {
-                    let Some(door_def) = door_defs.iter().find(|d| d.id == *from) else {
+                CollectAction::Transform(transform) => {
+                    let Some(initial_door_def) = find_def_if_locked_victory_door(&door_defs, *transform) else {
                         continue
                     };
 
@@ -479,18 +498,21 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                         &placed_already,
                     ).ok_or(Error::CannotPlaceDoor)?;
 
+                    let door = to_entity(
+                        initial_door_def,
+                        d_loc.xy.x,
+                        d_loc.xy.y
+                    );
+                    // We don't need to set targets for victory doors.
+
                     world.steppables.insert(
                         last_segment_id,
-                        to_entity(
-                            door_def,
-                            d_loc.xy.x,
-                            d_loc.xy.y
-                        ),
+                        door,
                     );
 
                     placed_already.push(d_loc);
 
-                    let goal_door_tile_sprite = door_def.tile_sprite;
+                    let goal_door_tile_sprite = initial_door_def.tile_sprite;
 
                     goal_info = Some((
                         item_def.into(),
@@ -522,7 +544,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
 
         for action in &item_def.on_collect {
             match action {
-                CollectAction::Transform{ from, to: _ } => {
+                CollectAction::Transform(Transform{ from, to: _ }) => {
                     let Some(door_def) = door_defs.iter().find(|d| d.id == *from) else {
                         continue
                     };
@@ -568,7 +590,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
             let edge_lak = &non_final_lock_and_keys[lak_index];
 
             lak_index += 1;
-            if lak_index > non_final_lock_and_keys.len() {
+            if lak_index >= non_final_lock_and_keys.len() {
                 lak_index = 0;
             }
 
@@ -603,6 +625,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 d_1_loc.xy.y
             );
             door_1.door_target = d_2_loc;
+            track_door_target_set!(door_1);
 
             world.steppables.insert(i, door_1);
 
@@ -611,8 +634,8 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 d_2_loc.xy.x,
                 d_2_loc.xy.y
             );
-
             door_2.door_target = d_1_loc;
+            track_door_target_set!(door_2);
 
             world.steppables.insert(j, door_2);
 
@@ -809,6 +832,49 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
             return Err(Error::CouldNotPlaceItem(item_spec.item_def.to_owned()));
         }
     }
+
+    #[cfg(feature = "invariant-checking")]
+    { 
+        for entity in world.all_entities_mut() {
+            // Just using the mut version because the oter version does not exist as of this writing.
+            let entity = &entity;
+
+            if entity.is_door() {
+                if entity.is_victory() {
+                    invariant_assert!(
+                        !door_target_set.contains(&entity.def_id()),
+                        "Door target was set on a victory door! That doesn't do anything!\n{entity:#?}"
+                    );
+                } else if let Some(def) = entity.transformable.on_collect.iter()
+                    .find_map(|action| 
+                        match action {
+                            CollectAction::Transform(transform) => {
+                                find_def_if_locked_victory_door(&door_defs, *transform)
+                            }
+                        }
+                    ) {
+                    invariant_assert!(
+                        !door_target_set.contains(&entity.def_id()),
+                        "Door target was set on a non-steppable door that will become a victory door!\n{entity:#?}\n{def:#?}"
+                    );
+                } else {
+                    invariant_assert!(
+                        door_target_set.contains(&entity.def_id()),
+                        "Door target was not set on a door!\n{entity:#?}"
+                    );
+                }
+            } else {
+                // If at some point non-doors need door targets, we can relax this. But given that does
+                // not happen, a stronger assertion is better.
+                invariant_assert!(
+                    !door_target_set.contains(&entity.def_id()),
+                    "Door target was set on non-door!\n{entity:#?}"
+                );
+            }
+        }
+        
+    }
+    
 
     Ok(Generated{
         world,

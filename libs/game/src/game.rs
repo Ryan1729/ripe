@@ -588,7 +588,7 @@ impl State {
         if target_key == self.world.player_key() {
             for action in &item.transformable.on_collect {
                 match action {
-                    CollectAction::Transform { from, to } => {
+                    CollectAction::Transform(models::Transform{ from, to }) => {
                         if let Some(to_def) = self.entity_defs.get((*to) as usize) {
                             world::transform_all_matching(&mut self.world, *from, to_def);
                         } else {
