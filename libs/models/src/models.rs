@@ -620,7 +620,7 @@ pub mod config {
     };
 
     /// A configuration WorldSegment that can be used to contruct game::WorldSegments later.
-    #[derive(Clone)]
+    #[derive(Clone, PartialEq, Eq)]
     pub struct WorldSegment {
         pub width: SegmentWidth,
         // TODO? Nonempty Vec?

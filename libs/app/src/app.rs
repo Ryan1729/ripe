@@ -820,7 +820,7 @@ fn err_render(commands: &mut Commands, error_state: &ErrorState) {
         commands.sspr(
             sprite::XY {
                 x: sprite::X(sprite * 16),
-                y: sprite::Y(64),
+                y: sprite::Y(60),
             },
             command::Rect::from_unscaled(unscaled::Rect {
                 x,

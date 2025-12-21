@@ -374,6 +374,7 @@ pub type Error = world::Error;
 
 impl State {
     pub fn new(seed: Seed, config: Config) -> Result<State, Error> {
+        let seed = [139, 232, 64, 29, 62, 78, 218, 65, 242, 214, 66, 154, 168, 118, 3, 62];
         let mut rng = xs::from_seed(seed);
 
         let world::Generated {

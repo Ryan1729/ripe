@@ -260,9 +260,10 @@ pub enum Error {
     NoMobsFound,
     NoItemsFound,
     NoDoorsFound,
+    NoOpenDoorFound,
     NoGoalItemFound,
     NotEnoughNonFinalLockAndKeysFound,
-    CouldNotPlaceItem(MiniEntityDef),
+    CouldNotPlaceItem{ def: MiniEntityDef, config_index: usize },
     InvalidDesireID(MiniEntityDef, SegmentId),
     NonItemWasDesired(MiniEntityDef, MiniEntityDef, SegmentId),
     InvalidSpeeches(speeches::PushError),
@@ -302,8 +303,9 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     let mut segments = Vec::with_capacity(16);
     let mut config_segments = Vec::with_capacity(16);
 
-    // TODO randomize the amount here
-    for _ in 0..4 {
+    let target_segment_count = xs::range(rng, 4..12);
+
+    for _ in 0..target_segment_count {
         // TODO? Cap the number of segments, or just be okay with the first room never being in the 5 billions, etc?
         let index = xs::range(rng, 0..config.segments.len() as u32) as usize;
 
@@ -434,6 +436,56 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         mobs: <_>::default(),
     };
 
+    macro_rules! assert_door_targets_seem_right {
+        () => {
+            #[cfg(feature = "invariant-checking")]
+            { 
+                for entity in world.all_entities_mut() {
+                    // Just using the mut version because the oter version does not exist as of this writing.
+                    let entity = &entity;
+        
+                    if entity.is_door() {
+                        dbg!(&entity);
+                        if entity.is_victory() {
+                            invariant_assert!(
+                                !door_target_set.contains(&entity.def_id()),
+                                "Door target was set on a victory door! That doesn't do anything!\n{entity:#?}"
+                            );
+                        } else if item_defs.iter().any(|item|
+                                item.on_collect.iter()
+                                .find(|action|
+                                    match action {
+                                        CollectAction::Transform(transform) => {
+                                            find_def_if_locked_victory_door(&door_defs, *transform)
+                                                .map(|def| def.id == entity.def_id())
+                                                .unwrap_or(false)
+                                        }
+                                    }
+                                ).is_some()
+                            ) {
+                            invariant_assert!(
+                                !door_target_set.contains(&entity.def_id()),
+                                "Door target was set on a non-steppable door that will become a victory door!\n{entity:#?}"
+                            );
+                        } else {
+                            invariant_assert!(
+                                door_target_set.contains(&entity.def_id()),
+                                "Door target was not set on a door!\n{entity:#?}"
+                            );
+                        }
+                    } else {
+                        // If at some point non-doors need door targets, we can relax this. But given that does
+                        // not happen, a stronger assertion is better.
+                        invariant_assert!(
+                            !door_target_set.contains(&entity.def_id()),
+                            "Door target was set on non-door!\n{entity:#?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     let first_segment = world.segments.first();
     let first_config_segment = config_segments.first();
     let first_segment_id = 0;
@@ -452,6 +504,13 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     world.player.x = p_loc.xy.x;
     world.player.y = p_loc.xy.y;
     placed_already.push(p_loc);
+
+    let Some(open_door_def) = door_defs.iter().find(|d|
+        // A steppable, non-victory door
+        d.flags & (VICTORY | STEPPABLE) == STEPPABLE
+    ) else {
+        return Err(Error::NoOpenDoorFound)
+    };
 
     let mut goal_info = None;
 
@@ -472,6 +531,8 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
 
         door_defs.iter().find(|d| d.id == from)
     }
+
+    assert_door_targets_seem_right!();
 
     // TODO? mark up the goal items in the config?
     // TODO? Helper for this pattern of "find a random place to start iterating?"
@@ -529,11 +590,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         return Err(Error::NoGoalItemFound);
     };
 
-    #[derive(Debug)]
-    struct Sphere<'defs> {
-        segment_ids: Vec<SegmentId>,
-        goal_item_def: &'defs MiniEntityDef,
-    }
+    assert_door_targets_seem_right!();
 
     let mut non_final_lock_and_keys = Vec::with_capacity(16);
 
@@ -575,17 +632,52 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         return Err(Error::NotEnoughNonFinalLockAndKeysFound);
     };
 
+    #[derive(Debug)]
+    struct Sphere<'defs> {
+        segment_ids: Vec<SegmentId>,
+        goal_item_def: &'defs MiniEntityDef,
+    }
+
     let mut spheres = Vec::with_capacity(16);
 
     {
         let initial_lak_index = xs::range(rng, 0..non_final_lock_and_keys.len() as u32) as usize;
         let mut lak_index = initial_lak_index;
 
+        const MIN_PER_SPHERE: u8 = 2;
+        const MAX_PER_SPHERE: u8 = 10;
+
+        let mut chunks: Vec<Vec<SegmentId>> = Vec::with_capacity(
+            (segments_count / SegmentId::from(MIN_PER_SPHERE)).into()
+        );
+        chunks.push(Vec::with_capacity(MAX_PER_SPHERE.into()));
+
+        for id in 0..segments_count {
+            let final_index = chunks.len() - 1;
+            let chunk = &mut chunks[final_index];
+
+            let len = chunk.len();
+
+            if len < usize::from(MIN_PER_SPHERE)
+            // This attempts to produce a uniform range
+            || xs::range(rng, 0..MAX_PER_SPHERE.into()) == 0 {
+                // Add to existing chunk
+                chunk.push(id);
+            } else {
+                // Start new chunk
+                let mut new_chunk = Vec::with_capacity(MAX_PER_SPHERE.into());
+                new_chunk.push(id);
+                chunks.push(new_chunk);
+            }
+        }
+
+        let chunks_len = chunks.len();
+
         // TODO make spheres variable amounts of segments
-        // From the first to the second last segment ...
-        for i in 0..(segments_count - 1) {
-            // ... so we can talk about the next segment
-            let j = i + 1;
+        // From the first to the second last chunk ...
+        for chunk_index in 0..(chunks_len - 1) {
+            // ... so we can talk about the next chunk
+            let next_chunk_index = chunk_index + 1;
 
             let edge_lak = &non_final_lock_and_keys[lak_index];
 
@@ -598,59 +690,131 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 return Err(Error::NotEnoughNonFinalLockAndKeysFound);
             }
 
-            let config_segment_1 = &config_segments[i as usize];
-            let config_segment_2 = &config_segments[j as usize];
+            {
+                let segment_id = {
+                    let chunk = &chunks[chunk_index];
+                    chunk[xs::range(rng, 0..chunk.len() as u32) as usize]
+                };
+                let next_chunk_segment_id = {
+                    let chunk = &chunks[next_chunk_index];
+                    chunk[xs::range(rng, 0..chunk.len() as u32) as usize]
+                };
+    
+                let config_segment_1 = &config_segments[segment_id as usize];
+                let config_segment_2 = &config_segments[next_chunk_segment_id as usize];
+    
+                let d_1_loc = random::tile_matching_flags_besides(
+                    rng,
+                    config_segment_1,
+                    segment_id,
+                    FLOOR | DOOR_START,
+                    &placed_already,
+                ).ok_or(Error::CannotPlaceDoor)?;
+                placed_already.push(d_1_loc);
+    
+                let d_2_loc = random::tile_matching_flags_besides(
+                    rng,
+                    config_segment_2,
+                    next_chunk_segment_id,
+                    FLOOR | DOOR_START,
+                    &placed_already,
+                ).ok_or(Error::CannotPlaceDoor)?;
+                placed_already.push(d_2_loc);
+    
+                let mut door_1 = to_entity(
+                    edge_lak.lock,
+                    d_1_loc.xy.x,
+                    d_1_loc.xy.y
+                );
+                door_1.door_target = d_2_loc;
+                track_door_target_set!(door_1);
+    
+                world.steppables.insert(segment_id, door_1);
+    
+                let mut door_2 = to_entity(
+                    edge_lak.lock,
+                    d_2_loc.xy.x,
+                    d_2_loc.xy.y
+                );
+                door_2.door_target = d_1_loc;
+                track_door_target_set!(door_2);
+    
+                world.steppables.insert(next_chunk_segment_id, door_2);
+            }
 
-            let d_1_loc = random::tile_matching_flags_besides(
-                rng,
-                config_segment_1,
-                i,
-                FLOOR | DOOR_START,
-                &placed_already,
-            ).ok_or(Error::CannotPlaceDoor)?;
-            placed_already.push(d_1_loc);
+            assert_door_targets_seem_right!();
 
-            let d_2_loc = random::tile_matching_flags_besides(
-                rng,
-                config_segment_2,
-                j,
-                FLOOR | DOOR_START,
-                &placed_already,
-            ).ok_or(Error::CannotPlaceDoor)?;
-            placed_already.push(d_2_loc);
+            let chunk = &chunks[chunk_index];
 
-            let mut door_1 = to_entity(
-                edge_lak.lock,
-                d_1_loc.xy.x,
-                d_1_loc.xy.y
-            );
-            door_1.door_target = d_2_loc;
-            track_door_target_set!(door_1);
+            // Connect up all the other segments in the chunk with open doors
+            for i in 0..chunk.len() {
+                for j in (i + 1)..chunk.len() {
+                    let segment_id_i = chunk[i];
+                    let segment_id_j = chunk[j];
 
-            world.steppables.insert(i, door_1);
+                    let config_segment_i = &config_segments[segment_id_i as usize];
+                    let config_segment_j = &config_segments[segment_id_j as usize];
+        
+                    let d_i_loc = random::tile_matching_flags_besides(
+                        rng,
+                        config_segment_i,
+                        segment_id_i,
+                        FLOOR | DOOR_START,
+                        &placed_already,
+                    ).ok_or(Error::CannotPlaceDoor)?;
+                    placed_already.push(d_i_loc);
+        
+                    let d_j_loc = random::tile_matching_flags_besides(
+                        rng,
+                        config_segment_j,
+                        segment_id_j,
+                        FLOOR | DOOR_START,
+                        &placed_already,
+                    ).ok_or(Error::CannotPlaceDoor)?;
+                    placed_already.push(d_j_loc);
+        
+                    let mut door_i = to_entity(
+                        open_door_def,
+                        d_i_loc.xy.x,
+                        d_i_loc.xy.y
+                    );
+                    door_i.door_target = d_j_loc;
+                    track_door_target_set!(door_i);
+        
+                    world.steppables.insert(segment_id_i, door_i);
 
-            let mut door_2 = to_entity(
-                edge_lak.lock,
-                d_2_loc.xy.x,
-                d_2_loc.xy.y
-            );
-            door_2.door_target = d_1_loc;
-            track_door_target_set!(door_2);
+                    assert_door_targets_seem_right!();
+        
+                    let mut door_j = to_entity(
+                        open_door_def,
+                        d_j_loc.xy.x,
+                        d_j_loc.xy.y
+                    );
+                    door_j.door_target = d_i_loc;
+                    track_door_target_set!(door_j);
+        
+                    world.steppables.insert(segment_id_j, door_j);
 
-            world.steppables.insert(j, door_2);
+                    assert_door_targets_seem_right!();
+                }
+            }
+
+            assert_door_targets_seem_right!();
 
             spheres.push(Sphere {
-                segment_ids: vec![i],
+                segment_ids: std::mem::take(&mut chunks[chunk_index]),
                 goal_item_def: edge_lak.key,
             });
         }
 
         // Add the last sphere with the goal key and door in it
         spheres.push(Sphere {
-            segment_ids: vec![last_segment_id],
+            segment_ids: std::mem::take(&mut chunks[chunks_len - 1]),
             goal_item_def,
         });
     }
+
+    assert_door_targets_seem_right!();
 
     #[derive(Debug)]
     enum AbstractLocation<'defs> {
@@ -768,12 +932,15 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     for item_spec in constraints.item_specs {
         let mut attempts = 0;
 
+        let mut last_attempted_segment_id = SegmentId::MAX;
+
         while attempts < 16 {
             attempts += 1;
 
             use AbstractLocation::*;
             match item_spec.location {
                 Floor(segment_id) => {
+                    last_attempted_segment_id = segment_id;
                     if let Some(item_loc) = random::tile_matching_flags_besides(
                         rng,
                         &config_segments[usize::from(segment_id)],
@@ -794,6 +961,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                     }
                 },
                 NpcPocket(npc_def, segment_id) => {
+                    last_attempted_segment_id = segment_id;
                     if let Some(npc_loc) = random::tile_matching_flags_besides(
                         rng,
                         &config_segments[usize::from(segment_id)],
@@ -829,52 +997,64 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         }
 
         if attempts >= 16 {
-            return Err(Error::CouldNotPlaceItem(item_spec.item_def.to_owned()));
+            let needle: &models::config::WorldSegment = &config_segments[usize::from(last_attempted_segment_id)];
+            let mut config_index = 0;
+            for i in 0..config.segments.len() {
+                if &config.segments[i] == needle {
+                    config_index = i;
+                    break
+                }
+            }
+
+            return Err(Error::CouldNotPlaceItem {
+                def: item_spec.item_def.to_owned(),
+                config_index,
+            });
         }
     }
 
+    assert_door_targets_seem_right!();
+    
+    
     #[cfg(feature = "invariant-checking")]
     { 
+        // Assert that at least one victory door or door that transforms into a victory door
+        // is in the world.
+
+        let mut found = false;
+
         for entity in world.all_entities_mut() {
-            // Just using the mut version because the oter version does not exist as of this writing.
+            // Just using the mut version because the other version does not exist as of this writing.
             let entity = &entity;
 
             if entity.is_door() {
                 if entity.is_victory() {
-                    invariant_assert!(
-                        !door_target_set.contains(&entity.def_id()),
-                        "Door target was set on a victory door! That doesn't do anything!\n{entity:#?}"
-                    );
-                } else if let Some(def) = entity.transformable.on_collect.iter()
-                    .find_map(|action| 
-                        match action {
-                            CollectAction::Transform(transform) => {
-                                find_def_if_locked_victory_door(&door_defs, *transform)
+                    found = true;
+                    dbg!();
+                    break
+                } else if item_defs.iter().any(|item|
+                        item.on_collect.iter()
+                        .find(|action|
+                            match action {
+                                CollectAction::Transform(transform) => {
+                                    find_def_if_locked_victory_door(&door_defs, *transform)
+                                        .map(|def| def.id == entity.def_id())
+                                        .unwrap_or(false)
+                                }
                             }
-                        }
+                        ).is_some()
                     ) {
-                    invariant_assert!(
-                        !door_target_set.contains(&entity.def_id()),
-                        "Door target was set on a non-steppable door that will become a victory door!\n{entity:#?}\n{def:#?}"
-                    );
+                    found = true;
+                    dbg!(entity);
+                    break
                 } else {
-                    invariant_assert!(
-                        door_target_set.contains(&entity.def_id()),
-                        "Door target was not set on a door!\n{entity:#?}"
-                    );
+                    // Not an interesting entity.
                 }
             } else {
-                // If at some point non-doors need door targets, we can relax this. But given that does
-                // not happen, a stronger assertion is better.
-                invariant_assert!(
-                    !door_target_set.contains(&entity.def_id()),
-                    "Door target was set on non-door!\n{entity:#?}"
-                );
+                // Not an interesting entity.
             }
         }
-        
     }
-    
 
     Ok(Generated{
         world,
