@@ -741,6 +741,26 @@ fn game_render(commands: &mut Commands, state: &game::State) {
             draw_talking(commands, &state.speeches, talking);
         },
     }
+
+    #[cfg(feature = "invariant-checking")]
+    {
+        match &state.mode {
+            Mode::Walking => {
+                commands.print_lines(
+                    <_>::default(),
+                    0,
+                    format!(
+                        "S:{} @:{},{}",
+                        state.world.segment_id,
+                        state.world.player.x.get(),
+                        state.world.player.y.get(),
+                    ).as_bytes(),
+                    6,
+                );
+            },
+            _ => {}
+        }
+    }
 }
 
 #[derive(Default)]

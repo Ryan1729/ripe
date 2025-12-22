@@ -294,7 +294,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
             #[cfg(feature = "invariant-checking")]
             {
                 let door_entity = &$door_entity;
-            
+
                 door_target_set.insert(door_entity.def_id());
             }
         }
@@ -439,13 +439,12 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     macro_rules! assert_door_targets_seem_right {
         () => {
             #[cfg(feature = "invariant-checking")]
-            { 
+            {
                 for entity in world.all_entities_mut() {
                     // Just using the mut version because the oter version does not exist as of this writing.
                     let entity = &entity;
-        
+
                     if entity.is_door() {
-                        dbg!(&entity);
                         if entity.is_victory() {
                             invariant_assert!(
                                 !door_target_set.contains(&entity.def_id()),
@@ -652,7 +651,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         );
         chunks.push(Vec::with_capacity(MAX_PER_SPHERE.into()));
 
-        for id in 0..segments_count {
+                for id in 0..segments_count {
             let final_index = chunks.len() - 1;
             let chunk = &mut chunks[final_index];
 
@@ -672,8 +671,67 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         }
 
         let chunks_len = chunks.len();
+        invariant_assert!(chunks_len >= 2, "We need at least two chunks for the joining to work properly");
 
-        // TODO make spheres variable amounts of segments
+        for chunk_index in 0..chunks_len {
+            let chunk = &chunks[chunk_index];
+
+            // Connect up all the other segments in the chunk with open doors
+            for i in 0..chunk.len() {
+                for j in (i + 1)..chunk.len() {
+                    let segment_id_i = chunk[i];
+                    let segment_id_j = chunk[j];
+
+                    let config_segment_i = &config_segments[segment_id_i as usize];
+                    let config_segment_j = &config_segments[segment_id_j as usize];
+
+                    let d_i_loc = random::tile_matching_flags_besides(
+                        rng,
+                        config_segment_i,
+                        segment_id_i,
+                        FLOOR | DOOR_START,
+                        &placed_already,
+                    ).ok_or(Error::CannotPlaceDoor)?;
+                    placed_already.push(d_i_loc);
+
+                    let d_j_loc = random::tile_matching_flags_besides(
+                        rng,
+                        config_segment_j,
+                        segment_id_j,
+                        FLOOR | DOOR_START,
+                        &placed_already,
+                    ).ok_or(Error::CannotPlaceDoor)?;
+                    placed_already.push(d_j_loc);
+
+                    let mut door_i = to_entity(
+                        open_door_def,
+                        d_i_loc.xy.x,
+                        d_i_loc.xy.y
+                    );
+                    door_i.door_target = d_j_loc;
+                    track_door_target_set!(door_i);
+
+                    world.steppables.insert(segment_id_i, door_i);
+
+                    assert_door_targets_seem_right!();
+
+                    let mut door_j = to_entity(
+                        open_door_def,
+                        d_j_loc.xy.x,
+                        d_j_loc.xy.y
+                    );
+                    door_j.door_target = d_i_loc;
+                    track_door_target_set!(door_j);
+
+                    world.steppables.insert(segment_id_j, door_j);
+
+                    assert_door_targets_seem_right!();
+                }
+            }
+
+            assert_door_targets_seem_right!();
+        }
+
         // From the first to the second last chunk ...
         for chunk_index in 0..(chunks_len - 1) {
             // ... so we can talk about the next chunk
@@ -699,10 +757,10 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                     let chunk = &chunks[next_chunk_index];
                     chunk[xs::range(rng, 0..chunk.len() as u32) as usize]
                 };
-    
+
                 let config_segment_1 = &config_segments[segment_id as usize];
                 let config_segment_2 = &config_segments[next_chunk_segment_id as usize];
-    
+
                 let d_1_loc = random::tile_matching_flags_besides(
                     rng,
                     config_segment_1,
@@ -711,7 +769,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                     &placed_already,
                 ).ok_or(Error::CannotPlaceDoor)?;
                 placed_already.push(d_1_loc);
-    
+
                 let d_2_loc = random::tile_matching_flags_besides(
                     rng,
                     config_segment_2,
@@ -720,7 +778,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                     &placed_already,
                 ).ok_or(Error::CannotPlaceDoor)?;
                 placed_already.push(d_2_loc);
-    
+
                 let mut door_1 = to_entity(
                     edge_lak.lock,
                     d_1_loc.xy.x,
@@ -728,9 +786,9 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 );
                 door_1.door_target = d_2_loc;
                 track_door_target_set!(door_1);
-    
+
                 world.steppables.insert(segment_id, door_1);
-    
+
                 let mut door_2 = to_entity(
                     edge_lak.lock,
                     d_2_loc.xy.x,
@@ -738,65 +796,8 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 );
                 door_2.door_target = d_1_loc;
                 track_door_target_set!(door_2);
-    
+
                 world.steppables.insert(next_chunk_segment_id, door_2);
-            }
-
-            assert_door_targets_seem_right!();
-
-            let chunk = &chunks[chunk_index];
-
-            // Connect up all the other segments in the chunk with open doors
-            for i in 0..chunk.len() {
-                for j in (i + 1)..chunk.len() {
-                    let segment_id_i = chunk[i];
-                    let segment_id_j = chunk[j];
-
-                    let config_segment_i = &config_segments[segment_id_i as usize];
-                    let config_segment_j = &config_segments[segment_id_j as usize];
-        
-                    let d_i_loc = random::tile_matching_flags_besides(
-                        rng,
-                        config_segment_i,
-                        segment_id_i,
-                        FLOOR | DOOR_START,
-                        &placed_already,
-                    ).ok_or(Error::CannotPlaceDoor)?;
-                    placed_already.push(d_i_loc);
-        
-                    let d_j_loc = random::tile_matching_flags_besides(
-                        rng,
-                        config_segment_j,
-                        segment_id_j,
-                        FLOOR | DOOR_START,
-                        &placed_already,
-                    ).ok_or(Error::CannotPlaceDoor)?;
-                    placed_already.push(d_j_loc);
-        
-                    let mut door_i = to_entity(
-                        open_door_def,
-                        d_i_loc.xy.x,
-                        d_i_loc.xy.y
-                    );
-                    door_i.door_target = d_j_loc;
-                    track_door_target_set!(door_i);
-        
-                    world.steppables.insert(segment_id_i, door_i);
-
-                    assert_door_targets_seem_right!();
-        
-                    let mut door_j = to_entity(
-                        open_door_def,
-                        d_j_loc.xy.x,
-                        d_j_loc.xy.y
-                    );
-                    door_j.door_target = d_i_loc;
-                    track_door_target_set!(door_j);
-        
-                    world.steppables.insert(segment_id_j, door_j);
-
-                    assert_door_targets_seem_right!();
-                }
             }
 
             assert_door_targets_seem_right!();
@@ -815,6 +816,23 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     }
 
     assert_door_targets_seem_right!();
+
+    #[cfg(feature = "invariant-checking")]
+    {
+        // Assert that every segment has at least one door.
+
+        let mut checklist = vec![0 ;segments_count.into()];
+
+        for segment_id in 0..segments_count {
+            for (_, steppable) in world.steppables.for_id(segment_id) {
+                if steppable.is_door() {
+                    checklist[usize::from(segment_id)] += 1;
+                }
+            }
+        }
+
+        invariant_assert!(checklist.iter().all(|&x| x > 0), "At least one segment has no door! {checklist:?}")
+    }
 
     #[derive(Debug)]
     enum AbstractLocation<'defs> {
@@ -865,7 +883,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 // Treat each sphere as a separate puzzle, with unlocking
                 // the next door as the goal.
                 // Keep track of the used desires, so we don't use the same one twice.
-    
+
                 let segment_ids = &sphere.segment_ids;
                 invariant_assert!(segment_ids.len() <= u32::MAX as usize);
 
@@ -895,25 +913,25 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                             invariant_assert!(false, "item_specs.pop() == None");
                             continue
                         };
-    
+
                         let desire = all_desires[index];
-    
+
                         item_specs.push(ItemSpec{
                             item_def: desire.item_def,
                             location: last.location,
                         });
-    
+
                         item_specs.push(ItemSpec{
                             item_def: last.item_def,
                             location: AbstractLocation::NpcPocket(desire.mob_def, random_segment_id!()),
                         });
                     }
-    
+
                     index += 1;
                     if index >= all_desires.len() {
                         index = 0;
                     }
-    
+
                     if index == initial_index {
                         // Avoid using the value from any index more than once.
                         break
@@ -1014,10 +1032,10 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     }
 
     assert_door_targets_seem_right!();
-    
-    
+
+
     #[cfg(feature = "invariant-checking")]
-    { 
+    {
         // Assert that at least one victory door or door that transforms into a victory door
         // is in the world.
 
@@ -1030,7 +1048,6 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
             if entity.is_door() {
                 if entity.is_victory() {
                     found = true;
-                    dbg!();
                     break
                 } else if item_defs.iter().any(|item|
                         item.on_collect.iter()
@@ -1045,7 +1062,6 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                         ).is_some()
                     ) {
                     found = true;
-                    dbg!(entity);
                     break
                 } else {
                     // Not an interesting entity.
@@ -1054,6 +1070,8 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 // Not an interesting entity.
             }
         }
+
+        invariant_assert!(found, "No way to win was found!");
     }
 
     Ok(Generated{

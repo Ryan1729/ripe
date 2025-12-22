@@ -1,5 +1,6 @@
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
+#[derive(Debug)]
 pub struct Vec1<T>(Vec<T>);
 
 impl<T: Clone> Clone for Vec1<T> {

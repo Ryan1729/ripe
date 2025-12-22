@@ -572,7 +572,7 @@ pub mod xy {
 }
 pub use xy::{X, Y, W, H, Rect, XY};
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Tile {
     pub sprite: TileSprite,
 }
@@ -581,7 +581,7 @@ pub fn is_passable(tile: &Tile) -> bool {
     tile.sprite == FLOOR_SPRITE
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct WorldSegment {
     pub width: SegmentWidth,
     // TODO? Nonempty Vec?
@@ -620,7 +620,7 @@ pub mod config {
     };
 
     /// A configuration WorldSegment that can be used to contruct game::WorldSegments later.
-    #[derive(Clone, PartialEq, Eq)]
+    #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct WorldSegment {
         pub width: SegmentWidth,
         // TODO? Nonempty Vec?
