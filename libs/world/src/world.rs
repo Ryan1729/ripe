@@ -811,56 +811,58 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
             let chunk = &chunks[chunk_index];
 
             // Connect up all the other segments in the chunk with open doors
-            for i in 0..chunk.len() {
-                for j in (i + 1)..chunk.len() {
-                    let segment_id_i = chunk[i];
-                    let segment_id_j = chunk[j];
+            for window in chunk
+                .windows(2)
+                .chain(std::iter::once([chunk[chunk.len() - 1], chunk[0]].as_slice())) {
+                assert_eq!(window.len(), 2);
 
-                    let config_segment_i = &config_segments[segment_id_i as usize];
-                    let config_segment_j = &config_segments[segment_id_j as usize];
+                let segment_id_i = window[0];
+                let segment_id_j = window[1];
 
-                    let d_i_loc = random::tile_matching_flags_besides(
-                        rng,
-                        config_segment_i,
-                        segment_id_i,
-                        FLOOR | DOOR_START,
-                        &placed_already,
-                    ).ok_or(Error::CannotPlaceDoor)?;
-                    placed_already.push(d_i_loc);
+                let config_segment_i = &config_segments[segment_id_i as usize];
+                let config_segment_j = &config_segments[segment_id_j as usize];
 
-                    let d_j_loc = random::tile_matching_flags_besides(
-                        rng,
-                        config_segment_j,
-                        segment_id_j,
-                        FLOOR | DOOR_START,
-                        &placed_already,
-                    ).ok_or(Error::CannotPlaceDoor)?;
-                    placed_already.push(d_j_loc);
+                let d_i_loc = random::tile_matching_flags_besides(
+                    rng,
+                    config_segment_i,
+                    segment_id_i,
+                    FLOOR | DOOR_START,
+                    &placed_already,
+                ).ok_or(Error::CannotPlaceDoor)?;
+                placed_already.push(d_i_loc);
 
-                    let mut door_i = to_entity(
-                        open_door_def,
-                        d_i_loc.xy.x,
-                        d_i_loc.xy.y
-                    );
-                    door_i.door_target = d_j_loc;
-                    track_door_target_set!(door_i);
+                let d_j_loc = random::tile_matching_flags_besides(
+                    rng,
+                    config_segment_j,
+                    segment_id_j,
+                    FLOOR | DOOR_START,
+                    &placed_already,
+                ).ok_or(Error::CannotPlaceDoor)?;
+                placed_already.push(d_j_loc);
 
-                    world.steppables.insert(segment_id_i, door_i);
+                let mut door_i = to_entity(
+                    open_door_def,
+                    d_i_loc.xy.x,
+                    d_i_loc.xy.y
+                );
+                door_i.door_target = d_j_loc;
+                track_door_target_set!(door_i);
 
-                    assert_door_targets_seem_right!();
+                world.steppables.insert(segment_id_i, door_i);
 
-                    let mut door_j = to_entity(
-                        open_door_def,
-                        d_j_loc.xy.x,
-                        d_j_loc.xy.y
-                    );
-                    door_j.door_target = d_i_loc;
-                    track_door_target_set!(door_j);
+                assert_door_targets_seem_right!();
 
-                    world.steppables.insert(segment_id_j, door_j);
+                let mut door_j = to_entity(
+                    open_door_def,
+                    d_j_loc.xy.x,
+                    d_j_loc.xy.y
+                );
+                door_j.door_target = d_i_loc;
+                track_door_target_set!(door_j);
 
-                    assert_door_targets_seem_right!();
-                }
+                world.steppables.insert(segment_id_j, door_j);
+
+                assert_door_targets_seem_right!();
             }
 
             assert_door_targets_seem_right!();
@@ -953,7 +955,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
 
     #[cfg(feature = "invariant-checking")]
     {
-        // Assert that every segment has at least one door.
+        // Assert that every segment has at least two doors.
 
         let mut checklist = vec![0 ;segments_count.into()];
 
@@ -965,7 +967,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
             }
         }
 
-        invariant_assert!(checklist.iter().all(|&x| x > 0), "At least one segment has no door! {checklist:?}")
+        invariant_assert!(checklist.iter().all(|&x| x > 1), "At least one segment has fewer than two doors! {checklist:?}")
     }
 
     #[derive(Debug)]
