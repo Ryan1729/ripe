@@ -86,7 +86,7 @@ impl Desire {
 
 pub type Desires = Vec<Desire>;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MiniEntityDef {
     pub id: DefId,
     pub flags: consts::EntityDefFlags,
@@ -117,13 +117,13 @@ impl From<&MiniEntityDef> for EntityTransformable {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Transform {
     pub from: DefId, 
     pub to: DefId,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CollectAction {
     Transform(Transform),
 }
@@ -211,7 +211,7 @@ pub const DOOR: EntityFlags = 1 << 3;
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Location {
-    pub id: SegmentId,
+    pub segment_id: SegmentId,
     pub xy: XY,
 }
 

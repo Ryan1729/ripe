@@ -11,9 +11,9 @@ mod entities {
 
     pub type Key = models::Location;
 
-    pub fn entity_key(id: SegmentId, x: X, y: Y) -> Key {
+    pub fn entity_key(segment_id: SegmentId, x: X, y: Y) -> Key {
         Key {
-            id,
+            segment_id,
             xy: XY{x, y}
         }
     }
@@ -218,7 +218,7 @@ mod random {
 
             if current_tile_flags & needle_flags == needle_flags {
                 let current_xy = i_to_xy(segment.width, i);
-                let current_loc = Location{ xy: current_xy, id: segment_id };
+                let current_loc = Location{ xy: current_xy, segment_id };
 
                 if !filter_out.iter()
                     .any(|&loc| current_loc == loc) {
@@ -271,6 +271,176 @@ pub enum Error {
     // TODO? Push this back into the config, with a limited length Vec type?
     TooManySegments,
     ZeroSegments,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ItemAndDoorDefs<'defs> {
+    item_defs: &'defs [MiniEntityDef],
+    door_defs: &'defs [MiniEntityDef],
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct LockAndKey<'defs> {
+    lock: &'defs MiniEntityDef,
+    key: &'defs MiniEntityDef,
+}
+
+fn get_non_final_lock_and_keys<'defs>(
+    ItemAndDoorDefs{
+        item_defs,
+        door_defs,
+    }: ItemAndDoorDefs<'defs>,
+) -> Option<Vec1<LockAndKey<'defs>>> {
+    let mut non_final_lock_and_keys = Vec::with_capacity(16);
+
+    for i in 0..item_defs.len() {
+        let item_def = &item_defs[i];
+
+        if item_def.on_collect.is_empty() { continue }
+
+        for action in &item_def.on_collect {
+            match action {
+                CollectAction::Transform(Transform{ from, to }) => {
+                    let Some(open_door_def) = door_defs.iter().find(|d| d.id == *to) else {
+                        continue
+                    };
+
+                    // We are looking for all the non-victory doors.
+                    if open_door_def.flags & VICTORY == VICTORY {
+                        continue
+                    }
+
+                    let Some(locked_door_def) = door_defs.iter().find(|d| d.id == *from) else {
+                        continue
+                    };
+
+                    // We are planning to spawn these at the start
+                    if locked_door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START { continue }
+                    // We want locked doors
+                    if locked_door_def.flags & STEPPABLE == STEPPABLE { continue }
+
+                    non_final_lock_and_keys.push(
+                        LockAndKey {
+                            lock: locked_door_def,
+                            key: item_def,
+                        }
+                    );
+
+                    break
+                }
+            }
+        }
+    }
+
+    Vec1::try_from(non_final_lock_and_keys).ok()
+}
+
+#[cfg(test)]
+mod get_non_final_lock_and_keys_works {
+    use super::*;
+    use models::{CollectAction, MiniEntityDef, Transform};
+    use vec1::Vec1;
+
+    const SOME_LOCKED_DOOR: MiniEntityDef = MiniEntityDef {
+        id: 0,
+        flags: DOOR,
+        tile_sprite: 0,
+        on_collect: vec![],
+        wants: vec![],
+    };
+
+    const SOME_OPEN_DOOR: MiniEntityDef = MiniEntityDef {
+        id: 1,
+        flags: DOOR,
+        tile_sprite: 0,
+        on_collect: vec![],
+        wants: vec![],
+    };
+
+    fn some_key() -> MiniEntityDef {
+        MiniEntityDef {
+            id: 2,
+            flags: 0,
+            tile_sprite: 0,
+            on_collect: vec![CollectAction::Transform(
+                Transform{ from: SOME_LOCKED_DOOR.id, to: SOME_OPEN_DOOR.id }
+            )],
+            wants: vec![],
+        }
+    }
+
+    const LOCKED_VICTORY_DOOR: MiniEntityDef = MiniEntityDef {
+        id: 3,
+        flags: DOOR,
+        tile_sprite: 0,
+        on_collect: vec![],
+        wants: vec![],
+    };
+
+    const OPEN_VICTORY_DOOR: MiniEntityDef = MiniEntityDef {
+        id: 4,
+        flags: DOOR | VICTORY | STEPPABLE,
+        tile_sprite: 0,
+        on_collect: vec![],
+        wants: vec![],
+    };
+
+    fn victory_key() -> MiniEntityDef {
+        MiniEntityDef {
+            id: 5,
+            flags: 0,
+            tile_sprite: 0,
+            on_collect: vec![CollectAction::Transform(
+                Transform{ from: LOCKED_VICTORY_DOOR.id, to: OPEN_VICTORY_DOOR.id }
+            )],
+            wants: vec![],
+        }
+    }
+
+    #[test]
+    fn on_the_basics() {
+        assert_eq!(
+            get_non_final_lock_and_keys(
+                ItemAndDoorDefs {
+                    item_defs: &[],
+                    door_defs: &[],
+                },
+            ),
+            None
+        );
+
+        let some_key = some_key();
+
+        assert_eq!(
+            get_non_final_lock_and_keys(
+                ItemAndDoorDefs {
+                    item_defs: &[some_key.clone()],
+                    door_defs: &[SOME_LOCKED_DOOR],
+                },
+            ),
+            Some(
+                Vec1::singleton(
+                    LockAndKey {
+                        lock: &SOME_LOCKED_DOOR,
+                        key: &some_key,
+                    }
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn on_lists_containing_final_lock_and_keys() {
+        assert_eq!(
+            get_non_final_lock_and_keys(
+                ItemAndDoorDefs {
+                    item_defs: &[victory_key()],
+                    door_defs: &[LOCKED_VICTORY_DOOR],
+                },
+            ),
+            None
+        );
+    }
 }
 
 pub struct Generated {
@@ -497,7 +667,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     let p_loc = random::tile_matching_flags(rng, first_config_segment, first_segment_id, PLAYER_START)
         .or_else(||
             random::passable_tile(rng, first_segment)
-                .map(|xy| Location { xy, id: first_segment_id, })
+                .map(|xy| Location { xy, segment_id: first_segment_id, })
         )
         .ok_or(Error::CannotPlacePlayer)?;
     world.player.x = p_loc.xy.x;
@@ -512,11 +682,6 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
     };
 
     let mut goal_info = None;
-
-    struct LockAndKey<'defs> {
-        lock: &'defs MiniEntityDef,
-        key: &'defs MiniEntityDef,
-    }
 
     fn find_def_if_locked_victory_door(
         door_defs: &[MiniEntityDef],
@@ -591,43 +756,12 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
 
     assert_door_targets_seem_right!();
 
-    let mut non_final_lock_and_keys = Vec::with_capacity(16);
-
-    for i in 0..item_defs.len() {
-        let item_def = &item_defs[i];
-
-        if item_def.on_collect.is_empty() { continue }
-
-        for action in &item_def.on_collect {
-            match action {
-                CollectAction::Transform(Transform{ from, to: _ }) => {
-                    let Some(door_def) = door_defs.iter().find(|d| d.id == *from) else {
-                        continue
-                    };
-
-                    // We are looking for all the non-victory doors.
-                    if door_def.flags & VICTORY == VICTORY {
-                        continue
-                    }
-                    // We are planning to spawn these at the start
-                    if door_def.flags & NOT_SPAWNED_AT_START == NOT_SPAWNED_AT_START { continue }
-                    // We want locked doors
-                    if door_def.flags & STEPPABLE == STEPPABLE { continue }
-
-                    non_final_lock_and_keys.push(
-                        LockAndKey {
-                            lock: door_def,
-                            key: item_def,
-                        }
-                    );
-
-                    break
-                }
-            }
-        }
-    }
-
-    let Ok(non_final_lock_and_keys) = Vec1::try_from(non_final_lock_and_keys) else {
+    let Some(non_final_lock_and_keys) = get_non_final_lock_and_keys(
+        ItemAndDoorDefs {
+            item_defs: &item_defs,
+            door_defs: &door_defs,
+        },
+    ) else {
         return Err(Error::NotEnoughNonFinalLockAndKeysFound);
     };
 
@@ -967,7 +1101,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                         &placed_already,
                     ) {
                         world.steppables.insert(
-                            item_loc.id,
+                            item_loc.segment_id,
                             to_entity(
                                 item_spec.item_def,
                                 item_loc.xy.x,

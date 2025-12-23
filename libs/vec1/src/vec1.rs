@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Vec1<T>(Vec<T>);
 
 impl<T: Clone> Clone for Vec1<T> {
@@ -18,6 +18,10 @@ impl<T: Default> Default for Vec1<T> {
 }
 
 impl <T> Vec1<T> {
+    pub fn singleton(t: T) -> Self {
+        vec1![t]
+    }
+
     // TODO? A len1 that returns a NonZeroUsize?
     pub fn len(&self) -> usize {
         self.0.len()
@@ -105,7 +109,7 @@ impl <T> TryFrom<Vec<T>> for Vec1<T> {
 #[macro_export]
 macro_rules! _vec1 {
     ($($element: expr),+ $(,)?) => {
-        $crate::vec1::Vec1::try_from(vec![ $($element),+ ])
+        $crate::Vec1::try_from(vec![ $($element),+ ])
             .expect("vec1 macro should have syntactically prevented this error from happening!")
     }
 }

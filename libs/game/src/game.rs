@@ -215,7 +215,7 @@ use world::{World, EntityKey};
 //    * Idleon seems to have a bunch of minigames, that are already based around getting a reward
 
 fn warp_player_to(world: &mut World, target: &DoorTarget) {
-    world.segment_id = target.id;
+    world.segment_id = target.segment_id;
     world.player.x = target.xy.x;
     world.player.y = target.xy.y;
 
@@ -223,8 +223,8 @@ fn warp_player_to(world: &mut World, target: &DoorTarget) {
     world.player.offset_y = 0.;
 }
 
-fn can_walk_onto(world: &World, key @ EntityKey { id, xy: XY{ x, y } }: EntityKey) -> bool {
-    let Some(segment) = world.segments.get(id as usize) else {
+fn can_walk_onto(world: &World, key @ EntityKey { segment_id, xy: XY{ x, y } }: EntityKey) -> bool {
+    let Some(segment) = world.segments.get(usize::from(segment_id)) else {
         return false;
     };
     let Ok(i) = xy_to_i(segment, x, y) else {
