@@ -362,6 +362,10 @@ pub struct State {
     pub entity_defs: Vec1<MiniEntityDef>,
     // }
     pub goal_door_tile_sprite: TileSprite,
+    // TODO: pub hallway_states: HashMap<HallwayKey, HallwayState>,
+    // HallwayKey seems like it should be an unordered, (so sorted upon construction) pair of EntityKeys, so we
+    // get the same hallway from either of the two doors. We can then ask the halleay key whether a given EntityKey
+    // is the front or back, if we ever need to.
 }
 
 impl State {

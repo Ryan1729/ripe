@@ -642,6 +642,7 @@ pub mod config {
     pub struct Config {
         pub segments: Vec1<WorldSegment>,
         pub entities: Vec1<EntityDef>,
+        pub hallways: Vec1<HallwaySpec>,
     }
 
     #[derive(Clone, Debug)]
@@ -653,6 +654,13 @@ pub mod config {
         pub tile_sprite: TileSprite,
         pub wants: Vec<DefId>,
         pub on_collect: OnCollect,
+    }
+
+    #[derive(Clone, Debug, Default)]
+    pub enum HallwaySpec {
+        #[default]
+        None,
+        IcePuzzle,
     }
 }
 pub use config::{Config, EntityDef};

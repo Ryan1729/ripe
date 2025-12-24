@@ -103,7 +103,12 @@ pub enum Error {
         parent_key: IndexableKey,
         base: DefId,
         delta: DefIdDelta,
-    }
+    },
+    UnknownHallwayKind{
+        key: &'static str,
+        parent_key: IndexableKey,
+        kind: models::consts::HallwayKind,
+    },
 }
 
 impl From<Box<EvalAltResult>> for Error {
@@ -362,24 +367,23 @@ pub fn parse(code: &str) -> Result<Config, Error> {
         }
     }
 
+    macro_rules! get_array {
+        ($map: expr, $key: expr, $parent_key: expr) => {
+            {
+                let key = $key;
+                let parent_key = $parent_key;
+                $map.get(key)
+                    .ok_or(Error::FieldMissing{ key, parent_key, })?
+                    .as_array_ref().map_err(|got| Error::TypeMismatch{ key: ik!(key), expected: "array", got })?
+            }
+        }
+    }
+
     let map: rhai::Map = ENGINE.eval(code)?;
 
-    let segments = {
-        let key = "segments";
-        map.get(key)
-            .ok_or(Error::FieldMissing{ key, parent_key: ik!("#root"), })?
-            .as_array_ref().map_err(|got| Error::TypeMismatch{ key: ik!(key), expected: "array", got })?
-    };
-
-    let entities = {
-        let key = "entities";
-        map.get(key)
-            .ok_or(Error::FieldMissing{ key, parent_key: ik!("#root"), })?
-            .as_array_ref().map_err(|got| Error::TypeMismatch{ key: ik!(key), expected: "array", got })?
-    };
+    let segments = get_array!(map, "segments", ik!("#root"));
 
     let mut segments_vec = Vec::with_capacity(segments.len());
-    let mut entities_vec = Vec::with_capacity(entities.len());
 
     for i in 0..segments.len() {
         let parent_key = ik!("segments", i);
@@ -417,6 +421,12 @@ pub fn parse(code: &str) -> Result<Config, Error> {
             tiles,
         });
     }
+
+    let segments = segments_vec.try_into().map_err(|_| Error::NoSegmentsFound)?;
+
+    let entities = get_array!(map, "entities", ik!("#root"));
+
+    let mut entities_vec = Vec::with_capacity(entities.len());
 
     let entity_def_count = DefId::try_from(entities.len())
         .map_err(|_| Error::TooManyEntityDefinitions{ got: entities.len() })?;
@@ -614,8 +624,38 @@ pub fn parse(code: &str) -> Result<Config, Error> {
         });
     }
 
+    let entities = entities_vec.try_into().map_err(|_| Error::NoEntitiesFound)?;
+
+    let hallways = get_array!(map, "hallways", ik!("#root"));
+
+    let mut hallways_vec = Vec::with_capacity(hallways.len());
+
+    for i in 0..hallways.len() {
+        use models::config::HallwaySpec;
+        let parent_key = ik!("hallways", i.into());
+
+        let hallway = hallways[i]
+            .as_map_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
+
+        let key = "kind";
+
+        let kind: models::consts::HallwayKind = get_int!(hallway, key, parent_key);
+
+        let spec = match kind {
+            models::consts::NONE => HallwaySpec::None,
+            models::consts::ICE_PUZZLE => HallwaySpec::IcePuzzle,
+            _ => return Err(Error::UnknownHallwayKind{ key, parent_key, kind }),
+        };
+
+        hallways_vec.push(spec);
+    }
+
+    // Interpret an empty hallways array as an array with a None kind in it.
+    let hallways = hallways_vec.try_into().unwrap_or_default();
+
     Ok(Config {
-        segments: segments_vec.try_into().map_err(|_| Error::NoSegmentsFound)?,
-        entities: entities_vec.try_into().map_err(|_| Error::NoEntitiesFound)?,
+        segments,
+        entities,
+        hallways,
     })
 }
