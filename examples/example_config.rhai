@@ -1,3 +1,14 @@
+import "collect_actions" as CA;
+import "default_spritesheet" as DS;
+import "entity_flags" as EF;
+const MOB = 0;
+const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
+const OPEN_DOOR = EF::DOOR | EF::STEPPABLE;
+const END_DOOR = OPEN_DOOR | EF::VICTORY | EF::NOT_SPAWNED_AT_START;
+const LOCKED_DOOR = EF::DOOR;
+
+import "entity_ids" as ID;
+import "hallways" as HW;
 import "tile_flags" as TF;
 const A = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
 const B = TF::FLOOR; // Bare Floor
@@ -6,18 +17,6 @@ const F = TF::FLOOR | TF::PLAYER_START;
 const I = TF::FLOOR | TF::ITEM_START;
 const N = TF::FLOOR | TF::NPC_START;
 const W = TF::WALL;
-
-import "entity_flags" as EF;
-
-const MOB = 0;
-const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
-const OPEN_DOOR = EF::DOOR | EF::STEPPABLE;
-const END_DOOR = OPEN_DOOR | EF::VICTORY | EF::NOT_SPAWNED_AT_START;
-const LOCKED_DOOR = EF::DOOR;
-
-import "default_spritesheet" as DS;
-import "entity_ids" as ID;
-import "collect_actions" as CA;
 
 let entities = [
     #{
@@ -118,6 +117,16 @@ for material in DS::DOOR_MATERIALS {
 }
 
 #{
+    hallways: [
+        #{
+            kind: HW::NONE,
+        },
+        #{
+            kind: HW::ICE_PUZZLE,
+            // TODO configuration of ice puzzle. Width and height probably?
+        },
+    ],
+    entities: entities,
     segments: [
         #{
             width: 14,
@@ -164,5 +173,4 @@ for material in DS::DOOR_MATERIALS {
             ],
         },
     ],
-    entities: entities,
 }

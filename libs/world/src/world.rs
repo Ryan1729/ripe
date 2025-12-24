@@ -785,7 +785,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         );
         chunks.push(Vec::with_capacity(MAX_PER_SPHERE.into()));
 
-                for id in 0..segments_count {
+        for id in 0..segments_count {
             let final_index = chunks.len() - 1;
             let chunk = &mut chunks[final_index];
 
@@ -807,6 +807,57 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         let chunks_len = chunks.len();
         invariant_assert!(chunks_len >= 2, "We need at least two chunks for the joining to work properly");
 
+        macro_rules! place_door_pair {
+            ($door_def: expr, $segment_ids: expr) => {
+                let door_def: &MiniEntityDef = $door_def;
+                let (segment_id_i, segment_id_j): (SegmentId, SegmentId) = $segment_ids;
+
+                let config_segment_i = &config_segments[segment_id_i as usize];
+                let config_segment_j = &config_segments[segment_id_j as usize];
+    
+                let d_i_loc = random::tile_matching_flags_besides(
+                    rng,
+                    config_segment_i,
+                    segment_id_i,
+                    FLOOR | DOOR_START,
+                    &placed_already,
+                ).ok_or(Error::CannotPlaceDoor)?;
+                placed_already.push(d_i_loc);
+    
+                let d_j_loc = random::tile_matching_flags_besides(
+                    rng,
+                    config_segment_j,
+                    segment_id_j,
+                    FLOOR | DOOR_START,
+                    &placed_already,
+                ).ok_or(Error::CannotPlaceDoor)?;
+                placed_already.push(d_j_loc);
+    
+                let mut door_i = to_entity(
+                    door_def,
+                    d_i_loc.xy.x,
+                    d_i_loc.xy.y
+                );
+                door_i.door_target = d_j_loc;
+                track_door_target_set!(door_i);
+    
+                world.steppables.insert(segment_id_i, door_i);
+    
+                assert_door_targets_seem_right!();
+    
+                let mut door_j = to_entity(
+                    door_def,
+                    d_j_loc.xy.x,
+                    d_j_loc.xy.y
+                );
+                door_j.door_target = d_i_loc;
+                track_door_target_set!(door_j);
+    
+                world.steppables.insert(segment_id_j, door_j);
+    
+                assert_door_targets_seem_right!();
+            }
+        }
         for chunk_index in 0..chunks_len {
             let chunk = &chunks[chunk_index];
 
@@ -816,53 +867,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 .chain(std::iter::once([chunk[chunk.len() - 1], chunk[0]].as_slice())) {
                 assert_eq!(window.len(), 2);
 
-                let segment_id_i = window[0];
-                let segment_id_j = window[1];
-
-                let config_segment_i = &config_segments[segment_id_i as usize];
-                let config_segment_j = &config_segments[segment_id_j as usize];
-
-                let d_i_loc = random::tile_matching_flags_besides(
-                    rng,
-                    config_segment_i,
-                    segment_id_i,
-                    FLOOR | DOOR_START,
-                    &placed_already,
-                ).ok_or(Error::CannotPlaceDoor)?;
-                placed_already.push(d_i_loc);
-
-                let d_j_loc = random::tile_matching_flags_besides(
-                    rng,
-                    config_segment_j,
-                    segment_id_j,
-                    FLOOR | DOOR_START,
-                    &placed_already,
-                ).ok_or(Error::CannotPlaceDoor)?;
-                placed_already.push(d_j_loc);
-
-                let mut door_i = to_entity(
-                    open_door_def,
-                    d_i_loc.xy.x,
-                    d_i_loc.xy.y
-                );
-                door_i.door_target = d_j_loc;
-                track_door_target_set!(door_i);
-
-                world.steppables.insert(segment_id_i, door_i);
-
-                assert_door_targets_seem_right!();
-
-                let mut door_j = to_entity(
-                    open_door_def,
-                    d_j_loc.xy.x,
-                    d_j_loc.xy.y
-                );
-                door_j.door_target = d_i_loc;
-                track_door_target_set!(door_j);
-
-                world.steppables.insert(segment_id_j, door_j);
-
-                assert_door_targets_seem_right!();
+                place_door_pair!(open_door_def, (window[0], window[1]));
             }
 
             assert_door_targets_seem_right!();
@@ -884,59 +889,16 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 return Err(Error::NotEnoughNonFinalLockAndKeysFound);
             }
 
-            {
-                let segment_id = {
-                    let chunk = &chunks[chunk_index];
-                    chunk[xs::range(rng, 0..chunk.len() as u32) as usize]
-                };
-                let next_chunk_segment_id = {
-                    let chunk = &chunks[next_chunk_index];
-                    chunk[xs::range(rng, 0..chunk.len() as u32) as usize]
-                };
+            let segment_id = {
+                let chunk = &chunks[chunk_index];
+                chunk[xs::range(rng, 0..chunk.len() as u32) as usize]
+            };
+            let next_chunk_segment_id = {
+                let chunk = &chunks[next_chunk_index];
+                chunk[xs::range(rng, 0..chunk.len() as u32) as usize]
+            };
 
-                let config_segment_1 = &config_segments[segment_id as usize];
-                let config_segment_2 = &config_segments[next_chunk_segment_id as usize];
-
-                let d_1_loc = random::tile_matching_flags_besides(
-                    rng,
-                    config_segment_1,
-                    segment_id,
-                    FLOOR | DOOR_START,
-                    &placed_already,
-                ).ok_or(Error::CannotPlaceDoor)?;
-                placed_already.push(d_1_loc);
-
-                let d_2_loc = random::tile_matching_flags_besides(
-                    rng,
-                    config_segment_2,
-                    next_chunk_segment_id,
-                    FLOOR | DOOR_START,
-                    &placed_already,
-                ).ok_or(Error::CannotPlaceDoor)?;
-                placed_already.push(d_2_loc);
-
-                let mut door_1 = to_entity(
-                    edge_lak.lock,
-                    d_1_loc.xy.x,
-                    d_1_loc.xy.y
-                );
-                door_1.door_target = d_2_loc;
-                track_door_target_set!(door_1);
-
-                world.steppables.insert(segment_id, door_1);
-
-                let mut door_2 = to_entity(
-                    edge_lak.lock,
-                    d_2_loc.xy.x,
-                    d_2_loc.xy.y
-                );
-                door_2.door_target = d_1_loc;
-                track_door_target_set!(door_2);
-
-                world.steppables.insert(next_chunk_segment_id, door_2);
-            }
-
-            assert_door_targets_seem_right!();
+            place_door_pair!(edge_lak.lock, (segment_id, next_chunk_segment_id));
 
             spheres.push(Sphere {
                 segment_ids: std::mem::take(&mut chunks[chunk_index]),

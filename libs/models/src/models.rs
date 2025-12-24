@@ -162,6 +162,40 @@ pub mod consts {
         };
     }
     
+    pub type CollectActionKind = u8;
+    
+    consts_def!{
+        ALL_COLLECT_ACTION_KINDS: CollectActionKind;
+        TRANSFORM = 1,
+    }
+
+    pub type EntityDefIdRefKind = u8;
+    
+    consts_def!{
+        ALL_ENTITY_ID_REFERENCE_KINDS: EntityDefIdRefKind;
+        RELATIVE = 1,
+        ABSOLUTE = 2,
+    }
+
+    pub type EntityDefFlags = u8;
+    
+    consts_def!{
+        ALL_ENTITY_FLAGS: EntityDefFlags;
+        COLLECTABLE = super::COLLECTABLE,
+        STEPPABLE = super::STEPPABLE,
+        VICTORY = super::VICTORY,
+        DOOR = super::DOOR,
+        NOT_SPAWNED_AT_START = 1 << 4,
+    }
+
+    pub type HallwayKind = u8;
+    
+    consts_def!{
+        ALL_HALLWAY_KINDS: CollectActionKind;
+        NONE = 0,
+        ICE_PUZZLE = 1,
+    }
+
     pub type TileFlags = u32;
     
     consts_def!{
@@ -173,32 +207,6 @@ pub mod consts {
         ITEM_START = 1 << 3,
         NPC_START = 1 << 4,
         DOOR_START = 1 << 5,
-    }
-    
-    pub type EntityDefFlags = u8;
-    
-    consts_def!{
-        ALL_ENTITY_FLAGS: EntityDefFlags;
-        COLLECTABLE = super::COLLECTABLE,
-        STEPPABLE = super::STEPPABLE,
-        VICTORY = super::VICTORY,
-        DOOR = super::DOOR,
-        NOT_SPAWNED_AT_START = 1 << 4,
-    }
-    
-    pub type EntityDefIdRefKind = u8;
-    
-    consts_def!{
-        ALL_ENTITY_ID_REFERENCE_KINDS: EntityDefIdRefKind;
-        RELATIVE = 1,
-        ABSOLUTE = 2,
-    }
-    
-    pub type CollectActionKind = u8;
-    
-    consts_def!{
-        ALL_COLLECT_ACTION_KINDS: CollectActionKind;
-        TRANSFORM = 1,
     }
 }
 

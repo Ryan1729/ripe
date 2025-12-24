@@ -149,6 +149,14 @@ fn init_engine() -> Engine {
 
     add_module!(result = result_str);
 
+    let mut hallways_string = String::with_capacity(128);
+
+    for (name, value) in models::consts::ALL_HALLWAY_KINDS {
+        hallways_string += &format!("export const {name} = {value};\n");
+    }
+
+    add_module!(hallways = hallways_string);
+
     let mut tile_flags_string = String::with_capacity(128);
 
     for (name, value) in models::consts::ALL_TILE_FLAGS {
