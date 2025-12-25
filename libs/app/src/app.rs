@@ -315,12 +315,18 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
     state.tick();
 
     match &mut state.mode {
-        Mode::DoorTo(_, animation) => {
+        Mode::DoorTo(target, animation) => {
             // TODO? Allow cancelling going in the door?
-            if animation.is_done() {
-                state.mode = Mode::Walking;
-            }
         },
+        Mode::Hallway{ source, target } => {
+            //match state.hallway_states.get_mut(*source, *target) {
+                //HallwayState::IcePuzzle(ice_puzzle) => {
+                    //if input.pressed_this_frame(Button::START) {
+                        ////...
+                    //}
+                //}
+            //}
+        }
         Mode::Victory(animation) => {
             // TODO? Allow cancelling going in the door?
             if animation.is_done() {
@@ -588,6 +594,31 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     //
 
     match &state.mode {
+        Mode::Hallway { source, target } => {
+            if let Some(hallway) = state.hallway_states.get(*source, *target) {
+                commands.print_lines(
+                    unscaled::XY {
+                        x: unscaled::X(100),
+                        y: unscaled::Y(50),
+                    },
+                    0,
+                    // TODO Get this text from the config file
+                    b"TODO: Render hallway",
+                    6,
+                );
+            } else {
+                commands.print_lines(
+                    unscaled::XY {
+                        x: unscaled::X(100),
+                        y: unscaled::Y(50),
+                    },
+                    0,
+                    // TODO Get this text from the config file
+                    b"No hallway found!",
+                    6,
+                );
+            }
+        },
         Mode::DoorTo(_, animation) => {
             render_world(commands, state);
 

@@ -18,6 +18,11 @@ mod entities {
         }
     }
 
+    pub fn key_for_entity(segment_id: SegmentId, entity: &Entity) -> Key {
+        let xy = entity.xy();
+        entity_key(segment_id, xy.x, xy.y)
+    }
+
     // Reminder, we're going with Fat Struct for Entities on this project. So, if you are here looking to
     // add an data structure besides Entities that uses entity keys, say some kind of ByEntityKey<A>,
     // then instead consider just adding a field to Entity. If we actually run into perf issues due to
@@ -93,9 +98,105 @@ mod entities {
         }
     }
 }
-use entities::{Entities, entity_key};
+use entities::{Entities, entity_key, key_for_entity};
 
 pub type EntityKey = entities::Key;
+
+pub mod hallway {
+    use features::{invariant_assert};
+    use crate::entities::Key as EntityKey;
+    use xs::Xs;
+
+    use std::collections::BTreeMap;
+
+    #[derive(Clone, Debug)]
+    pub struct IcePuzzle {
+        count: u8, // Temp to just have something easy but visible
+    }
+
+    impl IcePuzzle {
+        pub fn new(rng: &mut Xs) -> Self {
+            Self {
+                count: 0,
+            }
+        }
+
+        pub fn tick(&mut self) {
+            self.count = self.count.saturating_add(1);
+        }
+
+        pub fn is_complete(&self) -> bool {
+            self.count == u8::MAX
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub enum State {
+        IcePuzzle(IcePuzzle),
+    }
+
+    impl State {
+        pub fn tick(&mut self) {
+            use State::*;
+            match self {
+                IcePuzzle(inner) => inner.tick(),
+            }
+        }
+
+        pub fn is_complete(&self) -> bool {
+            use State::*;
+            match self {
+                IcePuzzle(inner) => inner.is_complete(),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct Key {
+        lower: EntityKey,
+        higher: EntityKey,
+    }
+
+    impl Key {
+        fn new(a: EntityKey, b: EntityKey) -> Self {
+            let lower = core::cmp::min(a, b);
+            let higher = core::cmp::max(a, b);
+
+            invariant_assert!(
+                (lower != higher) // The two part should be distinct
+                || (a == b),       // unless they were the same in the first place
+                "Lower and higher hallway key parts were the same!"
+            );
+            // A separate assert in case we decide there's a reason for allowing this.
+            invariant_assert!(a != b, "Attempted to make hallway key from two identical parts. Probably a bug?");
+
+            Self {
+                lower,
+                higher,
+            }
+        }
+    }
+
+    #[derive(Clone, Default)]
+    pub struct States {
+        map: BTreeMap<Key, State>,
+    }
+
+    impl States {
+        pub fn insert(&mut self, a: EntityKey, b: EntityKey, state: State) -> Option<State> {
+            self.map.insert(Key::new(a, b), state)
+        }
+
+        pub fn get(&self, a: EntityKey, b: EntityKey) -> Option<&State> {
+            self.map.get(&Key::new(a, b))
+        }
+
+        pub fn get_mut(&mut self, a: EntityKey, b: EntityKey) -> Option<&mut State> {
+            self.map.get_mut(&Key::new(a, b))
+        }
+    }
+}
+pub use hallway::{States as HallwayStates};
 
 #[derive(Clone, Default)]
 pub struct World {
@@ -453,6 +554,7 @@ pub struct Generated {
     pub entity_defs: Vec1<MiniEntityDef>,
     // }
     pub goal_door_tile_sprite: TileSprite,
+    pub hallway_states: HallwayStates,
 }
 
 pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
@@ -605,6 +707,8 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         steppables: <_>::default(),
         mobs: <_>::default(),
     };
+
+    let mut hallway_states = HallwayStates::default();
 
     macro_rules! assert_door_targets_seem_right {
         () => {
@@ -809,6 +913,8 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
 
         macro_rules! place_door_pair {
             ($door_def: expr, $segment_ids: expr) => {
+                assert_door_targets_seem_right!();
+
                 let door_def: &MiniEntityDef = $door_def;
                 let (segment_id_i, segment_id_j): (SegmentId, SegmentId) = $segment_ids;
 
@@ -840,11 +946,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 );
                 door_i.door_target = d_j_loc;
                 track_door_target_set!(door_i);
-    
-                world.steppables.insert(segment_id_i, door_i);
-    
-                assert_door_targets_seem_right!();
-    
+
                 let mut door_j = to_entity(
                     door_def,
                     d_j_loc.xy.x,
@@ -852,9 +954,32 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 );
                 door_j.door_target = d_i_loc;
                 track_door_target_set!(door_j);
+
+                let key_i = key_for_entity(segment_id_i, &door_i);
+                let key_j = key_for_entity(segment_id_j, &door_j);
     
+                world.steppables.insert(segment_id_i, door_i);
                 world.steppables.insert(segment_id_j, door_j);
+
+                assert_door_targets_seem_right!();
     
+                invariant_assert!(config.hallways.len() as u128 <= u128::from(u32::MAX));
+                let hallway_index = xs::range(rng, 0..config.hallways.len() as u32) as usize;
+                let hallway = &config.hallways[hallway_index];
+
+                use models::config::HallwaySpec;
+
+                match hallway {
+                    HallwaySpec::None => {},
+                    HallwaySpec::IcePuzzle => {
+                        hallway_states.insert(
+                            key_i,
+                            key_j,
+                            hallway::State::IcePuzzle(hallway::IcePuzzle::new(rng)),
+                        );
+                    },
+                }
+
                 assert_door_targets_seem_right!();
             }
         }
@@ -1178,5 +1303,6 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
         inventory_descriptions,
         entity_defs,
         goal_door_tile_sprite,
+        hallway_states,
     })
 }

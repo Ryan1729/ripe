@@ -24,7 +24,7 @@ use xs::{Xs, Seed};
 
 use platform_types::{arrow_timer::{ArrowTimer}};
 use vec1::Vec1;
-use world::{World, EntityKey};
+use world::{World, EntityKey, HallwayStates};
 
 // Proposed Steps
 // * Make the simplest task: Go find a thing and bring it to the person who wants it ✔
@@ -213,6 +213,8 @@ use world::{World, EntityKey};
 //      should be one to turn this mechanic off.
 //      * Eventually can expand this with something more linguistically complex.
 //    * Idleon seems to have a bunch of minigames, that are already based around getting a reward
+//    * Disgaea's geo-block puzzles
+//    * Boulder Dash maybe?
 
 fn warp_player_to(world: &mut World, target: &DoorTarget) {
     world.segment_id = target.segment_id;
@@ -293,6 +295,10 @@ pub enum Mode {
     Talking(TalkingState),
     DoorTo(DoorTarget, DoorAnimation),
     Victory(DoorAnimation),
+    Hallway{
+        source: Location,
+        target: Location,
+    },
 }
 
 #[derive(Clone)]
@@ -362,10 +368,7 @@ pub struct State {
     pub entity_defs: Vec1<MiniEntityDef>,
     // }
     pub goal_door_tile_sprite: TileSprite,
-    // TODO: pub hallway_states: HashMap<HallwayKey, HallwayState>,
-    // HallwayKey seems like it should be an unordered, (so sorted upon construction) pair of EntityKeys, so we
-    // get the same hallway from either of the two doors. We can then ask the halleay key whether a given EntityKey
-    // is the front or back, if we ever need to.
+    pub hallway_states: HallwayStates,
 }
 
 impl State {
@@ -386,6 +389,7 @@ impl State {
             inventory_descriptions,
             entity_defs,
             goal_door_tile_sprite,
+            hallway_states,
         } = world::generate(&mut rng, &config)?;
 
         Ok(State {
@@ -398,6 +402,7 @@ impl State {
             inventory_descriptions,
             entity_defs,
             goal_door_tile_sprite,
+            hallway_states,
         })
     }
 }
@@ -548,10 +553,33 @@ impl State {
 
         match &mut self.mode {
             Mode::DoorTo(target, animation) => {
-                advance_door_animation!(animation);
-
                 if animation.is_done() {
+                    let target = *target;
+                    let source = self.world.player_key();
+                    // Skip a frame of waiting by checking early.
+                    // This shouldn't be relied on for correctness, since there's a TOCTOU issue.
+                    if let Some(_) = self.hallway_states.get(source, target) {
+                        self.mode = Mode::Hallway{ source, target };
+                    } else {
+                        warp_player_to(&mut self.world, &target);
+                        self.mode = Mode::Walking;
+                    }
+                } else {
+                    // Do this last, so that the last frame is shown
+                    advance_door_animation!(animation);
+                }
+            }
+            Mode::Hallway{ source, target } => {
+                let do_warp = if let Some(hallway) = self.hallway_states.get_mut(*source, *target) {
+                    hallway.tick();
+        
+                    hallway.is_complete()
+                } else {
+                    true
+                };
+                if do_warp {
                     warp_player_to(&mut self.world, target);
+                    self.mode = Mode::Walking;
                 }
             }
             Mode::Victory(animation) => {
