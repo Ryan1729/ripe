@@ -1,7 +1,8 @@
+use features::invariant_assert;
 use gfx::{Commands, nine_slice, next_arrow, speech, to_tile};
-use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
+use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker, SFX};
 pub use platform_types::StateParams;
-use game::{Dir, FadeMessageSpec, Mode, TalkingState, PostTalkingAction};
+use game::{FadeMessageSpec, HallwayState, Mode, TalkingState, PostTalkingAction};
 use models::{Entity, Speeches, XY, i_to_xy, TileSprite, Speech};
 
 #[derive(Debug)]
@@ -319,13 +320,17 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
             // TODO? Allow cancelling going in the door?
         },
         Mode::Hallway{ source, target } => {
-            //match state.hallway_states.get_mut(*source, *target) {
-                //HallwayState::IcePuzzle(ice_puzzle) => {
-                    //if input.pressed_this_frame(Button::START) {
-                        ////...
-                    //}
-                //}
-            //}
+            match state.hallway_states.get_mut(*source, *target) {
+                Some(HallwayState::IcePuzzle(ice_puzzle)) => {
+                    if let Some(dir) = input.dir_pressed_this_frame() {
+                        ice_puzzle.r#move(dir)
+                    }
+                },
+                None => {
+                    invariant_assert!(false, "Hallway was not found while in Hallway mode!");
+                    state.mode = Mode::Walking;
+                }
+            }
         }
         Mode::Victory(animation) => {
             // TODO? Allow cancelling going in the door?
@@ -347,27 +352,13 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
                 return
             }
 
-            if input.pressed_this_frame(Button::UP) {
-                state.walk(Dir::Up);
-            } else if input.pressed_this_frame(Button::DOWN) {
-                state.walk(Dir::Down);
-            } else if input.pressed_this_frame(Button::LEFT) {
-                state.walk(Dir::Left);
-            } else if input.pressed_this_frame(Button::RIGHT) {
-                state.walk(Dir::Right);
-            } else {
-                // Nothing to do
-            };
+            if let Some(dir) = input.dir_pressed_this_frame() {
+                state.walk(dir);
+            }
 
             if input.pressed_this_frame(Button::A) {
-                if input.gamepad.contains(Button::UP) {
-                    state.interact(Dir::Up)
-                } else if input.gamepad.contains(Button::DOWN) {
-                    state.interact(Dir::Down)
-                } else if input.gamepad.contains(Button::LEFT) {
-                    state.interact(Dir::Left)
-                } else if input.gamepad.contains(Button::RIGHT) {
-                    state.interact(Dir::Right)
+                if let Some(dir) = input.dir_pressed_this_frame() {
+                    state.interact(dir)
                 }
             }
         },

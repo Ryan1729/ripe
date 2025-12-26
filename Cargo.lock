@@ -706,6 +706,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ice_puzzle"
+version = "0.1.0"
+dependencies = [
+ "platform_types",
+ "xs",
+]
+
+[[package]]
 name = "id-arena"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2366,6 +2374,7 @@ name = "world"
 version = "0.1.0"
 dependencies = [
  "features",
+ "ice_puzzle",
  "models",
  "vec1",
  "xs",

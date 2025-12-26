@@ -11,6 +11,9 @@ path = "src/world.rs"
 [dependencies.features]
 path = "../features"
 
+[dependencies.ice_puzzle]
+path = "../ice_puzzle"
+
 [dependencies.models]
 path = "../models"
 

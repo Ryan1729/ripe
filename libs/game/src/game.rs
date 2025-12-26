@@ -22,9 +22,10 @@ type DoorTarget = Location;
 
 use xs::{Xs, Seed};
 
-use platform_types::{arrow_timer::{ArrowTimer}};
+use platform_types::{arrow_timer::{ArrowTimer}, Dir};
 use vec1::Vec1;
 use world::{World, EntityKey, HallwayStates};
+pub use world::hallway::State as HallwayState;
 
 // Proposed Steps
 // * Make the simplest task: Go find a thing and bring it to the person who wants it ✔
@@ -407,14 +408,6 @@ impl State {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Dir {
-    Left,
-    Right,
-    Up,
-    Down,
-}
-
 fn xy_in_dir(x: X, y: Y, dir: Dir) -> Option<XY> {
     use Dir::*;
 
@@ -558,11 +551,17 @@ impl State {
                     let source = self.world.player_key();
                     // Skip a frame of waiting by checking early.
                     // This shouldn't be relied on for correctness, since there's a TOCTOU issue.
-                    if let Some(_) = self.hallway_states.get(source, target) {
-                        self.mode = Mode::Hallway{ source, target };
+                    let do_warp = if let Some(hallway) = self.hallway_states.get_mut(source, target) {
+                        hallway.is_complete()
                     } else {
+                        true
+                    }; 
+
+                    if do_warp {
                         warp_player_to(&mut self.world, &target);
                         self.mode = Mode::Walking;
+                    } else {
+                        self.mode = Mode::Hallway{ source, target };
                     }
                 } else {
                     // Do this last, so that the last frame is shown

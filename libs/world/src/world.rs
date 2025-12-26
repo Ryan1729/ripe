@@ -110,29 +110,8 @@ pub mod hallway {
     use std::collections::BTreeMap;
 
     #[derive(Clone, Debug)]
-    pub struct IcePuzzle {
-        count: u8, // Temp to just have something easy but visible
-    }
-
-    impl IcePuzzle {
-        pub fn new(rng: &mut Xs) -> Self {
-            Self {
-                count: 0,
-            }
-        }
-
-        pub fn tick(&mut self) {
-            self.count = self.count.saturating_add(1);
-        }
-
-        pub fn is_complete(&self) -> bool {
-            self.count == u8::MAX
-        }
-    }
-
-    #[derive(Clone, Debug)]
     pub enum State {
-        IcePuzzle(IcePuzzle),
+        IcePuzzle(ice_puzzle::State),
     }
 
     impl State {
@@ -975,7 +954,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                         hallway_states.insert(
                             key_i,
                             key_j,
-                            hallway::State::IcePuzzle(hallway::IcePuzzle::new(rng)),
+                            hallway::State::IcePuzzle(ice_puzzle::State::new(rng)),
                         );
                     },
                 }

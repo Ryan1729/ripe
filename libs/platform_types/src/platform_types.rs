@@ -1176,6 +1176,20 @@ impl Input {
     pub fn released_this_frame(&self, buttons: Button) -> bool {
         self.previous_gamepad.contains(buttons) && !self.gamepad.contains(buttons)
     }
+
+    pub fn dir_pressed_this_frame(&self) -> Option<Dir> {
+        if self.pressed_this_frame(Button::UP) {
+            Some(Dir::Up)
+        } else if self.pressed_this_frame(Button::DOWN) {
+            Some(Dir::Down)
+        } else if self.pressed_this_frame(Button::LEFT) {
+            Some(Dir::Left)
+        } else if self.pressed_this_frame(Button::RIGHT) {
+            Some(Dir::Right)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1249,6 +1263,14 @@ pub mod button {
     }
 }
 pub use button::Button;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dir {
+    Left,
+    Right,
+    Up,
+    Down,
+}
 
 pub type Logger = Option<fn(&str) -> ()>;
 pub type ConfigLoader = Option<fn() -> Option<String>>;

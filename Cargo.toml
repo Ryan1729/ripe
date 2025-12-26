@@ -1,5 +1,5 @@
 [workspace]
-members = ["libs/text", "libs/vec1", "libs/world",
+members = ["libs/ice_puzzle","libs/text", "libs/vec1", "libs/world",
     "ripe",
     "run-wasm"
 ]
