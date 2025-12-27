@@ -118,7 +118,7 @@ pub mod hallway {
         pub fn tick(&mut self) {
             use State::*;
             match self {
-                IcePuzzle(inner) => inner.tick(),
+                IcePuzzle(inner) => {},
             }
         }
 

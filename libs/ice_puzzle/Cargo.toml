@@ -8,8 +8,16 @@ path = "./src/ice_puzzle.rs"
 
 [dependencies]
 
+[dependencies.gfx]
+path = "../gfx"
+
 [dependencies.platform_types]
 path = "../platform_types"
+
+[dependencies.game]
+# Note, not the upper one
+path = "./libs/game"
+package = "ice_puzzle_game"
 
 [dependencies.xs]
 path = "../xs"

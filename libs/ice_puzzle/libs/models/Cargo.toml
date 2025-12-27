@@ -1,0 +1,10 @@
+[package]
+name = "ice_puzzle_models"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path="src/models.rs"
+
+[dependencies.xs]
+path = "../../../xs"

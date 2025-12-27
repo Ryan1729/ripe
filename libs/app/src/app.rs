@@ -283,7 +283,7 @@ const INVENTORY_WIDTH_CELLS: usize = 13;
 const INVENTORY_HEIGHT_CELLS: usize = 8;
 const INVENTORY_MAX_INDEX: usize = (INVENTORY_WIDTH_CELLS * INVENTORY_HEIGHT_CELLS) - 1;
 
-fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
+fn game_update(commands: &mut Commands, state: &mut game::State, input: Input, speaker: &mut Speaker) {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum TalkingUpdateState {
         StillTalking,
@@ -322,9 +322,11 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
         Mode::Hallway{ source, target } => {
             match state.hallway_states.get_mut(*source, *target) {
                 Some(HallwayState::IcePuzzle(ice_puzzle)) => {
-                    if let Some(dir) = input.dir_pressed_this_frame() {
-                        ice_puzzle.r#move(dir)
-                    }
+                    ice_puzzle.update_and_render(
+                        commands,
+                        input,
+                        speaker,
+                    );
                 },
                 None => {
                     invariant_assert!(false, "Hallway was not found while in Hallway mode!");
@@ -357,7 +359,7 @@ fn game_update(state: &mut game::State, input: Input, _speaker: &mut Speaker) {
             }
 
             if input.pressed_this_frame(Button::A) {
-                if let Some(dir) = input.dir_pressed_this_frame() {
+                if let Some(dir) = input.contains_dir() {
                     state.interact(dir)
                 }
             }
@@ -808,7 +810,7 @@ fn update_and_render(
 
     match game_state {
         Ok(state) => {
-            game_update(state, input, speaker);
+            game_update(commands, state, input, speaker);
             // Empty message queue
             for FadeMessageSpec { message, xy } in state.fade_message_specs.drain(..) {
                 commands.push_fade_message(message.into(), xy);
