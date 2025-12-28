@@ -73,7 +73,7 @@ const START_POS: (i32, i32) = (7, 3);
 //returns true if quit requested
 pub fn update_and_render(platform: &Platform, state: &mut State, events: &mut Vec<Event>) -> bool {
     state.frame_count = state.frame_count.overflowing_add(1).0;
-
+    dbg!("state_manip update_and_render");
     if state.title_screen {
         for event in events {
             cross_mode_event_handling(platform, state, event);
@@ -131,9 +131,10 @@ pub fn update_and_render(platform: &Platform, state: &mut State, events: &mut Ve
                     3,
                     "R",
                     (platform.key_pressed)(KeyCode::R));
-
+        dbg!("title screen");
         false
     } else {
+        dbg!("NOT title screen");
         game_update_and_render(platform, state, events)
     }
 }

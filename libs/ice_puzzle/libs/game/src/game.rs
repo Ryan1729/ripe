@@ -3,6 +3,8 @@ use gfx::{Commands};
 use platform_types::{command, unscaled, Button, Input, Speaker, SFX};
 use xs::{Xs, Seed};
 
+use platform::Chars;
+
 pub struct State {
     pub rng: Xs,
     state: common::State,
@@ -82,13 +84,42 @@ impl State {
                 });
             }
         }
-        
+        platform::print_xy(20, 0, "@");
+        {
+            let mut xy: unscaled::XY = <_>::default();
+            xy.y = unscaled::Y(20);
+
+            commands.print_lines(
+                xy,
+                0,
+                format!("pre {}", platform::STATE.lock().expect("should not be poisoned").chars.len()).as_bytes(),
+                6,
+            );
+        }
+
         //#[cfg(false)]
-        let _ignored = state_manipulation::update_and_render(
+        let ignored = state_manipulation::update_and_render(
             &state.platform,
             &mut state.state,
             &mut state.events
         );
+
+        {
+            let mut xy: unscaled::XY = <_>::default();
+            xy.y = unscaled::Y(40);
+
+            commands.print_lines(
+                xy,
+                0,
+                format!("post {}", platform::STATE.lock().expect("should not be poisoned").chars.len()).as_bytes(),
+                6,
+            );
+        }
+
+        {
+            let c: &Chars = &(platform::STATE.lock().expect("should not be poisoned").chars);
+            eprintln!("{:p} update_and_render {}", c, c.len());
+        }
 
         platform::push_commands(commands);
 
@@ -116,20 +147,22 @@ mod platform {
     type X = unscaled::Inner;
     type Y = unscaled::Inner;
 
+    use std::hash::{BuildHasherDefault, DefaultHasher};
+
+    pub type Chars = HashMap<(X, Y), &'static str, BuildHasherDefault<DefaultHasher>>;
+
     pub(crate) struct State {
-        pub(crate) chars: HashMap<(X, Y), &'static str>,
+        pub(crate) chars: Chars,
     }
     
-    pub(crate) fn state() -> &'static Mutex<State> {
-        static STATE: OnceLock<Mutex<State>> = OnceLock::new();
-        STATE.get_or_init(|| Mutex::new(State {
-            chars: HashMap::with_capacity(128),
-        }))
-    }
+    pub static STATE: Mutex<State> =
+        Mutex::new(State{
+            chars: HashMap::with_hasher(BuildHasherDefault::new()),
+        });
 
     macro_rules! state {
         () => {
-            state().lock().expect("should not be poisoned")
+            STATE.lock().expect("should not be poisoned")
         }
     }
 
@@ -140,7 +173,11 @@ mod platform {
 
         match (X::try_from(x_in), Y::try_from(y_in)) {
             (Ok(x), Ok(y)) => {
-                state!().chars.insert((x, y), s);
+                { state!().chars.insert((x, y), s); }
+                {
+                    let c: &Chars = &(state!().chars);
+                    eprintln!("{:p} print_xy {}", c, c.len());
+                }
             },
             _ => {
                 assert!(false, "bad (x, y): ({x_in}, {y_in})");
@@ -204,6 +241,7 @@ mod platform {
         //eprintln!("{:p} post push 2 {}", &state!().chars, &state!().chars.len());
 
         //eprintln!("{:p} push_commands {}", &state!().chars, &state!().chars.len());
+        dbg!();
         for ((x, y), s) in state!().chars.iter() {
             let (sx, sy) = match *s {
                 "☐" => (0, 0),
@@ -240,7 +278,7 @@ mod platform {
                     (0, 0)
                 }
             };
-
+            dbg!(*s);
             commands.sspr(
                 sprite::XY {
                     x: sprite::X(sx),
@@ -258,7 +296,15 @@ mod platform {
     }
         
     pub fn end_frame() {
+        {
+            let c: &Chars = &(state!().chars);
+            eprintln!("{:p} end_frame pre {}", c, c.len());
+        }
         state!().chars.clear();
+        {
+            let c: &Chars = &(state!().chars);
+            eprintln!("{:p} end_frame post {}", c, c.len());
+        }
     }
 }
 
