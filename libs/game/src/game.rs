@@ -24,7 +24,8 @@ use xs::{Xs, Seed};
 
 use platform_types::{arrow_timer::{ArrowTimer}, Dir};
 use vec1::Vec1;
-use world::{World, EntityKey, HallwayStates};
+use world::{World, HallwayStates};
+pub use world::{EntityKey};
 pub use world::hallway::State as HallwayState;
 
 // Proposed Steps

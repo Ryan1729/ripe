@@ -638,7 +638,7 @@ pub mod config {
         pub tiles: Vec<TileFlags>,
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct Config {
         pub segments: Vec1<WorldSegment>,
         pub entities: Vec1<EntityDef>,

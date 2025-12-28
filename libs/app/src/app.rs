@@ -21,6 +21,7 @@ impl core::fmt::Display for Error {
     }
 }
 
+#[derive(Debug)]
 pub struct ErrorState {
     pub error: Error,
     pub show_are_you_sure: bool,
@@ -42,7 +43,7 @@ pub struct State {
     pub commands: Commands,
     pub input: Input,
     pub speaker: Speaker,
-    // Retained for resarting in error scenarios
+    // Retained for restarting in error scenarios
     pub params: StateParams,
 }
 
@@ -60,6 +61,17 @@ impl State {
         features::log(&format!("{:?}", seed));
 
         const HARDCODED_CONFIG: &str = r#"
+        import "collect_actions" as CA;
+        import "default_spritesheet" as DS;
+        import "entity_flags" as EF;
+        const MOB = 0;
+        const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
+        const OPEN_DOOR = EF::DOOR | EF::STEPPABLE;
+        const END_DOOR = OPEN_DOOR | EF::VICTORY | EF::NOT_SPAWNED_AT_START;
+        const LOCKED_DOOR = EF::DOOR;
+        
+        import "entity_ids" as ID;
+        import "hallways" as HW;
         import "tile_flags" as TF;
         const A = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
         const B = TF::FLOOR; // Bare Floor
@@ -68,18 +80,6 @@ impl State {
         const I = TF::FLOOR | TF::ITEM_START;
         const N = TF::FLOOR | TF::NPC_START;
         const W = TF::WALL;
-        
-        import "entity_flags" as EF;
-        
-        const MOB = 0;
-        const ITEM = EF::STEPPABLE | EF::COLLECTABLE;
-        const OPEN_DOOR = EF::DOOR | EF::STEPPABLE;
-        const END_DOOR = OPEN_DOOR | EF::VICTORY | EF::NOT_SPAWNED_AT_START;
-        const LOCKED_DOOR = EF::DOOR;
-        
-        import "default_spritesheet" as DS;
-        import "entity_ids" as ID;
-        import "collect_actions" as CA;
         
         let entities = [
             #{
@@ -180,15 +180,25 @@ impl State {
         }
         
         #{
+            hallways: [
+                #{
+                    kind: HW::NONE,
+                },
+                #{
+                    kind: HW::ICE_PUZZLE,
+                    // TODO configuration of ice puzzle. Width and height probably?
+                },
+            ],
+            entities: entities,
             segments: [
                 #{
                     width: 14,
                     tiles: [
                         F, F, F, F, F, F, F, F, D, D, D, D, D, D,
                         F, W, W, F, W, W, F, F, W, W, W, W, W, D,
-                        F, W, B, A, B, W, F, F, W, I, I, I, W, D,
-                        F, F, A, W, A, F, F, F, F, B, B, B, F, D,
-                        F, W, B, A, B, W, F, F, F, F, N, F, F, D,
+                        F, W, B, A, B, W, A, F, W, I, I, I, W, D,
+                        F, F, A, W, A, F, A, F, F, B, B, B, F, D,
+                        F, W, B, A, B, W, A, F, F, F, N, F, F, D,
                         F, W, W, I, W, W, F, F, F, N, F, N, F, D,
                         F, F, F, F, F, F, F, F, F, F, F, F, F, D,
                     ],
@@ -205,21 +215,776 @@ impl State {
                         W, W, W, W, W, W, W,
                     ],
                 },
+                #{
+                    width: 7,
+                    tiles: [
+                        W, W, W, W, W, W, W,
+                        W, F, B, B, B, F, W,
+                        W, F, W, W, W, F, W,
+                        W, B, D, W, D, B, W,
+                        W, B, W, D, W, B, W,
+                        W, B, B, B, B, B, W,
+                        W, A, A, A, A, A, W,
+                        W, D, F, F, F, D, W,
+                        W, A, A, A, A, A, W,
+                        W, B, B, B, B, B, W,
+                        W, B, W, D, W, B, W,
+                        W, B, D, W, D, B, W,
+                        W, F, W, W, W, F, W,
+                        W, F, B, B, B, F, W,
+                        W, W, W, W, W, W, W,
+                    ],
+                },
             ],
-            entities: entities,
         }
         "#;
 
         let override_config = params.config_loader.and_then(|f| f());
 
         let game_state = 'game_state: {
-            let config = match config::parse(override_config.as_ref().map_or(HARDCODED_CONFIG, |s| s)) {
+            let config = match ::config::parse(override_config.as_ref().map_or(HARDCODED_CONFIG, |s| s)) {
                 Ok(c) => c,
                 Err(err) => {
                     break 'game_state Err(Error::Config(err))
                 }
             };
 
+            use models::{*};
+            use vec1::Vec1;
+            // Hardcoding this to try out removing rhai, to see if that fixes bug that seems like UB
+            // since miri reports UB in rhai.
+            let _config = Config {
+                segments: Vec1::try_from(
+                    vec![
+                        config::WorldSegment {
+                            width: 14,
+                            tiles: vec![
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                33,
+                                33,
+                                33,
+                                33,
+                                33,
+                                33,
+                                5,
+                                0,
+                                0,
+                                5,
+                                0,
+                                0,
+                                5,
+                                5,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                33,
+                                5,
+                                0,
+                                1,
+                                25,
+                                1,
+                                0,
+                                25,
+                                5,
+                                0,
+                                9,
+                                9,
+                                9,
+                                0,
+                                33,
+                                5,
+                                5,
+                                25,
+                                0,
+                                25,
+                                5,
+                                25,
+                                5,
+                                5,
+                                1,
+                                1,
+                                1,
+                                5,
+                                33,
+                                5,
+                                0,
+                                1,
+                                25,
+                                1,
+                                0,
+                                25,
+                                5,
+                                5,
+                                5,
+                                17,
+                                5,
+                                5,
+                                33,
+                                5,
+                                0,
+                                0,
+                                9,
+                                0,
+                                0,
+                                5,
+                                5,
+                                5,
+                                17,
+                                5,
+                                17,
+                                5,
+                                33,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                5,
+                                33,
+                            ],
+                        },
+                        config::WorldSegment {
+                            width: 7,
+                            tiles: vec![
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                33,
+                                5,
+                                1,
+                                0,
+                                33,
+                                0,
+                                0,
+                                0,
+                                0,
+                                1,
+                                25,
+                                5,
+                                0,
+                                0,
+                                33,
+                                1,
+                                5,
+                                25,
+                                5,
+                                0,
+                                0,
+                                0,
+                                0,
+                                1,
+                                25,
+                                5,
+                                0,
+                                0,
+                                33,
+                                5,
+                                5,
+                                0,
+                                33,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                            ],
+                        },
+                        config::WorldSegment {
+                            width: 7,
+                            tiles: vec![
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                5,
+                                1,
+                                1,
+                                1,
+                                5,
+                                0,
+                                0,
+                                5,
+                                0,
+                                0,
+                                0,
+                                5,
+                                0,
+                                0,
+                                1,
+                                33,
+                                0,
+                                33,
+                                1,
+                                0,
+                                0,
+                                1,
+                                0,
+                                33,
+                                0,
+                                1,
+                                0,
+                                0,
+                                1,
+                                1,
+                                1,
+                                1,
+                                1,
+                                0,
+                                0,
+                                25,
+                                25,
+                                25,
+                                25,
+                                25,
+                                0,
+                                0,
+                                33,
+                                5,
+                                5,
+                                5,
+                                33,
+                                0,
+                                0,
+                                25,
+                                25,
+                                25,
+                                25,
+                                25,
+                                0,
+                                0,
+                                1,
+                                1,
+                                1,
+                                1,
+                                1,
+                                0,
+                                0,
+                                1,
+                                0,
+                                33,
+                                0,
+                                1,
+                                0,
+                                0,
+                                1,
+                                33,
+                                0,
+                                33,
+                                1,
+                                0,
+                                0,
+                                5,
+                                0,
+                                0,
+                                0,
+                                5,
+                                0,
+                                0,
+                                5,
+                                1,
+                                1,
+                                1,
+                                5,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                            ],
+                        },
+                    ],
+                ).unwrap(),
+                entities: Vec1::try_from(
+                    vec![
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![
+                                vec![
+                                    Speech {
+                                        text: "a chest, probably with something cool in it.".to_string(),
+                                    },
+                                    Speech {
+                                        text: "can't seem to open it, so it'll stay at least probably\ncool forever.".to_string(),
+                                    },
+                                ],
+                            ],
+                            id: 0,
+                            flags: 3,
+                            tile_sprite: 36,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![
+                                vec![
+                                    Speech {
+                                        text: "hey can you get me something that's at least probably\ncool?".to_string(),
+                                    },
+                                ],
+                                vec![
+                                    Speech {
+                                        text: "a chest, for me? that's probably cool of you bro!".to_string(),
+                                    },
+                                    Speech {
+                                        text: "i gotta be probably cool back. here have this thing i\nfound.".to_string(),
+                                    },
+                                ],
+                                vec![
+                                    Speech {
+                                        text: "i am probably living the life with my probably cool\nthing in this chest!".to_string(),
+                                    },
+                                ],
+                            ],
+                            inventory_description: vec![],
+                            id: 1,
+                            flags: 0,
+                            tile_sprite: 35,
+                            wants: vec![
+                                0,
+                            ],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![
+                                vec![
+                                    Speech {
+                                        text: "i lost my bayer-dollars! can you help me find them?".to_string(),
+                                    },
+                                    Speech {
+                                        text: "i don't know where i lost them. i'm looking over here\nbecause the light is better.".to_string(),
+                                    },
+                                ],
+                                vec![
+                                    Speech {
+                                        text: "you're giving me these bayer-dollars? i want them to\nbe mine, so they must be mine!".to_string(),
+                                    },
+                                    Speech {
+                                        text: "i also want everyone to give rewards when people\nreturn stuff like this. so i have to too. here you go!".to_string(),
+                                    },
+                                ],
+                                vec![
+                                    Speech {
+                                        text: "thanks for being the conduit to bring my\ndestined-for-me bayer dollars back!".to_string(),
+                                    },
+                                ],
+                            ],
+                            inventory_description: vec![],
+                            id: 2,
+                            flags: 0,
+                            tile_sprite: 43,
+                            wants: vec![
+                                3,
+                            ],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![
+                                vec![
+                                    Speech {
+                                        text: "some bayer-dollars. you can tell because of the\npattern in the middle.".to_string(),
+                                    },
+                                ],
+                            ],
+                            id: 3,
+                            flags: 3,
+                            tile_sprite: 44,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![],
+                            id: 4,
+                            flags: 30,
+                            tile_sprite: 41,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![],
+                            id: 5,
+                            flags: 10,
+                            tile_sprite: 40,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![
+                                vec![
+                                    Speech {
+                                        text: "a locked red-gold door. bet the key is red-gold too.".to_string(),
+                                    },
+                                ],
+                            ],
+                            inventory_description: vec![],
+                            id: 6,
+                            flags: 8,
+                            tile_sprite: 48,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![
+                                vec![
+                                    Speech {
+                                        text: "a red-gold key. bet it opens a red-gold door.".to_string(),
+                                    },
+                                ],
+                            ],
+                            id: 7,
+                            flags: 3,
+                            tile_sprite: 49,
+                            wants: vec![],
+                            on_collect: vec![
+                                CollectAction::Transform(
+                                    Transform {
+                                        from: 6,
+                                        to: 4,
+                                    },
+                                ),
+                            ],
+                        },
+                        EntityDef {
+                            speeches: vec![
+                                vec![
+                                    Speech {
+                                        text: "a locked green-gold door. bet the key is green-gold\ntoo.".to_string(),
+                                    },
+                                ],
+                            ],
+                            inventory_description: vec![],
+                            id: 8,
+                            flags: 8,
+                            tile_sprite: 56,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![
+                                vec![
+                                    Speech {
+                                        text: "a green-gold key. bet it opens a green-gold door.".to_string(),
+                                    },
+                                ],
+                            ],
+                            id: 9,
+                            flags: 3,
+                            tile_sprite: 57,
+                            wants: vec![],
+                            on_collect: vec![
+                                CollectAction::Transform(
+                                    Transform {
+                                        from: 8,
+                                        to: 5,
+                                    },
+                                ),
+                            ],
+                        },
+                        EntityDef {
+                            speeches: vec![
+                                vec![
+                                    Speech {
+                                        text: "a locked blue-gold door. bet the key is blue-gold too.".to_string(),
+                                    },
+                                ],
+                            ],
+                            inventory_description: vec![],
+                            id: 10,
+                            flags: 8,
+                            tile_sprite: 6,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![
+                                vec![
+                                    Speech {
+                                        text: "a blue-gold key. bet it opens a blue-gold door.".to_string(),
+                                    },
+                                ],
+                            ],
+                            id: 11,
+                            flags: 3,
+                            tile_sprite: 7,
+                            wants: vec![],
+                            on_collect: vec![
+                                CollectAction::Transform(
+                                    Transform {
+                                        from: 10,
+                                        to: 5,
+                                    },
+                                ),
+                            ],
+                        },
+                        EntityDef {
+                            speeches: vec![
+                                vec![
+                                    Speech {
+                                        text: "a locked red-iron door. bet the key is red-iron too.".to_string(),
+                                    },
+                                ],
+                            ],
+                            inventory_description: vec![],
+                            id: 12,
+                            flags: 8,
+                            tile_sprite: 14,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![
+                                vec![
+                                    Speech {
+                                        text: "a red-iron key. bet it opens a red-iron door.".to_string(),
+                                    },
+                                ],
+                            ],
+                            id: 13,
+                            flags: 3,
+                            tile_sprite: 15,
+                            wants: vec![],
+                            on_collect: vec![
+                                CollectAction::Transform(
+                                    Transform {
+                                        from: 12,
+                                        to: 5,
+                                    },
+                                ),
+                            ],
+                        },
+                        EntityDef {
+                            speeches: vec![
+                                vec![
+                                    Speech {
+                                        text: "a locked green-iron door. bet the key is green-iron\ntoo.".to_string(),
+                                    },
+                                ],
+                            ],
+                            inventory_description: vec![],
+                            id: 14,
+                            flags: 8,
+                            tile_sprite: 22,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![
+                                vec![
+                                    Speech {
+                                        text: "a green-iron key. bet it opens a green-iron door.".to_string(),
+                                    },
+                                ],
+                            ],
+                            id: 15,
+                            flags: 3,
+                            tile_sprite: 23,
+                            wants: vec![],
+                            on_collect: vec![
+                                CollectAction::Transform(
+                                    Transform {
+                                        from: 14,
+                                        to: 5,
+                                    },
+                                ),
+                            ],
+                        },
+                        EntityDef {
+                            speeches: vec![
+                                vec![
+                                    Speech {
+                                        text: "a locked blue-iron door. bet the key is blue-iron too.".to_string(),
+                                    },
+                                ],
+                            ],
+                            inventory_description: vec![],
+                            id: 16,
+                            flags: 8,
+                            tile_sprite: 30,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![
+                                vec![
+                                    Speech {
+                                        text: "a blue-iron key. bet it opens a blue-iron door.".to_string(),
+                                    },
+                                ],
+                            ],
+                            id: 17,
+                            flags: 3,
+                            tile_sprite: 31,
+                            wants: vec![],
+                            on_collect: vec![
+                                CollectAction::Transform(
+                                    Transform {
+                                        from: 16,
+                                        to: 5,
+                                    },
+                                ),
+                            ],
+                        },
+                        EntityDef {
+                            speeches: vec![
+                                vec![
+                                    Speech {
+                                        text: "a locked red-carbon-steel door. bet the key is\nred-carbon-steel too.".to_string(),
+                                    },
+                                ],
+                            ],
+                            inventory_description: vec![],
+                            id: 18,
+                            flags: 8,
+                            tile_sprite: 38,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![
+                                vec![
+                                    Speech {
+                                        text: "a red-carbon-steel key. bet it opens a\nred-carbon-steel door.".to_string(),
+                                    },
+                                ],
+                            ],
+                            id: 19,
+                            flags: 3,
+                            tile_sprite: 39,
+                            wants: vec![],
+                            on_collect: vec![
+                                CollectAction::Transform(
+                                    Transform {
+                                        from: 18,
+                                        to: 5,
+                                    },
+                                ),
+                            ],
+                        },
+                        EntityDef {
+                            speeches: vec![
+                                vec![
+                                    Speech {
+                                        text: "a locked green-carbon-steel door. bet the key is\ngreen-carbon-steel too.".to_string(),
+                                    },
+                                ],
+                            ],
+                            inventory_description: vec![],
+                            id: 20,
+                            flags: 8,
+                            tile_sprite: 46,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![
+                                vec![
+                                    Speech {
+                                        text: "a green-carbon-steel key. bet it opens a\ngreen-carbon-steel door.".to_string(),
+                                    },
+                                ],
+                            ],
+                            id: 21,
+                            flags: 3,
+                            tile_sprite: 47,
+                            wants: vec![],
+                            on_collect: vec![
+                                CollectAction::Transform(
+                                    Transform {
+                                        from: 20,
+                                        to: 5,
+                                    },
+                                ),
+                            ],
+                        },
+                        EntityDef {
+                            speeches: vec![
+                                vec![
+                                    Speech {
+                                        text: "a locked blue-carbon-steel door. bet the key is\nblue-carbon-steel too.".to_string(),
+                                    },
+                                ],
+                            ],
+                            inventory_description: vec![],
+                            id: 22,
+                            flags: 8,
+                            tile_sprite: 54,
+                            wants: vec![],
+                            on_collect: vec![],
+                        },
+                        EntityDef {
+                            speeches: vec![],
+                            inventory_description: vec![
+                                vec![
+                                    Speech {
+                                        text: "a blue-carbon-steel key. bet it opens a\nblue-carbon-steel door.".to_string(),
+                                    },
+                                ],
+                            ],
+                            id: 23,
+                            flags: 3,
+                            tile_sprite: 55,
+                            wants: vec![],
+                            on_collect: vec![
+                                CollectAction::Transform(
+                                    Transform {
+                                        from: 22,
+                                        to: 5,
+                                    },
+                                ),
+                            ],
+                        },
+                    ],
+                ).unwrap(),
+                hallways: Vec1::try_from(
+                    vec![
+                        models::config::HallwaySpec::None,
+                        models::config::HallwaySpec::IcePuzzle,
+                    ],
+                ).unwrap(),
+            };
+
+            dbg!(&config);
             game::State::new(seed, config).map_err(Error::Game)
         }.map_err(ErrorState::from);
 
@@ -327,6 +1092,24 @@ fn game_update(commands: &mut Commands, state: &mut game::State, input: Input, s
                         input,
                         speaker,
                     );
+
+                    // This asserts that the ice puzzle stuff showed up
+                    let mut count_of_45s = 0;
+                    let mut sizes = Vec::with_capacity(commands.slice().len());
+                    for command in commands.slice() {
+                        let w = (command.rect.x_max.get() - command.rect.x_min.get()).get();
+                        let h = (command.rect.y_max.get() - command.rect.y_min.get()).get();
+                        if w == 44 && h == 44 {
+                            count_of_45s += 1;
+                        }
+                        sizes.push((w, h));
+                    }
+                
+                    dbg!(commands.slice(), &sizes, count_of_45s);
+
+                    assert!(commands.slice().len() > 0, "commands.slice(): {:#?}", commands.slice());
+                    assert!(sizes.len() > 0, "sizes: {:#?}", sizes);
+                    assert!(count_of_45s > 0, "sizes(count): {:#?}", sizes);
                 },
                 None => {
                     invariant_assert!(false, "Hallway was not found while in Hallway mode!");
@@ -588,17 +1371,18 @@ fn game_render(commands: &mut Commands, state: &game::State) {
 
     match &state.mode {
         Mode::Hallway { source, target } => {
+            let source: &game::EntityKey = source;
             if let Some(hallway) = state.hallway_states.get(*source, *target) {
-                commands.print_lines(
-                    unscaled::XY {
-                        x: unscaled::X(100),
-                        y: unscaled::Y(50),
-                    },
-                    0,
-                    // TODO Get this text from the config file
-                    b"TODO: Render hallway",
-                    6,
-                );
+                //commands.print_lines(
+                    //unscaled::XY {
+                        //x: unscaled::X(100),
+                        //y: unscaled::Y(50),
+                    //},
+                    //0,
+                    //// TODO Get this text from the config file
+                    //b"TODO: Render hallway",
+                    //6,
+                //);
             } else {
                 commands.print_lines(
                     unscaled::XY {
@@ -896,4 +1680,70 @@ fn err_render(commands: &mut Commands, error_state: &ErrorState) {
             &Speech::from("Are you sure you want to try reloading?\n\n(A) to confirm, (B) to back out.")
         );
     }
+}
+
+#[test]
+fn something_gets_drawn_for_ice_puzzle_alone() {
+    let seed = <_>::default();
+
+    let mut rng  = xs::from_seed(seed);
+
+    let mut state = ice_puzzle::State::new(&mut rng);
+
+    let mut commands = Commands::new(seed);
+    let input = <_>::default();
+    let mut speaker = <_>::default();
+
+    assert!(commands.slice().len() <= 0, "precondition failure");
+
+    state.update_and_render(
+        &mut commands,
+        input,
+        &mut speaker,
+    );
+
+    assert!(commands.slice().len() > 0, "{:#?}", commands.slice());
+}
+
+#[test]
+fn something_gets_drawn_for_ice_puzzle_within_app_state() {
+    let seed = <_>::default();
+
+    let params = StateParams {
+        config_loader: None,
+        logger: None,
+        error_logger: None,
+        seed,
+    };
+
+    let mut state = State::new(params);
+
+    let source = <_>::default();
+    let mut target = game::EntityKey::default();
+    target.xy.x = models::xy::x(1);
+
+    state.game_state.as_mut().expect("should not be in an error state").mode = Mode::Hallway { source, target };
+
+    let mut rng = xs::from_seed(seed);
+
+    state.game_state.as_mut().expect("should not be in an error state").hallway_states.insert(source, target, HallwayState::IcePuzzle(ice_puzzle::State::new(&mut rng)));
+
+    assert!(state.commands.slice().len() <= 0, "precondition failure");
+
+    frame(&mut state);
+
+    // This asserts that the ice puzzle stuff showed up
+    let mut count_of_45s = 0;
+    let mut sizes = Vec::with_capacity(state.commands.slice().len());
+    for command in state.commands.slice() {
+        let w = (command.rect.x_max.get() - command.rect.x_min.get()).get();
+        let h = (command.rect.y_max.get() - command.rect.y_min.get()).get();
+        if w == 44 && h == 44 {
+            count_of_45s += 1;
+        }
+        sizes.push((w, h));
+    }
+
+    assert!(sizes.len() > 0, "{:#?}", sizes);
+    assert!(count_of_45s > 0, "{:#?}", sizes);
 }

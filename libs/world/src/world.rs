@@ -943,7 +943,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 assert_door_targets_seem_right!();
     
                 invariant_assert!(config.hallways.len() as u128 <= u128::from(u32::MAX));
-                let hallway_index = xs::range(rng, 0..config.hallways.len() as u32) as usize;
+                let hallway_index = 1;//xs::range(rng, 0..config.hallways.len() as u32) as usize;
                 let hallway = &config.hallways[hallway_index];
 
                 use models::config::HallwaySpec;

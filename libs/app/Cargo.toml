@@ -11,20 +11,29 @@ crate-type = ["rlib", "dylib"]
 [dependencies.config]
 path = "../config"
 
-[dependencies.game]
-path = "../game"
-
-[dependencies.models]
-path = "../models"
-
-[dependencies.gfx]
-path = "../gfx"
+[dependencies.ice_puzzle]
+path = "../ice_puzzle"
 
 [dependencies.features]
 path = "../features"
 
+[dependencies.game]
+path = "../game"
+
+[dependencies.gfx]
+path = "../gfx"
+
+[dependencies.models]
+path = "../models"
+
 [dependencies.platform_types]
 path = "../platform_types"
+
+[dependencies.vec1]
+path = "../vec1"
+
+[dependencies.xs]
+path = "../xs"
 
 [features]
 default = []

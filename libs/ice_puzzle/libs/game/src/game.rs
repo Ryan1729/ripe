@@ -81,16 +81,18 @@ impl State {
                 });
             }
         }
-
+        
+        //eprintln!("before update_and_render {:p}", &platform::state().lock().expect("should not be poisoned").chars);
         let _ignored = state_manipulation::update_and_render(
             &state.platform,
             &mut state.state,
             &mut state.events
         );
 
+        //eprintln!("before push_commands {:p}", &platform::state().lock().expect("should not be poisoned").chars);
         platform::push_commands(commands);
 
-        platform::end_frame();
+        //platform::end_frame();
     }
 }
 
@@ -105,11 +107,11 @@ mod platform {
     type X = unscaled::Inner;
     type Y = unscaled::Inner;
 
-    struct State {
-        chars: HashMap<(X, Y), &'static str>,
+    pub(crate) struct State {
+        pub(crate) chars: HashMap<(X, Y), &'static str>,
     }
     
-    fn state() -> &'static Mutex<State> {
+    pub(crate) fn state() -> &'static Mutex<State> {
         static STATE: OnceLock<Mutex<State>> = OnceLock::new();
         STATE.get_or_init(|| Mutex::new(State {
             chars: HashMap::with_capacity(128),
@@ -129,7 +131,9 @@ mod platform {
 
         match (X::try_from(x_in), Y::try_from(y_in)) {
             (Ok(x), Ok(y)) => {
+                dbg!((x, y), s);
                 state!().chars.insert((x, y), s);
+                //eprintln!("{:p} print_xy {}", &state!().chars, &state!().chars.len());
             },
             _ => {
                 assert!(false, "bad (x, y): ({x_in}, {y_in})");
@@ -184,6 +188,15 @@ mod platform {
 
     /// `platform` state management
     pub fn push_commands(commands: &mut Commands) {
+        //eprintln!("{:p} pre push {}", &state!().chars, &state!().chars.len());
+        //print_xy(0, 0, "@");
+        //eprintln!("{:p} post push {}", &state!().chars, &state!().chars.len());
+
+        //eprintln!("{:p} pre push 2 {}", &state!().chars, &state!().chars.len());
+        //print_xy(0, 2, "@");
+        //eprintln!("{:p} post push 2 {}", &state!().chars, &state!().chars.len());
+
+        //eprintln!("{:p} push_commands {}", &state!().chars, &state!().chars.len());
         for ((x, y), s) in state!().chars.iter() {
             let (sx, sy) = match *s {
                 "☐" => (0, 0),
@@ -234,9 +247,32 @@ mod platform {
                 })
             );
         }
+        //eprintln!("{:p} post push_commands {}", &state!().chars, &state!().chars.len());
     }
         
     pub fn end_frame() {
         state!().chars.clear();
     }
+}
+
+#[test]
+fn something_gets_drawn() {
+    let seed = <_>::default();
+
+    let mut state = State::new(seed);
+
+    let mut commands = Commands::new(seed);
+    let input = <_>::default();
+    let mut speaker = <_>::default();
+
+    assert!(commands.slice().len() <= 0, "precondition failure");
+
+    State::update_and_render(
+        &mut commands,
+        &mut state,
+        input,
+        &mut speaker,
+    );
+
+    assert!(commands.slice().len() > 0, "{:#?}", commands.slice());
 }

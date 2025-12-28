@@ -52,8 +52,11 @@ dependencies = [
  "features",
  "game",
  "gfx",
+ "ice_puzzle",
  "models",
  "platform_types",
+ "vec1",
+ "xs",
 ]
 
 [[package]]
