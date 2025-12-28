@@ -50,6 +50,7 @@ impl State {
         speaker: &mut Speaker,
     ) {
         state.events.clear();
+
         for button in Button::ALL {
             macro_rules! button_to_key {
                 ($button: ident) => {
@@ -82,17 +83,25 @@ impl State {
             }
         }
         
-        //eprintln!("before update_and_render {:p}", &platform::state().lock().expect("should not be poisoned").chars);
+        //#[cfg(false)]
         let _ignored = state_manipulation::update_and_render(
             &state.platform,
             &mut state.state,
             &mut state.events
         );
 
-        //eprintln!("before push_commands {:p}", &platform::state().lock().expect("should not be poisoned").chars);
         platform::push_commands(commands);
 
-        //platform::end_frame();
+        platform::end_frame();
+
+        {
+            commands.print_lines(
+                <_>::default(),
+                0,
+                b"ice_puzzle_game",
+                6,
+            );
+        }
     }
 }
 
@@ -131,9 +140,7 @@ mod platform {
 
         match (X::try_from(x_in), Y::try_from(y_in)) {
             (Ok(x), Ok(y)) => {
-                dbg!((x, y), s);
                 state!().chars.insert((x, y), s);
-                //eprintln!("{:p} print_xy {}", &state!().chars, &state!().chars.len());
             },
             _ => {
                 assert!(false, "bad (x, y): ({x_in}, {y_in})");

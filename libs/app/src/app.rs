@@ -241,6 +241,8 @@ impl State {
 
         let override_config = params.config_loader.and_then(|f| f());
 
+        //#[cfg(feature = "use_rhai")]
+        #[cfg(false)]
         let game_state = 'game_state: {
             let config = match ::config::parse(override_config.as_ref().map_or(HARDCODED_CONFIG, |s| s)) {
                 Ok(c) => c,
@@ -248,12 +250,17 @@ impl State {
                     break 'game_state Err(Error::Config(err))
                 }
             };
+            game::State::new(seed, config).map_err(Error::Game)
+        }.map_err(ErrorState::from);
 
+        //#[cfg(not(feature = "use_rhai"))]
+        #[cfg(true)]
+        let game_state = {
             use models::{*};
             use vec1::Vec1;
             // Hardcoding this to try out removing rhai, to see if that fixes bug that seems like UB
             // since miri reports UB in rhai.
-            let _config = Config {
+            let config = Config {
                 segments: Vec1::try_from(
                     vec![
                         config::WorldSegment {
@@ -984,7 +991,8 @@ impl State {
                 ).unwrap(),
             };
 
-            dbg!(&config);
+            //dbg!(&config);
+
             game::State::new(seed, config).map_err(Error::Game)
         }.map_err(ErrorState::from);
 
@@ -1105,11 +1113,11 @@ fn game_update(commands: &mut Commands, state: &mut game::State, input: Input, s
                         sizes.push((w, h));
                     }
                 
-                    dbg!(commands.slice(), &sizes, count_of_45s);
+                    //dbg!(commands.slice(), &sizes, count_of_45s);
 
-                    assert!(commands.slice().len() > 0, "commands.slice(): {:#?}", commands.slice());
-                    assert!(sizes.len() > 0, "sizes: {:#?}", sizes);
-                    assert!(count_of_45s > 0, "sizes(count): {:#?}", sizes);
+                    //assert!(commands.slice().len() > 0, "commands.slice(): {:#?}", commands.slice());
+                    //assert!(sizes.len() > 0, "sizes: {:#?}", sizes);
+                    //assert!(count_of_45s > 0, "sizes(count): {:#?}", sizes);
                 },
                 None => {
                     invariant_assert!(false, "Hallway was not found while in Hallway mode!");
