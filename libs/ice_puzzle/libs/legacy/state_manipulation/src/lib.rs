@@ -1,6 +1,7 @@
 extern crate common;
 extern crate rand;
 
+use gfx::Commands;
 use common::*;
 use common::Cell::*;
 use common::Motion::*;
@@ -26,7 +27,6 @@ use rand::{StdRng, SeedableRng, Rng};
 //}
 //
 //#[cfg(not(debug_assertions))]
-#[no_mangle]
 pub fn new_state(size: Size) -> State {
     //show the title screen
     let timestamp = std::time::SystemTime::now()
@@ -69,9 +69,13 @@ pub fn new_state(size: Size) -> State {
 
 const START_POS: (i32, i32) = (7, 3);
 
-#[no_mangle]
 //returns true if quit requested
-pub fn update_and_render(platform: &Platform, state: &mut State, events: &mut Vec<Event>) -> bool {
+pub fn update_and_render(
+    commands: &mut Commands,
+    platform: &Platform,
+    state: &mut State,
+    events: &mut Vec<Event>
+) -> bool {
     state.frame_count = state.frame_count.overflowing_add(1).0;
     dbg!("state_manip update_and_render");
     if state.title_screen {
@@ -91,9 +95,9 @@ pub fn update_and_render(platform: &Platform, state: &mut State, events: &mut Ve
             move_player((platform.size)(), state);
         }
 
-        print_tuple(platform, START_POS, goal_string(state.frame_count));
+        print_tuple(commands, platform, START_POS, goal_string(state.frame_count));
 
-        draw(platform, state);
+        draw(commands, platform, state);
 
         draw_button(platform,
                     5,
@@ -135,25 +139,27 @@ pub fn update_and_render(platform: &Platform, state: &mut State, events: &mut Ve
         false
     } else {
         dbg!("NOT title screen");
-        game_update_and_render(platform, state, events)
+        game_update_and_render(commands, platform, state, events)
     }
 }
 
-fn draw_button(platform: &Platform, x: i32, y: i32, w: i32, h: i32, label: &'static str, pressed: bool) {
+fn draw_button(commands: &mut Commands, platform: &Platform, x: i32, y: i32, w: i32, h: i32, label: &'static str, pressed: bool) {
 
     if pressed {
-        draw_pressed_button_rect(platform, x, y, w, h);
+        draw_pressed_button_rect(commands, platform, x, y, w, h);
     } else {
-        draw_unpressed_button_rect(platform, x, y, w, h);
+        draw_unpressed_button_rect(commands, platform, x, y, w, h);
     }
 
-    (platform.print_xy)(x + 1, y + 1, label);
+    (platform.p_xy)(commands, x + 1, y + 1, label);
 }
 
-pub fn game_update_and_render(platform: &Platform,
-                              state: &mut State,
-                              events: &mut Vec<Event>)
-                              -> bool {
+pub fn game_update_and_render(
+    commands: &mut Commands,
+    platform: &Platform,
+    state: &mut State,
+    events: &mut Vec<Event>
+) -> bool {
     for event in events {
         cross_mode_event_handling(platform, state, event);
 
@@ -171,7 +177,7 @@ pub fn game_update_and_render(platform: &Platform,
         *state = next_level((platform.size)(), state.rng, state.max_steps);
     }
 
-    draw(platform, state);
+    draw(commands, platform, state);
 
     false
 }
@@ -278,9 +284,9 @@ fn goal_string(frame_count: u32) -> &'static str {
     }
 }
 
-fn print_tuple(platform: &Platform, (x, y): (i32, i32), text: &'static str) {
+fn print_tuple(commands: &mut Commands, platform: &Platform, (x, y): (i32, i32), text: &'static str) {
     if x >= 0 && y >= 0 {
-        (platform.print_xy)(x, y, text);
+        (platform.p_xy)(commands, x, y, text);
     }
 }
 
@@ -297,21 +303,22 @@ macro_rules! with_layer {
     }
 }
 
-fn draw(platform: &Platform, state: &State) {
+fn draw(commands: &mut Commands, platform: &Platform, state: &State) {
     for (&coords, &cell) in state.cells.iter() {
-        print_cell(platform, coords, cell, state.frame_count);
+        print_cell(commands, platform, coords, cell, state.frame_count);
     }
 
-    print_tuple(platform, state.initial_player_pos, "☐");
+    print_tuple(commands, platform, state.initial_player_pos, "☐");
 
     with_layer!(platform, 1, {
-        print_tuple(platform, state.player_pos, "@");
+        print_tuple(commands, platform, state.player_pos, "@");
     })
 
 }
 
-fn draw_unpressed_button_rect(platform: &Platform, x: i32, y: i32, w: i32, h: i32) {
-    draw_rect_with(platform,
+fn draw_unpressed_button_rect(commands: &mut Commands, platform: &Platform, x: i32, y: i32, w: i32, h: i32) {
+    draw_rect_with(commands,
+                   platform,
                    x,
                    y,
                    w,
@@ -319,8 +326,9 @@ fn draw_unpressed_button_rect(platform: &Platform, x: i32, y: i32, w: i32, h: i3
                    ["┌", "─", "╖", "│", "║", "╘", "═", "╝"]);
 }
 
-fn draw_pressed_button_rect(platform: &Platform, x: i32, y: i32, w: i32, h: i32) {
-    draw_rect_with(platform,
+fn draw_pressed_button_rect(commands: &mut Commands, platform: &Platform, x: i32, y: i32, w: i32, h: i32) {
+    draw_rect_with(commands,
+                   platform,
                    x,
                    y,
                    w,
@@ -328,39 +336,37 @@ fn draw_pressed_button_rect(platform: &Platform, x: i32, y: i32, w: i32, h: i32)
                    ["╔", "═", "╕", "║", "│", "╙", "─", "┘"]);
 }
 
-fn draw_rect_with(platform: &Platform, x: i32, y: i32, w: i32, h: i32, edges: [&'static str; 8]) {
+fn draw_rect_with(commands: &mut Commands, platform: &Platform, x: i32, y: i32, w: i32, h: i32, edges: [&'static str; 8]) {
     (platform.clear)(Some(Rect::from_values(x, y, w, h)));
 
     let right = x + w - 1;
     let bottom = y + h - 1;
     // top
-    (platform.print_xy)(x, y, edges[0]);
+    (platform.p_xy)(commands, x, y, edges[0]);
     for i in (x + 1)..right {
-        (platform.print_xy)(i, y, edges[1]);
+        (platform.p_xy)(commands, i, y, edges[1]);
     }
-    (platform.print_xy)(right, y, edges[2]);
+    (platform.p_xy)(commands, right, y, edges[2]);
 
     // sides
     for i in (y + 1)..bottom {
-        (platform.print_xy)(x, i, edges[3]);
-        (platform.print_xy)(right, i, edges[4]);
+        (platform.p_xy)(commands, x, i, edges[3]);
+        (platform.p_xy)(commands, right, i, edges[4]);
     }
 
     //bottom
-    (platform.print_xy)(x, bottom, edges[5]);
+    (platform.p_xy)(commands, x, bottom, edges[5]);
     for i in (x + 1)..right {
-        (platform.print_xy)(i, bottom, edges[6]);
+        (platform.p_xy)(commands, i, bottom, edges[6]);
     }
-    (platform.print_xy)(right, bottom, edges[7]);
+    (platform.p_xy)(commands, right, bottom, edges[7]);
 }
 
-fn print_cell(platform: &Platform, coords: (i32, i32), cell: Cell, frame_count: u32) {
+fn print_cell(commands: &mut Commands, platform: &Platform, coords: (i32, i32), cell: Cell, frame_count: u32) {
     match cell {
-        Goal => print_tuple(platform, coords, goal_string(frame_count)),
-        _ => print_tuple(platform, coords, cell.to_static_str()),
+        Goal => print_tuple(commands, platform, coords, goal_string(frame_count)),
+        _ => print_tuple(commands, platform, coords, cell.to_static_str()),
     }
-    // with_layer!(platform, CELL_LAYER, {
-    // })
 }
 
 fn next_level(size: Size, mut rng: StdRng, max_steps: u8) -> State {

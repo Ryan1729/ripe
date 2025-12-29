@@ -1,5 +1,7 @@
 extern crate rand;
 
+use gfx::{Commands};
+
 use std::fmt;
 use std::collections::HashMap;
 use rand::{StdRng, Rand, Rng};
@@ -8,6 +10,7 @@ use std::iter::Iterator;
 use std::iter::Cycle;
 
 pub struct Platform {
+    pub p_xy: fn(&mut Commands, i32, i32, &'static str),
     pub print_xy: fn(i32, i32, &'static str),
     pub clear: fn(Option<Rect>),
     pub size: fn() -> Size,
