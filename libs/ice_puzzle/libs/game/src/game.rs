@@ -7,12 +7,12 @@ use platform::Chars;
 
 pub struct State {
     pub rng: Xs,
-    state: common::State,
+    pub state: common::State,
     platform: Platform,
     events: Vec<Event>,
 }
 
-const TILE_SIZE: unscaled::Inner = 45;
+const TILE_SIZE: unscaled::Inner = 20;
 
 fn p_xy(commands: &mut Commands, x_in: i32, y_in: i32, s: &'static str) {
     use platform_types::{sprite};
@@ -35,24 +35,24 @@ fn p_xy(commands: &mut Commands, x_in: i32, y_in: i32, s: &'static str) {
                 "\u{E016}" => (8 * TILE_SIZE, 0),
                 "\u{E017}" => (9 * TILE_SIZE, 0),
                 "\u{E018}" => (10 * TILE_SIZE, 0),
-                "@" => (3 * TILE_SIZE, 1 * TILE_SIZE),
-                "R" => (4 * TILE_SIZE, 1 * TILE_SIZE),
-                "↑" => (3 * TILE_SIZE, 2 * TILE_SIZE),
-                "←" => (4 * TILE_SIZE, 2 * TILE_SIZE),
-                "↓" => (5 * TILE_SIZE, 2 * TILE_SIZE),
-                "→" => (6 * TILE_SIZE, 2 * TILE_SIZE),
-                "┌" => (3 * TILE_SIZE, 3 * TILE_SIZE),
-                "─" => (4 * TILE_SIZE, 3 * TILE_SIZE),
-                "╖" => (5 * TILE_SIZE, 3 * TILE_SIZE),
-                "│" => (6 * TILE_SIZE, 3 * TILE_SIZE),
-                "╘" => (7 * TILE_SIZE, 3 * TILE_SIZE),
-                "┘" => (8 * TILE_SIZE, 3 * TILE_SIZE),
-                "╔" => (3 * TILE_SIZE, 4 * TILE_SIZE),
-                "═" => (4 * TILE_SIZE, 4 * TILE_SIZE),
-                "╕" => (5 * TILE_SIZE, 4 * TILE_SIZE),
-                "║" => (6 * TILE_SIZE, 4 * TILE_SIZE),
-                "╙" => (7 * TILE_SIZE, 4 * TILE_SIZE),
-                "╝" => (8 * TILE_SIZE, 4 * TILE_SIZE),
+                "@" => (0 * TILE_SIZE, 1 * TILE_SIZE),
+                "R" => (1 * TILE_SIZE, 1 * TILE_SIZE),
+                "↑" => (0 * TILE_SIZE, 2 * TILE_SIZE),
+                "←" => (1 * TILE_SIZE, 2 * TILE_SIZE),
+                "↓" => (2 * TILE_SIZE, 2 * TILE_SIZE),
+                "→" => (3 * TILE_SIZE, 2 * TILE_SIZE),
+                "┌" => (0 * TILE_SIZE, 3 * TILE_SIZE),
+                "─" => (1 * TILE_SIZE, 3 * TILE_SIZE),
+                "╖" => (2 * TILE_SIZE, 3 * TILE_SIZE),
+                "│" => (3 * TILE_SIZE, 3 * TILE_SIZE),
+                "╘" => (4 * TILE_SIZE, 3 * TILE_SIZE),
+                "┘" => (5 * TILE_SIZE, 3 * TILE_SIZE),
+                "╔" => (0 * TILE_SIZE, 4 * TILE_SIZE),
+                "═" => (1 * TILE_SIZE, 4 * TILE_SIZE),
+                "╕" => (2 * TILE_SIZE, 4 * TILE_SIZE),
+                "║" => (3 * TILE_SIZE, 4 * TILE_SIZE),
+                "╙" => (4 * TILE_SIZE, 4 * TILE_SIZE),
+                "╝" => (5 * TILE_SIZE, 4 * TILE_SIZE),
                 _ => {
                     debug_assert!(false, "unknown tile str: \"{s}\"");
                     (0, 0)
@@ -85,10 +85,7 @@ impl State {
 
         State {
             rng,
-            state: state_manipulation::new_state(Size::new(
-                16,
-                16
-            )),
+            state: state_manipulation::new_state(platform::size()),
             platform: Platform {
                 p_xy,
                 print_xy: platform::print_xy,
@@ -123,13 +120,11 @@ impl State {
             macro_rules! button_to_key {
                 ($button: ident) => {
                     match $button {
-                        Button::A => KeyCode::R,
                         Button::UP => KeyCode::Up,
                         Button::DOWN => KeyCode::Down,
                         Button::LEFT => KeyCode::Left,
                         Button::RIGHT => KeyCode::Right,
-                        // Something the game doesn't respond to
-                        _ => KeyCode::MouseFifth
+                        _ => KeyCode::R,
                     }
                 }
             }
@@ -151,24 +146,6 @@ impl State {
             }
         }
 
-        #[cfg(false)]
-        for x in 0..10 {
-            p_xy(commands, x, 0, "@");
-        }
-        #[cfg(false)]
-        {
-            let mut xy: unscaled::XY = <_>::default();
-            xy.y = unscaled::Y(20);
-
-            commands.print_lines(
-                xy,
-                0,
-                format!("pre {}", platform::STATE.lock().expect("should not be poisoned").chars.len()).as_bytes(),
-                6,
-            );
-        }
-
-        //#[cfg(false)]
         let ignored = state_manipulation::update_and_render(
             commands,
             &state.platform,
@@ -176,36 +153,9 @@ impl State {
             &mut state.events
         );
 
-        #[cfg(false)]
-        {
-            let mut xy: unscaled::XY = <_>::default();
-            xy.y = unscaled::Y(40);
-
-            commands.print_lines(
-                xy,
-                0,
-                format!("post {}", platform::STATE.lock().expect("should not be poisoned").chars.len()).as_bytes(),
-                6,
-            );
-        }
-
-        {
-            let c: &Chars = &(platform::STATE.lock().expect("should not be poisoned").chars);
-            eprintln!("{:p} update_and_render {}", c, c.len());
-        }
-
         platform::push_commands(commands);
 
         platform::end_frame();
-
-        {
-            commands.print_lines(
-                <_>::default(),
-                0,
-                b"ice_puzzle_game",
-                6,
-            );
-        }
     }
 }
 
@@ -261,7 +211,7 @@ mod platform {
 
     }
     pub fn size() -> Size {
-        Size::new(16, 16)
+        Size::new(24, 16)
     }
     pub fn pick(point: Point, _: i32) -> char {
         '\0'
@@ -305,16 +255,6 @@ mod platform {
 
     /// `platform` state management
     pub fn push_commands(commands: &mut Commands) {
-        //eprintln!("{:p} pre push {}", &state!().chars, &state!().chars.len());
-        //print_xy(0, 0, "@");
-        //eprintln!("{:p} post push {}", &state!().chars, &state!().chars.len());
-
-        //eprintln!("{:p} pre push 2 {}", &state!().chars, &state!().chars.len());
-        //print_xy(0, 2, "@");
-        //eprintln!("{:p} post push 2 {}", &state!().chars, &state!().chars.len());
-
-        //eprintln!("{:p} push_commands {}", &state!().chars, &state!().chars.len());
-        dbg!();
         for ((x, y), s) in state!().chars.iter() {
             let (sx, sy) = match *s {
                 "☐" => (0, 0),
@@ -369,15 +309,7 @@ mod platform {
     }
         
     pub fn end_frame() {
-        {
-            let c: &Chars = &(state!().chars);
-            eprintln!("{:p} end_frame pre {}", c, c.len());
-        }
         state!().chars.clear();
-        {
-            let c: &Chars = &(state!().chars);
-            eprintln!("{:p} end_frame post {}", c, c.len());
-        }
     }
 }
 

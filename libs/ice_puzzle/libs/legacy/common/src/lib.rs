@@ -33,7 +33,6 @@ pub struct State {
     pub initial_player_pos: (i32, i32),
     pub cells: Cells,
     pub rng: StdRng,
-    pub title_screen: bool,
     pub frame_count: u32,
     pub motion: Motion,
     pub max_steps: u8,

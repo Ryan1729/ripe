@@ -28,6 +28,7 @@ use rand::{StdRng, SeedableRng, Rng};
 //
 //#[cfg(not(debug_assertions))]
 pub fn new_state(size: Size) -> State {
+    
     //show the title screen
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -36,35 +37,12 @@ pub fn new_state(size: Size) -> State {
 
     println!("{}", timestamp);
     let seed: &[_] = &[timestamp as usize];
+    // TODO use an Xs instead, and remove the dep on the rand crate
     let rng: StdRng = SeedableRng::from_seed(seed);
 
-    let mut cells = HashMap::new();
+    let max_steps = 4;
 
-    cells.insert((5, 2), Wall);
-    cells.insert((4, 3), Wall);
-    cells.insert((6, 3), Wall);
-
-    cells.insert((4, 6), Wall);
-    cells.insert((5, 7), Wall);
-
-    cells.insert((10, 7), Wall);
-    cells.insert((11, 6), Wall);
-
-    cells.insert((11, 3), Wall);
-    cells.insert((10, 2), Wall);
-
-    let player_pos = (5, 3);
-
-    State {
-        player_pos: player_pos,
-        initial_player_pos: player_pos,
-        cells: cells,
-        rng: rng,
-        title_screen: true,
-        frame_count: 0,
-        motion: Stopped,
-        max_steps: 4,
-    }
+    next_level(size, rng, max_steps)
 }
 
 const START_POS: (i32, i32) = (7, 3);
@@ -77,70 +55,8 @@ pub fn update_and_render(
     events: &mut Vec<Event>
 ) -> bool {
     state.frame_count = state.frame_count.overflowing_add(1).0;
-    dbg!("state_manip update_and_render");
-    if state.title_screen {
-        for event in events {
-            cross_mode_event_handling(platform, state, event);
 
-            match *event {
-                Event::Close |
-                Event::KeyPressed { key: KeyCode::Escape, ctrl: _, shift: _ } => return true,
-                _ => (),
-            }
-        }
-
-        if state.player_pos == START_POS {
-            *state = next_level((platform.size)(), state.rng, state.max_steps);
-        } else {
-            move_player((platform.size)(), state);
-        }
-
-        print_tuple(commands, platform, START_POS, goal_string(state.frame_count));
-
-        draw(commands, platform, state);
-
-        draw_button(platform,
-                    5,
-                    9,
-                    3,
-                    3,
-                    "↑",
-                    (platform.key_pressed)(KeyCode::Up));
-        draw_button(platform,
-                    2,
-                    12,
-                    3,
-                    3,
-                    "←",
-                    (platform.key_pressed)(KeyCode::Left));
-        draw_button(platform,
-                    5,
-                    12,
-                    3,
-                    3,
-                    "↓",
-                    (platform.key_pressed)(KeyCode::Down));
-        draw_button(platform,
-                    8,
-                    12,
-                    3,
-                    3,
-                    "→",
-                    (platform.key_pressed)(KeyCode::Right));
-
-        draw_button(platform,
-                    12,
-                    12,
-                    3,
-                    3,
-                    "R",
-                    (platform.key_pressed)(KeyCode::R));
-        dbg!("title screen");
-        false
-    } else {
-        dbg!("NOT title screen");
-        game_update_and_render(commands, platform, state, events)
-    }
+    game_update_and_render(commands, platform, state, events)
 }
 
 fn draw_button(commands: &mut Commands, platform: &Platform, x: i32, y: i32, w: i32, h: i32, label: &'static str, pressed: bool) {
@@ -448,7 +364,6 @@ fn next_level(size: Size, mut rng: StdRng, max_steps: u8) -> State {
         initial_player_pos: player_pos,
         cells: cells,
         rng: rng,
-        title_screen: false,
         frame_count: 0,
         motion: Stopped,
         max_steps: max_steps,

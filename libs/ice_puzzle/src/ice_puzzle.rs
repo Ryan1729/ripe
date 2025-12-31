@@ -4,7 +4,6 @@ use xs::Xs;
 
 //#[derive(Clone, Debug)]
 pub struct State {
-    pub count: u8, // Temp to just have something easy but visible
     pub state: game::State,
 }
 
@@ -12,7 +11,6 @@ pub struct State {
 impl Clone for State {
     fn clone(&self) -> Self {
         Self {
-            count: 0,
             state: game::State::new(<_>::default()),
         }
     }
@@ -26,13 +24,12 @@ impl core::fmt::Debug for State {
 impl State {
     pub fn new(rng: &mut Xs) -> Self {
         Self {
-            count: 0,
             state: game::State::new(xs::new_seed(rng)),
         }
     }
 
     pub fn is_complete(&self) -> bool {
-        self.count == u8::MAX
+        self.state.state.max_steps >= 5
     }
 
     pub fn update_and_render(
@@ -41,25 +38,13 @@ impl State {
         input: Input,
         speaker: &mut Speaker,
     ) {
-        self.count = self.count.saturating_add(1);
+        // TODO allow backing out in case the palyer wants to give up on the puzzle
 
-        #[cfg(true)]
         game::State::update_and_render(
             commands,
             &mut self.state,
             input,
             speaker,
         );
-
-        //#[cfg(true)]
-        #[cfg(false)]
-        {
-            commands.print_lines(
-                <_>::default(),
-                0,
-                b"ice_puzzle.rs",
-                6,
-            );
-        }
     }
 }

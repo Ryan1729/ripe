@@ -72,6 +72,15 @@ pub use world::hallway::State as HallwayState;
 //                            * But only Rhai is mentioned as having WASM support on that page.
 //                              And I wasn't able to find evidence that the nice looking ones had WASM support.
 //                              So seems like Rhai is the winner, assuming we can do simple config well in it.
+//                            * Well after implementing a bunch of things in Rhai, when tracking down another bug, we discovered that Rhai has UB that can be detected by Miri.
+//                              * A dep has UB, and they are reasonably reluctant to change it, since it is exposed in the API: https://github.com/rhaiscript/rhai/issues/816
+//                              * Also apparently a use after-free: https://github.com/rhaiscript/rhai/issues/894
+//                              * So I think it maybe makes sense to look at other alternatives again. Looking back at that survey, Rune seems the most interesting. 
+//                                This is because many of the other options either seem not actively supported, or they are bash-like or lisp-like and those kinds of languages make 
+//                                working with product types like structs either complciated or impossible. Dyon is another potentially viable option, but it lists a bunch of "new things" 
+//                                and that seems like it might make it weirder than makes sense for a language users will be icking up not for its own sake.
+//                                Rune also has WASM support. https://github.com/rune-rs/rune/issues/662
+//
 //    * Always include a version number!
 //        * I think we can include that in the eventual pack file format? I guess we *could* make it a comment in the Rhai file?
 //            * Currently a plain zip file with a manifest file that will have the version number seems like a reasonable design for the pack file
