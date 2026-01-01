@@ -6,7 +6,6 @@ use xs::{Xs, Seed};
 use platform::Chars;
 
 pub struct State {
-    pub rng: Xs,
     pub state: common::State,
     platform: Platform,
     events: Vec<Event>,
@@ -81,11 +80,11 @@ fn p_xy(commands: &mut Commands, x_in: i32, y_in: i32, s: &'static str) {
 
 impl State {
     pub fn new(seed: Seed) -> State {
-        let rng = xs::from_seed(seed);
-
         State {
-            rng,
-            state: state_manipulation::new_state(platform::size()),
+            state: state_manipulation::new_state(
+                platform::size(),
+                seed,
+            ),
             platform: Platform {
                 p_xy,
                 print_xy: platform::print_xy,

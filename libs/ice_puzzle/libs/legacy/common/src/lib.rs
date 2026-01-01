@@ -1,10 +1,8 @@
-extern crate rand;
-
 use gfx::{Commands};
 
 use std::fmt;
 use std::collections::HashMap;
-use rand::{StdRng, Rand, Rng};
+use xs::Xs;
 
 use std::iter::Iterator;
 use std::iter::Cycle;
@@ -32,7 +30,7 @@ pub struct State {
     pub player_pos: (i32, i32),
     pub initial_player_pos: (i32, i32),
     pub cells: Cells,
-    pub rng: StdRng,
+    pub rng: Xs,
     pub frame_count: u32,
     pub motion: Motion,
     pub max_steps: u8,

@@ -28,7 +28,7 @@ pub fn range(xs: &mut Xs, range: Range<u32>) -> u32 {
 const SCALE: u32 = 1 << f32::MANTISSA_DIGITS;
 
 pub fn zero_to_one(xs: &mut Xs) -> f32 {
-    (range(xs, 0..SCALE + 1) as f32 / SCALE as f32) - 1.
+    (range(xs, 0..SCALE + 1) as f32 / SCALE as f32)
 }
 
 #[allow(unused)]

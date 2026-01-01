@@ -1,5 +1,4 @@
 extern crate common;
-extern crate rand;
 
 use gfx::Commands;
 use common::*;
@@ -8,37 +7,13 @@ use common::Motion::*;
 
 use std::collections::HashMap;
 
-use rand::{StdRng, SeedableRng, Rng};
+use xs::{Seed, Xs};
 
-//NOTE(Ryan1729): debug_assertions only appears to work correctly when the
-//crate is not a dylib. Assuming you make this crate *not* a dylib on release,
-//these configs should work
-//#[cfg(debug_assertions)]
-//#[no_mangle]
-//pub fn new_state(size: Size) -> State {
-    ////skip the title screen
-    //println!("debug {}",
-             //if cfg!(debug_assertions) { "on" } else { "off" });
-//
-    //let seed: &[_] = &[42];
-    //let rng: StdRng = SeedableRng::from_seed(seed);
-//
-    //next_level(size, rng, 4)
-//}
-//
-//#[cfg(not(debug_assertions))]
-pub fn new_state(size: Size) -> State {
-    
-    //show the title screen
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|dur| dur.as_secs())
-        .unwrap_or(42);
-
-    println!("{}", timestamp);
-    let seed: &[_] = &[timestamp as usize];
-    // TODO use an Xs instead, and remove the dep on the rand crate
-    let rng: StdRng = SeedableRng::from_seed(seed);
+pub fn new_state(
+    size: Size,
+    seed: Seed,
+) -> State {
+    let rng = xs::from_seed(seed);
 
     let max_steps = 4;
 
@@ -144,7 +119,7 @@ fn cross_mode_event_handling(platform: &Platform, state: &mut State, event: &Eve
         }
         Event::KeyPressed { key: KeyCode::R, ctrl: true, shift: _ } => {
             println!("reset");
-            *state = new_state((platform.size)());
+            *state = new_state((platform.size)(), xs::new_seed(&mut state.rng));
         }
         _ => (),
     }
@@ -285,12 +260,12 @@ fn print_cell(commands: &mut Commands, platform: &Platform, coords: (i32, i32), 
     }
 }
 
-fn next_level(size: Size, mut rng: StdRng, max_steps: u8) -> State {
+fn next_level(size: Size, mut rng: Xs, max_steps: u8) -> State {
     let mut cells = HashMap::new();
 
     for y in 0..size.height {
         for x in 0..size.width {
-            if rng.next_f32() > 0.9 {
+            if xs::zero_to_one(&mut rng) > 0.9 {
                 cells.insert((x, y), Wall);
             }
         }
@@ -338,6 +313,8 @@ fn next_level(size: Size, mut rng: StdRng, max_steps: u8) -> State {
     //we do the sort so that the rng seed determines the puzzle,
     //not the hash ordering
     let mut goal_locations: Vec<(i32, i32)> = counts.iter()
+        // We filter by the non_zero_minimum_count so we use locations that have the fewest
+        // ways to get to them, because those are least likely to be trival puzzles
         .filter(|&(_, &v)| v == non_zero_minimum_count)
         .map(|(&coord, _)| coord)
         .collect();
@@ -345,11 +322,18 @@ fn next_level(size: Size, mut rng: StdRng, max_steps: u8) -> State {
     goal_locations.sort_by_key(|&(coord, _)| coord);
 
     let mut len = goal_locations.len();
+    debug_assert!(len < u32::MAX as usize);
     if len > 0 {
         loop {
-            let possible_goal = goal_locations.swap_remove(rng.gen_range(0, len));
+            let possible_goal = goal_locations.swap_remove(
+                xs::range(&mut rng, 0..len as u32) as usize
+            );
 
             len = goal_locations.len();
+            // Edge locations tend to be trivial more often because
+            // there's likely many ways to get along the edge.
+            // So avoid using one if we can, but if use one if there's
+            // no other ones left.
             if not_on_edge(size, possible_goal) || len == 0 {
                 cells.insert(possible_goal, Goal);
                 break;
@@ -482,10 +466,10 @@ fn dir_to_tuple(dir: Motion) -> (i32, i32) {
     }
 }
 
-
-
-fn gen_coord(size: Size, rng: &mut StdRng) -> (i32, i32) {
-    (rng.gen_range::<i32>(0, size.width), rng.gen_range::<i32>(0, size.height))
+fn gen_coord(size: Size, rng: &mut Xs) -> (i32, i32) {
+    debug_assert!((size.width as i64) < i32::MAX as i64);
+    debug_assert!((size.height as i64) < i32::MAX as i64);
+    dbg!((xs::range(rng, 0..size.width as u32) as i32, xs::range(rng, 0..size.height as u32) as i32))
 }
 
 fn next_coord(size: Size, (x, y): (i32, i32)) -> (i32, i32) {
