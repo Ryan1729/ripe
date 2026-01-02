@@ -1,9 +1,23 @@
-use hardcoded as used_mod;
-//use rhai_based as used_mod;
+//use hardcoded as used_mod;
+use rhai_based as used_mod;
+//use rune_based as used_mod;
 
 pub use used_mod::{parse, Error};
 
+#[cfg(false)]
+mod rune_based {
+    #[derive(Debug)]
+    pub enum Error {
+
+    }
+
+    pub fn parse(code: &str) -> Result<Config, Error> {
+        
+    }
+}
+
 mod rhai_based {
+    use platform_types::TILES_PER_ROW;
     use rhai::{Engine, EvalAltResult};
     
     use std::sync::LazyLock;
@@ -14,8 +28,6 @@ mod rhai_based {
         DefId,
         DefIdDelta
     };
-    
-    pub const TILES_PER_ROW: u8 = 8;
     
     #[derive(Clone, Copy, Debug)]
     pub struct IndexableKey {

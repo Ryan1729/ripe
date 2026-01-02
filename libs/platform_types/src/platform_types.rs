@@ -1386,3 +1386,6 @@ pub mod arrow_timer {
         }
     }
 }
+
+/// This is true for the default spritesheet.
+pub const TILES_PER_ROW: u8 = 8;

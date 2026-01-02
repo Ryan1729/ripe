@@ -1,4 +1,4 @@
-use platform_types::{sprite, unscaled};
+use platform_types::{sprite, unscaled, TILES_PER_ROW};
 use models::{Entity, xy::{XY}, TileSprite, offset};
 
 // TODO These should be changeable at runtime. Having it be here in this module as a static is inconvenient.
@@ -6,7 +6,7 @@ use models::{Entity, xy::{XY}, TileSprite, offset};
 //      them into these functions, adding high level methods to gfx::Commands as needed {
 const TILE_W: unscaled::W = unscaled::W(16);
 const TILE_H: unscaled::H = unscaled::H(16);
-pub const TILES_PER_ROW: sprite::Inner = 8;
+
 /// Where the tiles start on the spreadsheet.
 const TILES_Y: sprite::Y = sprite::Y(0);
 // }
@@ -43,8 +43,8 @@ pub fn center_to_min_corner(xy: unscaled::XY) -> unscaled::XY {
 
 pub fn sprite_xy(tile_sprite: TileSprite) -> sprite::XY {
     sprite::XY {
-        x: sprite::X(0) + sprite::W(tile_sprite as sprite::Inner % TILES_PER_ROW) * TILE_W.get(),
-        y: TILES_Y + sprite::H(tile_sprite as sprite::Inner / TILES_PER_ROW) * TILE_H.get(),
+        x: sprite::X(0) + sprite::W(tile_sprite as sprite::Inner % sprite::Inner::from(TILES_PER_ROW)) * TILE_W.get(),
+        y: TILES_Y + sprite::H(tile_sprite as sprite::Inner / sprite::Inner::from(TILES_PER_ROW)) * TILE_H.get(),
     }
 }
 
