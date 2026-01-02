@@ -17,3 +17,6 @@ getrandom = { version = "0.3"}
 [dependencies.models]
 path = "../models"
 
+[dependencies.vec1]
+path = "../vec1"
+

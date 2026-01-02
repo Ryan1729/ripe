@@ -114,11 +114,9 @@ fn cross_mode_event_handling(platform: &Platform, state: &mut State, event: &Eve
             }
         }
         Event::KeyPressed { key: KeyCode::R, ctrl: false, shift: _ } => {
-            println!("reset level");
             state.player_pos = state.initial_player_pos;
         }
         Event::KeyPressed { key: KeyCode::R, ctrl: true, shift: _ } => {
-            println!("reset");
             *state = new_state((platform.size)(), xs::new_seed(&mut state.rng));
         }
         _ => (),
@@ -469,7 +467,7 @@ fn dir_to_tuple(dir: Motion) -> (i32, i32) {
 fn gen_coord(size: Size, rng: &mut Xs) -> (i32, i32) {
     debug_assert!((size.width as i64) < i32::MAX as i64);
     debug_assert!((size.height as i64) < i32::MAX as i64);
-    dbg!((xs::range(rng, 0..size.width as u32) as i32, xs::range(rng, 0..size.height as u32) as i32))
+    (xs::range(rng, 0..size.width as u32) as i32, xs::range(rng, 0..size.height as u32) as i32)
 }
 
 fn next_coord(size: Size, (x, y): (i32, i32)) -> (i32, i32) {
