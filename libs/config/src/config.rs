@@ -1,18 +1,105 @@
 //use hardcoded as used_mod;
-use rhai_based as used_mod;
-//use rune_based as used_mod;
+//use rhai_based as used_mod;
+use rune_based as used_mod;
 
 pub use used_mod::{parse, Error};
 
-#[cfg(false)]
 mod rune_based {
+    use models::{
+        config::{
+            Config, 
+//            WorldSegment,
+        },
+        //consts::{TileFlags},
+        //DefId,
+        //DefIdDelta
+    };
+    use rune::{alloc::{Error as AllocError}, BuildError, Context, ContextError, Diagnostics, Source, Sources, Vm};
+    use rune::runtime::{Object, RuntimeError, VmError};
+    use std::sync::Arc;
+
     #[derive(Debug)]
     pub enum Error {
+        Hardcoded(crate::hardcoded::Error),
+        Alloc(AllocError),
+        Build(BuildError),
+        Context(ContextError),
+        Diagnostics(Diagnostics),
+        Runtime(RuntimeError),
+        Vm(VmError),
+    }
 
+    impl From<AllocError> for Error {
+        fn from(e: AllocError) -> Self {
+            Self::Alloc(e)
+        }
+    }
+
+    impl From<BuildError> for Error {
+        fn from(e: BuildError) -> Self {
+            Self::Build(e)
+        }
+    }
+
+    impl From<ContextError> for Error {
+        fn from(e: ContextError) -> Self {
+            Self::Context(e)
+        }
+    }
+
+    impl From<VmError> for Error {
+        fn from(e: VmError) -> Self {
+            Self::Vm(e)
+        }
     }
 
     pub fn parse(code: &str) -> Result<Config, Error> {
+        let map: Object = eval(code)?;
+        //let map: Object = rune::from_value(output)?;
+
+        let h_config = crate::hardcoded::parse(code).map_err(Error::Hardcoded)?;
+
+        Ok(Config {
+            segments: h_config.segments,
+            entities: h_config.entities,
+            hallways: h_config.hallways,
+        })
+    }
+
+    fn eval(code: &str) -> Result<Object, Error> {
+        let context = init_context()?;
+        let runtime = Arc::new(context.runtime()?);
+
+        let mut sources = Sources::new();
+        sources.insert(Source::memory(code)?);
         
+        let mut diagnostics = Diagnostics::new();
+        
+        let result = rune::prepare(&mut sources)
+            .with_context(&context)
+            .with_diagnostics(&mut diagnostics)
+            .build();
+        
+        if !diagnostics.is_empty() {
+            // TODO Have a way to allow warnings, but still show them?
+            return Err(Error::Diagnostics(diagnostics))
+        }
+
+        let unit = result?;
+
+        let mut vm = Vm::new(runtime, Arc::new(unit));
+
+        let vm_output = vm.call(["main"], ())?;
+
+        rune::from_value(vm_output).map_err(Error::Runtime)
+    }
+
+    fn init_context() -> Result<Context, ContextError> {
+        let mut context = Context::with_default_modules()?;
+
+        // TODO: insert helper modules
+
+        Ok(context)
     }
 }
 

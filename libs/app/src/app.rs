@@ -996,17 +996,17 @@ fn something_gets_drawn_for_ice_puzzle_within_app_state() {
     frame(&mut state);
 
     // This asserts that the ice puzzle stuff showed up
-    let mut count_of_45s = 0;
+    let mut count_of_20s = 0;
     let mut sizes = Vec::with_capacity(state.commands.slice().len());
     for command in state.commands.slice() {
         let w = (command.rect.x_max.get() - command.rect.x_min.get()).get();
         let h = (command.rect.y_max.get() - command.rect.y_min.get()).get();
-        if w == 44 && h == 44 {
-            count_of_45s += 1;
+        if w == 19 && h == 19 {
+            count_of_20s += 1;
         }
         sizes.push((w, h));
     }
 
     assert!(sizes.len() > 0, "{:#?}", sizes);
-    assert!(count_of_45s > 0, "{:#?}", sizes);
+    assert!(count_of_20s > 0, "{:#?}", sizes);
 }
