@@ -15,6 +15,7 @@ mod rune_based {
         //DefIdDelta
     };
     use rune::{alloc::{Error as AllocError}, BuildError, Context, ContextError, Diagnostics, Source, Sources, Vm};
+    use rune::diagnostics::Diagnostic;
     use rune::runtime::{Object, RuntimeError, VmError};
     use std::sync::Arc;
 
@@ -24,9 +25,46 @@ mod rune_based {
         Alloc(AllocError),
         Build(BuildError),
         Context(ContextError),
-        Diagnostics(Diagnostics),
+        Diagnostics(Diagnostics, Sources),
         Runtime(RuntimeError),
         Vm(VmError),
+    }
+
+    impl core::fmt::Display for Error {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            use Error::*;
+            match self {
+                Diagnostics(diagnostics, sources) => {
+                    use std::io::Write;
+                    use rune::termcolor::{ColorSpec, WriteColor};
+                    struct Wrapper<'mut_ref, 'formatter>(&'mut_ref mut core::fmt::Formatter<'formatter>);
+
+                    impl Write for Wrapper<'_, '_> {
+                        fn write(&mut self, bytes: &[u8]) -> Result<usize, std::io::Error> {
+                            let len = bytes.len();
+                            let s: &str = std::str::from_utf8(bytes).map_err(std::io::Error::other)?;
+                            self.0.write_str(s).map(|()| len).map_err(std::io::Error::other)
+                        }
+                        fn flush(&mut self) -> Result<(), std::io::Error> {
+                            Ok(())
+                        }
+                    }
+
+                    impl WriteColor for Wrapper<'_, '_> {
+                        fn supports_color(&self) -> bool { false }
+                        fn set_color(&mut self, spec: &ColorSpec) -> Result<(), std::io::Error> { Ok(()) }
+                        fn reset(&mut self) -> Result<(), std::io::Error> { Ok(()) }
+                    }
+
+                    match diagnostics.emit(&mut Wrapper(f), sources) {
+                        Ok(_) => Ok(()),
+                        Err(e) => write!(f, "emit error: {e:#?}")
+                    }
+                },
+                // TODO implement proper human readable display here
+                _ => write!(f, "{self:#?}"),
+            }
+        }
     }
 
     impl From<AllocError> for Error {
@@ -54,8 +92,7 @@ mod rune_based {
     }
 
     pub fn parse(code: &str) -> Result<Config, Error> {
-        let map: Object = eval(code)?;
-        //let map: Object = rune::from_value(output)?;
+        let _map: Object = eval(code)?;
 
         let h_config = crate::hardcoded::parse(code).map_err(Error::Hardcoded)?;
 
@@ -82,7 +119,7 @@ mod rune_based {
         
         if !diagnostics.is_empty() {
             // TODO Have a way to allow warnings, but still show them?
-            return Err(Error::Diagnostics(diagnostics))
+            return Err(Error::Diagnostics(diagnostics, sources))
         }
 
         let unit = result?;
@@ -95,7 +132,7 @@ mod rune_based {
     }
 
     fn init_context() -> Result<Context, ContextError> {
-        let mut context = Context::with_default_modules()?;
+        let /*mut*/ context = Context::with_default_modules()?;
 
         // TODO: insert helper modules
 
@@ -213,6 +250,13 @@ mod rhai_based {
             parent_key: IndexableKey,
             kind: models::consts::HallwayKind,
         },
+    }
+
+    // Punting here because this code is temporary
+    impl core::fmt::Display for Error {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            write!(f, "{self:#?}")
+        }
     }
     
     impl From<Box<EvalAltResult>> for Error {
@@ -773,7 +817,14 @@ mod hardcoded {
         
     }
 
-    pub fn parse(code: &str) -> Result<Config, Error> {
+    // Punting here because this code is temporary
+    impl core::fmt::Display for Error {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            write!(f, "{self:#?}")
+        }
+    }
+
+    pub fn parse(_code: &str) -> Result<Config, Error> {
         use models::{*};
         use vec1::Vec1;
         // Hardcoding this to try out removing rhai, to see if that fixes bug that seems like UB

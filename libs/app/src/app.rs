@@ -15,8 +15,8 @@ impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use Error::*;
         match self {
-            Config(error) => write!(f, "Config Error: {error:#?}"),
-            Game(error) => write!(f, "Game Error: {error:#?}"),
+            Config(error) => write!(f, "Config Error:\n{error}"),
+            Game(error) => write!(f, "Game Error:\n{error:#?}"),
         }
     }
 }
@@ -344,7 +344,7 @@ fn game_update(commands: &mut Commands, state: &mut game::State, input: Input, s
     state.tick();
 
     match &mut state.mode {
-        Mode::DoorTo(target, animation) => {
+        Mode::DoorTo(_target, _animation) => {
             // TODO? Allow cancelling going in the door?
         },
         Mode::Hallway{ source, target } => {
@@ -355,24 +355,6 @@ fn game_update(commands: &mut Commands, state: &mut game::State, input: Input, s
                         input,
                         speaker,
                     );
-
-                    // This asserts that the ice puzzle stuff showed up
-                    let mut count_of_45s = 0;
-                    let mut sizes = Vec::with_capacity(commands.slice().len());
-                    for command in commands.slice() {
-                        let w = (command.rect.x_max.get() - command.rect.x_min.get()).get();
-                        let h = (command.rect.y_max.get() - command.rect.y_min.get()).get();
-                        if w == 44 && h == 44 {
-                            count_of_45s += 1;
-                        }
-                        sizes.push((w, h));
-                    }
-                
-                    //dbg!(commands.slice(), &sizes, count_of_45s);
-
-                    //assert!(commands.slice().len() > 0, "commands.slice(): {:#?}", commands.slice());
-                    //assert!(sizes.len() > 0, "sizes: {:#?}", sizes);
-                    //assert!(count_of_45s > 0, "sizes(count): {:#?}", sizes);
                 },
                 None => {
                     invariant_assert!(false, "Hallway was not found while in Hallway mode!");
@@ -635,17 +617,8 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     match &state.mode {
         Mode::Hallway { source, target } => {
             let source: &game::EntityKey = source;
-            if let Some(hallway) = state.hallway_states.get(*source, *target) {
-                //commands.print_lines(
-                    //unscaled::XY {
-                        //x: unscaled::X(100),
-                        //y: unscaled::Y(50),
-                    //},
-                    //0,
-                    //// TODO Get this text from the config file
-                    //b"TODO: Render hallway",
-                    //6,
-                //);
+            if let Some(_hallway) = state.hallway_states.get(*source, *target) {
+                // The hallway is expected to be rendered elsewhere
             } else {
                 commands.print_lines(
                     unscaled::XY {
