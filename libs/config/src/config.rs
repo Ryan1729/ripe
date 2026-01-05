@@ -5,6 +5,7 @@ use rune_based as used_mod;
 pub use used_mod::{parse, Error};
 
 mod rune_based {
+    use platform_types::TILES_PER_ROW;
     use models::{
         config::{
             Config, 
@@ -107,8 +108,8 @@ mod rune_based {
         let context = init_context()?;
         let runtime = Arc::new(context.runtime()?);
 
-        let mut sources = Sources::new();
-        sources.insert(Source::memory(code)?);
+        let mut sources = sources_with_helpers()?;
+        sources.insert(Source::memory(code)?)?;
         
         let mut diagnostics = Diagnostics::new();
         
@@ -131,10 +132,176 @@ mod rune_based {
         rune::from_value(vm_output).map_err(Error::Runtime)
     }
 
-    fn init_context() -> Result<Context, ContextError> {
-        let /*mut*/ context = Context::with_default_modules()?;
+    fn sources_with_helpers() -> Result<Sources, AllocError> {
+        let mut sources = Sources::new();
 
-        // TODO: insert helper modules
+        macro_rules! add_module {
+            ($name: ident = $string: expr) => {{
+                sources.insert(Source::new(stringify!($name), $string)?)?;
+            }};
+        }
+    
+        let mut hallways_string = String::with_capacity(128);
+    
+        for (name, value) in models::consts::ALL_HALLWAY_KINDS {
+            hallways_string += &format!("pub const {name} = {value};\n");
+        }
+    
+        add_module!(hallways = hallways_string);
+    
+        let mut tile_flags_string = String::with_capacity(128);
+    
+        for (name, value) in models::consts::ALL_TILE_FLAGS {
+            tile_flags_string += &format!("pub const {name} = {value};\n");
+        }
+    
+        add_module!(tile_flags = tile_flags_string);
+    
+        let mut entity_flags_string = String::with_capacity(128);
+    
+        for (name, value) in models::consts::ALL_ENTITY_FLAGS {
+            entity_flags_string += &format!("pub const {name} = {value};\n");
+        }
+    
+        add_module!(entity_flags = entity_flags_string);
+    
+        let default_spritesheet_string = format!(r#"
+            const TILES_PER_ROW = {TILES_PER_ROW};
+
+            pub fn tile_sprite_xy(x, y) {{
+                y * TILES_PER_ROW + x
+            }}
+    
+            pub fn mob(n) {{
+                tile_sprite_xy(3, n)
+            }}
+    
+            pub fn item(n) {{
+                tile_sprite_xy(4, n)
+            }}
+            // TODO: Define walls, floor, door animation, and player here too
+    
+            pub const OPEN_DOOR = tile_sprite_xy(0, 5);
+            pub const OPEN_END_DOOR = tile_sprite_xy(1, 5);
+    
+            pub const DOOR_MATERIALS = ["gold", "iron", "carbon-steel"];
+            pub const DOOR_COLOURS = ["red", "green", "blue"];
+    
+            // short for door and key xy.
+            // Takes the door's xy, and assumes the key is one in the positive x direction.
+            fn dak_xy(door_x, door_y) {{
+                #{{
+                    door: tile_sprite_xy(door_x, door_y),
+                    key: tile_sprite_xy(door_x + 1, door_y)
+                }}
+            }}
+    
+            pub fn door_and_key_by_material_and_colour(material, colour) {{
+                result::ok(
+                    switch [material, colour] {{
+                        ["gold", "red"] => dak_xy(0, 6),
+                        ["gold", "green"] => dak_xy(0, 7),
+                        ["gold", "blue"] => dak_xy(6, 0),
+                        ["iron", "red"] => dak_xy(6, 1),
+                        ["iron", "green"] => dak_xy(6, 2),
+                        ["iron", "blue"] => dak_xy(6, 3),
+                        ["carbon-steel", "red"] => dak_xy(6, 4),
+                        ["carbon-steel", "green"] => dak_xy(6, 5),
+                        ["carbon-steel", "blue"] => dak_xy(6, 6),
+                        _ => return result::err("No door and key found for \"" + material + "\"" + "and \"" + colour + "\""),
+                    }}
+                )
+            }}
+        "#);
+    
+        add_module!(default_spritesheet = default_spritesheet_string);
+    
+        let mut entity_ids_string = String::with_capacity(256);
+    
+        for (name, value) in models::consts::ALL_ENTITY_ID_REFERENCE_KINDS {
+            entity_ids_string += &format!("pub const {name} = {value};\n");
+        }
+    
+        entity_ids_string += r#"
+            fn relative(n) {
+                #{
+                    kind: RELATIVE,
+                    value: n,
+                }
+            }
+        "#;
+    
+        entity_ids_string += r#"
+            fn absolute(n) {
+                #{
+                    kind: ABSOLUTE,
+                    value: n,
+                }
+            }
+        "#;
+    
+        add_module!(entity_ids = entity_ids_string);
+    
+        let mut collect_actions_string = String::with_capacity(256);
+    
+        for (name, value) in models::consts::ALL_COLLECT_ACTION_KINDS {
+            collect_actions_string += &format!("pub const {name} = {value};\n");
+        }
+    
+        add_module!(collect_actions = collect_actions_string);
+
+        Ok(sources)
+    }
+
+    #[test]
+    fn sources_with_helpers_builds() -> Result<(), Box<dyn std::error::Error>> {
+        let context = init_context()?;
+        let runtime = Arc::new(context.runtime()?);
+        
+        let mut sources = sources_with_helpers()?;
+        
+        let mut diagnostics = Diagnostics::new();
+        
+        let unit = rune::prepare(&mut sources)
+            .with_context(&context)
+            .with_diagnostics(&mut diagnostics)
+            .build()
+            .unwrap();
+        
+        assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+
+        Ok(())
+    }
+
+    #[test]
+    fn default_spritesheet_tests_pass() {
+        let code = r#"
+            use "default_spritesheet" as DS;
+    
+            for material in DS::DOOR_MATERIALS {
+                for colour in DS::DOOR_COLOURS {
+                    let result = DS::door_and_key_by_material_and_colour(material, colour);
+    
+                    let #{door, key} = result.unwrap();
+    
+                    if door < 0 {
+                        panic!("Negative door sprite for " + material + ", " + colour + ": " + dak.door);
+                    }
+    
+                    if key < 0 {
+                        panic!("Negative key sprite for " + material + ", " + colour + ": " + dak.key);
+                    }
+                }
+            }
+        "#;
+    
+        let _ = eval(code).expect("should eval without errors");
+    }
+
+    fn init_context() -> Result<Context, ContextError> {
+        let /* mut */ context = Context::with_default_modules()?;
+
+        // TODO? Add native modules if we turn out to need any?
 
         Ok(context)
     }

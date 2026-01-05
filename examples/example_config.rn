@@ -18,7 +18,7 @@ const I = TF::FLOOR | TF::ITEM_START;
 const N = TF::FLOOR | TF::NPC_START;
 const W = TF::WALL;
 
-fn main() {
+fn main() /* -> Result<Object, String> */ {
     let entities = [
         #{
             flags: ITEM,
@@ -83,41 +83,42 @@ fn main() {
                 open_door_id
             };
     
-            let result = DS::door_and_key_by_material_and_colour(material, colour);
+            let door_and_key = DS::door_and_key_by_material_and_colour(material, colour)?;
     
-            if result.ok != () {
-                entities.push(
-                    #{
-                        flags: LOCKED_DOOR,
-                        tile_sprite: result.ok.door,
-                        speeches: [
-                            [ `A locked ${colour}-${material} door. Bet the key is ${colour}-${material} too.` ],
-                        ],
-                    },
-                );
-                entities.push(
-                    #{
-                        flags: ITEM,
-                        tile_sprite: result.ok.key,
-                        inventory_description: [
-                            [`A ${colour}-${material} key. Bet it opens a ${colour}-${material} door.`],
-                        ],
-                        on_collect: [
-                            #{
-                                kind: CA::TRANSFORM,
-                                from: ID::relative(-1),
-                                to: to,
-                            }
-                        ],
-                    }
-                );
-            } else {
-                throw result.err
+            match door_and_key {
+                #{door, key} => {
+                    entities.push(
+                        #{
+                            flags: LOCKED_DOOR,
+                            tile_sprite: door,
+                            speeches: [
+                                [ `A locked ${colour}-${material} door. Bet the key is ${colour}-${material} too.` ],
+                            ],
+                        },
+                    );
+                    entities.push(
+                        #{
+                            flags: ITEM,
+                            tile_sprite: key,
+                            inventory_description: [
+                                [`A ${colour}-${material} key. Bet it opens a ${colour}-${material} door.`],
+                            ],
+                            on_collect: [
+                                #{
+                                    kind: CA::TRANSFORM,
+                                    from: ID::relative(-1),
+                                    to: to,
+                                }
+                            ],
+                        }
+                    );
+                },
+                _ => { return Err(format!("door and key was not the right shape! {door_and_key:?}")); }
             }
         }
     }
     
-    #{
+    Ok(#{
         hallways: [
             #{
                 kind: HW::NONE,
@@ -174,5 +175,5 @@ fn main() {
                 ],
             },
         ],
-    }
+    })
 }
