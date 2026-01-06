@@ -62,8 +62,11 @@ mod rune_based {
                         Err(e) => write!(f, "emit error: {e:#?}")
                     }
                 },
+                Runtime(e) => {
+                    write!(f, "Rune RuntimeError: {e}")
+                }
                 // TODO implement proper human readable display here
-                _ => write!(f, "{self:#?}"),
+                _ => write!(f, "fmt::Debug Fallback: {self:#?}"),
             }
         }
     }
@@ -118,8 +121,7 @@ mod rune_based {
             .with_diagnostics(&mut diagnostics)
             .build();
         
-        if !diagnostics.is_empty() {
-            // TODO Have a way to allow warnings, but still show them?
+        if has_meaningful_diagnostics(&diagnostics) {
             return Err(Error::Diagnostics(diagnostics, sources))
         }
 
@@ -162,10 +164,11 @@ mod rune_based {
         for (name, value) in models::consts::ALL_ENTITY_FLAGS {
             entity_flags_string += &format!("pub const {name} = {value};\n");
         }
-    
+
         add_module!(entity_flags = entity_flags_string);
     
         let default_spritesheet_string = format!(r#"
+            mod default_spritesheet {{
             const TILES_PER_ROW = {TILES_PER_ROW};
 
             pub fn tile_sprite_xy(x, y) {{
@@ -181,8 +184,8 @@ mod rune_based {
             }}
             // TODO: Define walls, floor, door animation, and player here too
     
-            pub const OPEN_DOOR = tile_sprite_xy(0, 5);
-            pub const OPEN_END_DOOR = tile_sprite_xy(1, 5);
+            pub const OPEN_DOOR_SPRITE = 5 * TILES_PER_ROW + 0;//tile_sprite_xy(0, 5);
+            pub const OPEN_END_DOOR_SPRITE = 5 * TILES_PER_ROW + 1;//tile_sprite_xy(1, 5);
     
             pub const DOOR_MATERIALS = ["gold", "iron", "carbon-steel"];
             pub const DOOR_COLOURS = ["red", "green", "blue"];
@@ -197,8 +200,8 @@ mod rune_based {
             }}
     
             pub fn door_and_key_by_material_and_colour(material, colour) {{
-                result::ok(
-                    switch [material, colour] {{
+                Ok(
+                    match [material, colour] {{
                         ["gold", "red"] => dak_xy(0, 6),
                         ["gold", "green"] => dak_xy(0, 7),
                         ["gold", "blue"] => dak_xy(6, 0),
@@ -208,9 +211,11 @@ mod rune_based {
                         ["carbon-steel", "red"] => dak_xy(6, 4),
                         ["carbon-steel", "green"] => dak_xy(6, 5),
                         ["carbon-steel", "blue"] => dak_xy(6, 6),
-                        _ => return result::err("No door and key found for \"" + material + "\"" + "and \"" + colour + "\""),
+                        _ => return Err("No door and key found for \"" + material + "\"" + "and \"" + colour + "\""),
                     }}
                 )
+            }}
+
             }}
         "#);
     
@@ -223,16 +228,14 @@ mod rune_based {
         }
     
         entity_ids_string += r#"
-            fn relative(n) {
+            pub fn relative(n) {
                 #{
                     kind: RELATIVE,
                     value: n,
                 }
             }
-        "#;
-    
-        entity_ids_string += r#"
-            fn absolute(n) {
+
+            pub fn absolute(n) {
                 #{
                     kind: ABSOLUTE,
                     value: n,
@@ -253,6 +256,41 @@ mod rune_based {
         Ok(sources)
     }
 
+    fn has_meaningful_diagnostics(diagnostics: &Diagnostics) -> bool {
+        // TODO Have a way to allow warnings, but still show them?
+
+        // Filter out unused warnings from the helper modules, in a hacky way.
+        let mut has_meaningful_diagnostics = false;
+        let mut buffer = String::with_capacity(128);
+        for diagnostic in diagnostics.diagnostics() {
+            match diagnostic {
+                Diagnostic::Warning(warning) => {
+                    use std::fmt::Write;
+                    buffer.clear();
+
+                    // This can't fail, unless maybe if we run out of memory.
+                    let _ = write!(&mut buffer, "{warning:?}");
+
+                    // This is the hacky part, that we do because currently this info
+                    // isn't exposed another way. If the name changes we will start 
+                    // seeing the warnings, which seems less bad than squelching all
+                    // warnings from the helper sources, and thus likely missing some
+                    // real ones.
+                    if !buffer.contains("kind: NotUsed") {
+                        has_meaningful_diagnostics = true;
+                        break
+                    }
+                },
+                _ => {
+                    has_meaningful_diagnostics = true;
+                    break
+                }
+            }
+        }
+
+        has_meaningful_diagnostics
+    }
+
     #[test]
     fn sources_with_helpers_builds() -> Result<(), Box<dyn std::error::Error>> {
         let context = init_context()?;
@@ -267,8 +305,14 @@ mod rune_based {
             .with_diagnostics(&mut diagnostics)
             .build()
             .unwrap();
+
         
-        assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+        if has_meaningful_diagnostics(&diagnostics) {
+            use rune::termcolor::{ColorChoice, StandardStream};
+            let mut writer = StandardStream::stderr(ColorChoice::Always);
+            diagnostics.emit(&mut writer, &sources)?;
+            assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+        }
 
         Ok(())
     }
@@ -276,26 +320,49 @@ mod rune_based {
     #[test]
     fn default_spritesheet_tests_pass() {
         let code = r#"
-            use "default_spritesheet" as DS;
-    
-            for material in DS::DOOR_MATERIALS {
-                for colour in DS::DOOR_COLOURS {
-                    let result = DS::door_and_key_by_material_and_colour(material, colour);
-    
-                    let #{door, key} = result.unwrap();
-    
-                    if door < 0 {
-                        panic!("Negative door sprite for " + material + ", " + colour + ": " + dak.door);
-                    }
-    
-                    if key < 0 {
-                        panic!("Negative key sprite for " + material + ", " + colour + ": " + dak.key);
+            use default_spritesheet as DS;
+
+            pub fn main() {
+                for material in DS::DOOR_MATERIALS {
+                    for colour in DS::DOOR_COLOURS {
+                        let result = DS::door_and_key_by_material_and_colour(material, colour);
+
+                        match result {
+                            Ok(#{door, key}) => {
+                                if door < 0 {
+                                    panic!("Negative door sprite for {material}, {colour}: {door}");
+                                }
+                
+                                if key < 0 {
+                                    panic!("Negative key sprite for {material}, {colour}: {key}");
+                                }
+                            },
+                            _ => {
+                                panic!("{result}");
+                            }
+                        }
                     }
                 }
+
+                #{}
             }
         "#;
     
-        let _ = eval(code).expect("should eval without errors");
+        match eval(code) {
+            Err(e) => {
+                if let Error::Diagnostics(diagnostics, sources) = &e {
+                    if !diagnostics.is_empty() {
+                        use rune::termcolor::{ColorChoice, StandardStream};
+                        let mut writer = StandardStream::stderr(ColorChoice::Always);
+                        diagnostics.emit(&mut writer, &sources).expect("should not run out of memory");
+                        assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+                    }
+                }
+
+                assert!(false, "should eval without errors: {e}");
+            }
+            Ok(_) => {}
+        }
     }
 
     fn init_context() -> Result<Context, ContextError> {
