@@ -13,7 +13,10 @@ wasm = ["rhai/wasm-bindgen", "getrandom/wasm_js"]
 [dependencies]
 getrandom = { version = "0.3"}
 rhai = { version = "1.23.4", features = ["sync"] }
-rune = { version = "0.14.1", features = [] }
+#rune = { version = "0.14.1", features = [] }
+#rune = { git = "https://github.com/rune-rs/rune.git", features = [] }
+# Currently needed for bitwise operations. If that gets merged we'd prefer to not use our own fork.
+rune = { git = "https://github.com/Ryan1729/rune.git", branch = 'ryan1729/implement-bitwise-ops', features = [] }
 
 [dependencies.platform_types]
 path = "../platform_types"
