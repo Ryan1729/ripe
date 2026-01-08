@@ -16,7 +16,7 @@ mod rune_based {
         //DefIdDelta
     };
     use rune::{alloc::{Error as AllocError}, BuildError, Context, ContextError, Diagnostics, Source, Sources, Vm};
-    use rune::diagnostics::Diagnostic;
+    use rune::diagnostics::{Diagnostic};
     use rune::runtime::{Object, RuntimeError, VmError};
     use rune::sync::Arc;
 
@@ -26,9 +26,11 @@ mod rune_based {
         Alloc(AllocError),
         Build(BuildError),
         Context(ContextError),
-        Diagnostics(Diagnostics, Sources),
+        Diagnostics(Vec<Diagnostic>, Sources),
         Runtime(RuntimeError),
         Vm(VmError),
+        /// An error the configuration evaluation itself returned.
+        FromConfig(String),
     }
 
     impl core::fmt::Display for Error {
@@ -53,17 +55,39 @@ mod rune_based {
 
                     impl WriteColor for Wrapper<'_, '_> {
                         fn supports_color(&self) -> bool { false }
-                        fn set_color(&mut self, spec: &ColorSpec) -> Result<(), std::io::Error> { Ok(()) }
+                        fn set_color(&mut self, _spec: &ColorSpec) -> Result<(), std::io::Error> { Ok(()) }
                         fn reset(&mut self) -> Result<(), std::io::Error> { Ok(()) }
                     }
 
-                    match diagnostics.emit(&mut Wrapper(f), sources) {
-                        Ok(_) => Ok(()),
-                        Err(e) => write!(f, "emit error: {e:#?}")
+                    let mut write_wrapper = &mut Wrapper(f);
+
+                    for diagnostic in diagnostics {
+                        match {
+                            match diagnostic {
+                                Diagnostic::Fatal(d) => d.emit(write_wrapper, sources),
+                                Diagnostic::Warning(d) => d.emit(write_wrapper, sources),
+                                Diagnostic::RuntimeWarning(d) => d.emit(write_wrapper, sources, None, None),
+                                other => {
+                                    write!(write_wrapper.0, "Unknown `Diagnostic` variant: {other:#?}")?;
+                                    Ok(())
+                                }
+                            }
+                        } {
+                            Ok(()) => {},
+                            Err(e) => write!(write_wrapper.0, "emit error: {e:#?}")?,
+                        }
                     }
+
+                    Ok(())
                 },
                 Runtime(e) => {
                     write!(f, "Rune RuntimeError: {e}")
+                }
+                Vm(e) => {
+                    write!(f, " Rune VmError:\n  {e}")
+                }
+                FromConfig(e) => {
+                    write!(f, " FromConfig Error:\n  {e}")
                 }
                 // TODO implement proper human readable display here
                 _ => write!(f, "fmt::Debug Fallback: {self:#?}"),
@@ -109,7 +133,7 @@ mod rune_based {
 
     fn eval(code: &str) -> Result<Object, Error> {
         let context = init_context()?;
-        let runtime = Arc::new(context.runtime()?);
+        let runtime = Arc::try_new(context.runtime()?)?;
 
         let mut sources = sources_with_helpers()?;
         sources.insert(Source::memory(code)?)?;
@@ -122,16 +146,24 @@ mod rune_based {
             .build();
 
         if has_meaningful_diagnostics(&diagnostics) {
-            return Err(Error::Diagnostics(diagnostics, sources))
+            return Err(Error::Diagnostics(to_meaningful_diagnostics(diagnostics), sources))
         }
 
         let unit = result?;
 
-        let mut vm = Vm::new(runtime, Arc::new(unit));
+        let mut vm = Vm::new(runtime, Arc::try_new(unit)?);
 
-        let vm_output = vm.call(["main"], ())?;
+        let vm_output: rune::Value = vm.call(["main"], ())?;
 
-        rune::from_value(vm_output).map_err(Error::Runtime)
+        let nested_result: Result<Result<Object, String>, RuntimeError> = rune::from_value(vm_output);
+
+        match nested_result {
+            Ok(Ok(obj)) => Ok(obj),
+            Ok(Err(e)) => Err(Error::FromConfig(e)),
+            Err(e) => Err(Error::Runtime(e)),
+        }
+
+        
     }
 
     fn sources_with_helpers() -> Result<Sources, AllocError> {
@@ -193,8 +225,8 @@ mod rune_based {
             }}
             // TODO: Define walls, floor, door animation, and player here too
 
-            pub const OPEN_DOOR_SPRITE = 5 * TILES_PER_ROW + 0;//tile_sprite_xy(0, 5);
-            pub const OPEN_END_DOOR_SPRITE = 5 * TILES_PER_ROW + 1;//tile_sprite_xy(1, 5);
+            pub const OPEN_DOOR = 5 * TILES_PER_ROW + 0;//tile_sprite_xy(0, 5);
+            pub const OPEN_END_DOOR = 5 * TILES_PER_ROW + 1;//tile_sprite_xy(1, 5);
 
             pub const DOOR_MATERIALS = ["gold", "iron", "carbon-steel"];
             pub const DOOR_COLOURS = ["red", "green", "blue"];
@@ -263,39 +295,57 @@ mod rune_based {
         Ok(sources)
     }
 
+    /// Filter out unused warnings from the helper modules, in a hacky way.
+    // TODO: Consider unused warnings outside of the helper moduels meaningful?
+    //       This coudl be checked by knowing the source IDs for those modules
+    fn is_meaningful(diagnostic: &Diagnostic, buffer: &mut String) -> bool {
+        match diagnostic {
+            Diagnostic::Warning(warning) => {
+                use std::fmt::Write;
+                buffer.clear();
+
+                // This can't fail, unless maybe if we run out of memory.
+                let _ = write!(buffer, "{warning:?}");
+
+                // This is the hacky part, that we do because currently this info
+                // isn't exposed another way. If the name changes we will start
+                // seeing the warnings, which seems less bad than squelching all
+                // warnings from the helper sources, and thus likely missing some
+                // real ones.
+                !buffer.contains("kind: NotUsed")
+            },
+            _ => {
+                true
+            }
+        }
+    }
+
     fn has_meaningful_diagnostics(diagnostics: &Diagnostics) -> bool {
-        // TODO Have a way to allow warnings, but still show them?
-
-        // Filter out unused warnings from the helper modules, in a hacky way.
-        let mut has_meaningful_diagnostics = false;
         let mut buffer = String::with_capacity(128);
+
         for diagnostic in diagnostics.diagnostics() {
-            match diagnostic {
-                Diagnostic::Warning(warning) => {
-                    use std::fmt::Write;
-                    buffer.clear();
-
-                    // This can't fail, unless maybe if we run out of memory.
-                    let _ = write!(&mut buffer, "{warning:?}");
-
-                    // This is the hacky part, that we do because currently this info
-                    // isn't exposed another way. If the name changes we will start
-                    // seeing the warnings, which seems less bad than squelching all
-                    // warnings from the helper sources, and thus likely missing some
-                    // real ones.
-                    if !buffer.contains("kind: NotUsed") {
-                        has_meaningful_diagnostics = true;
-                        break
-                    }
-                },
-                _ => {
-                    has_meaningful_diagnostics = true;
-                    break
-                }
+            if is_meaningful(diagnostic, &mut buffer) {
+                return true;
             }
         }
 
-        has_meaningful_diagnostics
+        false
+    }
+
+    fn to_meaningful_diagnostics(diagnostics: Diagnostics) -> Vec<Diagnostic> {
+        let diagnostics: rune::alloc::Vec<_> = diagnostics.into_diagnostics();
+
+        // We don't want to expose the `rune::alloc::Vec` type outside this module.
+        let mut output = Vec::with_capacity(diagnostics.len());
+        let mut buffer = String::with_capacity(128);
+
+        for d in diagnostics {
+            if is_meaningful(&d, &mut buffer) {
+                output.push(d);
+            }
+        }
+
+        output
     }
 
     #[cfg(test)]
@@ -333,9 +383,6 @@ mod rune_based {
                 Err(e) => {
                     if let Error::Diagnostics(diagnostics, sources) = &e {
                         if !diagnostics.is_empty() {
-                            use rune::termcolor::{ColorChoice, StandardStream};
-                            let mut writer = StandardStream::stderr(ColorChoice::Always);
-                            diagnostics.emit(&mut writer, &sources).expect("should not run out of memory");
                             assert!(diagnostics.is_empty(), "{diagnostics:#?}");
                         }
                     }
@@ -373,7 +420,7 @@ mod rune_based {
                         }
                     }
 
-                    #{}
+                    Ok(#{})
                 }
             "#;
 
@@ -397,7 +444,7 @@ mod rune_based {
             }
 
             code += r#"
-                    #{}
+                    Ok(#{})
                 }
             "#;
 

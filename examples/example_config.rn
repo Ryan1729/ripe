@@ -18,7 +18,7 @@ const I = TF::FLOOR | TF::ITEM_START;
 const N = TF::FLOOR | TF::NPC_START;
 const W = TF::WALL;
 
-fn main() /* -> Result<Object, String> */ {
+pub fn main() /* -> Result<Object, String> */ {
     let entities = [
         #{
             flags: ITEM,
@@ -56,7 +56,7 @@ fn main() /* -> Result<Object, String> */ {
         },
     ];
     
-    let open_end_door_id = ID::absolute(entities.len);
+    let open_end_door_id = ID::absolute(entities.len());
     entities.push(
         #{
             flags: END_DOOR,
@@ -64,7 +64,7 @@ fn main() /* -> Result<Object, String> */ {
         },
     );
     
-    let open_door_id = ID::absolute(entities.len);
+    let open_door_id = ID::absolute(entities.len());
     entities.push(
         #{
             flags: OPEN_DOOR,
