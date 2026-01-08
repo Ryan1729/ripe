@@ -1823,7 +1823,7 @@ dependencies = [
 [[package]]
 name = "rune"
 version = "0.14.0"
-source = "git+https://github.com/Ryan1729/rune.git?branch=ryan1729%2Fimplement-bitwise-ops#8c862a0dc07fd5bc43bc33584ef77c22c90cb4be"
+source = "git+https://github.com/rune-rs/rune.git?rev=734b79e#734b79e27f89bc830c2cc42bea08f3aaaddcd366"
 dependencies = [
  "anyhow",
  "codespan-reporting",
@@ -1849,7 +1849,7 @@ dependencies = [
 [[package]]
 name = "rune-alloc"
 version = "0.14.0"
-source = "git+https://github.com/Ryan1729/rune.git?branch=ryan1729%2Fimplement-bitwise-ops#8c862a0dc07fd5bc43bc33584ef77c22c90cb4be"
+source = "git+https://github.com/rune-rs/rune.git?rev=734b79e#734b79e27f89bc830c2cc42bea08f3aaaddcd366"
 dependencies = [
  "ahash",
  "musli",
@@ -1861,7 +1861,7 @@ dependencies = [
 [[package]]
 name = "rune-alloc-macros"
 version = "0.14.0"
-source = "git+https://github.com/Ryan1729/rune.git?branch=ryan1729%2Fimplement-bitwise-ops#8c862a0dc07fd5bc43bc33584ef77c22c90cb4be"
+source = "git+https://github.com/rune-rs/rune.git?rev=734b79e#734b79e27f89bc830c2cc42bea08f3aaaddcd366"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1871,7 +1871,7 @@ dependencies = [
 [[package]]
 name = "rune-core"
 version = "0.14.0"
-source = "git+https://github.com/Ryan1729/rune.git?branch=ryan1729%2Fimplement-bitwise-ops#8c862a0dc07fd5bc43bc33584ef77c22c90cb4be"
+source = "git+https://github.com/rune-rs/rune.git?rev=734b79e#734b79e27f89bc830c2cc42bea08f3aaaddcd366"
 dependencies = [
  "rune-alloc",
  "serde",
@@ -1881,7 +1881,7 @@ dependencies = [
 [[package]]
 name = "rune-macros"
 version = "0.14.0"
-source = "git+https://github.com/Ryan1729/rune.git?branch=ryan1729%2Fimplement-bitwise-ops#8c862a0dc07fd5bc43bc33584ef77c22c90cb4be"
+source = "git+https://github.com/rune-rs/rune.git?rev=734b79e#734b79e27f89bc830c2cc42bea08f3aaaddcd366"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1892,7 +1892,7 @@ dependencies = [
 [[package]]
 name = "rune-tracing"
 version = "0.14.0"
-source = "git+https://github.com/Ryan1729/rune.git?branch=ryan1729%2Fimplement-bitwise-ops#8c862a0dc07fd5bc43bc33584ef77c22c90cb4be"
+source = "git+https://github.com/rune-rs/rune.git?rev=734b79e#734b79e27f89bc830c2cc42bea08f3aaaddcd366"
 dependencies = [
  "rune-tracing-macros",
 ]
@@ -1900,7 +1900,7 @@ dependencies = [
 [[package]]
 name = "rune-tracing-macros"
 version = "0.14.0"
-source = "git+https://github.com/Ryan1729/rune.git?branch=ryan1729%2Fimplement-bitwise-ops#8c862a0dc07fd5bc43bc33584ef77c22c90cb4be"
+source = "git+https://github.com/rune-rs/rune.git?rev=734b79e#734b79e27f89bc830c2cc42bea08f3aaaddcd366"
 dependencies = [
  "proc-macro2",
  "quote",
