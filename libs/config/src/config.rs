@@ -9,16 +9,37 @@ mod rune_based {
     use models::{
         config::{
             Config,
-//            WorldSegment,
+            WorldSegment,
         },
-        //consts::{TileFlags},
-        //DefId,
-        //DefIdDelta
+        consts::{TileFlags},
+        DefId,
+        DefIdDelta
     };
     use rune::{alloc::{Error as AllocError}, BuildError, Context, ContextError, Diagnostics, Source, Sources, Vm};
     use rune::diagnostics::{Diagnostic};
     use rune::runtime::{Object, RuntimeError, VmError};
     use rune::sync::Arc;
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct IndexableKey {
+        pub key: &'static str,
+        pub index: Option<usize>,
+    }
+
+    macro_rules! ik {
+        ($key: expr) => {
+            IndexableKey {
+                key: $key,
+                index: None,
+            }
+        };
+        ($key: expr ,$index: expr) => {
+            IndexableKey {
+                key: $key,
+                index: Some($index),
+            }
+        };
+    }
 
     #[derive(Debug)]
     pub enum Error {
@@ -31,6 +52,57 @@ mod rune_based {
         Vm(VmError),
         /// An error the configuration evaluation itself returned.
         FromConfig(String),
+        TypeMismatch {
+            key: IndexableKey,
+            expected: &'static str,
+            got: RuntimeError,
+        },
+        FieldMissing {
+            key: &'static str,
+            parent_key: IndexableKey,
+        },
+        UnexpectedTileKind {
+            index: usize,
+            got: i64,
+        },
+        UnexpectedEntityKind {
+            index: usize,
+            got: i64,
+        },
+        SizeError {
+            key: &'static str,
+            parent_key: IndexableKey,
+            error: std::num::TryFromIntError,
+        },
+        TooManyEntityDefinitions{ got: usize },
+        NoSegmentsFound,
+        NoEntitiesFound,
+        OutOfBoundsDefId {
+            key: &'static str,
+            parent_key: IndexableKey,
+            def_id: models::DefId,
+        },
+        UnknownEntityDefIdRefKind {
+            key: &'static str,
+            parent_key: IndexableKey,
+            kind: models::consts::EntityDefIdRefKind,
+        },
+        UnknownCollectActionKind {
+            key: &'static str,
+            parent_key: IndexableKey,
+            kind: models::consts::CollectActionKind,
+        },
+        DefIdOverflow{
+            key: &'static str,
+            parent_key: IndexableKey,
+            base: DefId,
+            delta: DefIdDelta,
+        },
+        UnknownHallwayKind{
+            key: &'static str,
+            parent_key: IndexableKey,
+            kind: models::consts::HallwayKind,
+        },
     }
 
     impl core::fmt::Display for Error {
@@ -120,14 +192,348 @@ mod rune_based {
     }
 
     pub fn parse(code: &str) -> Result<Config, Error> {
-        let _map: Object = eval(code)?;
+        use std::ops::Deref;
+        use rune::runtime::Object;
+        use rune::{Value};
+        use models::{consts::{EntityDefIdRefKind, CollectActionKind}, DefId, EntityDef, Speech, CollectAction};
 
-        let h_config = crate::hardcoded::parse(code).map_err(Error::Hardcoded)?;
+        macro_rules! convert_to {
+            ($from: expr => $to: ty, $key: expr, $parent_key: expr) => {
+                <$to>::try_from($from).map_err(|error| Error::SizeError {
+                    key: $key,
+                    parent_key: $parent_key,
+                    error,
+                })?
+            }
+        }
+
+        macro_rules! get_int {
+            ($map: expr, $key: expr, $parent_key: expr) => {
+                {
+                    let key = $key;
+                    let parent_key = $parent_key;
+
+                    let value: &Value = 
+                        $map.get(key)
+                            .ok_or(Error::FieldMissing{ key, parent_key, })?;
+
+                    value
+                        .as_signed().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "int", got })?
+                        .try_into().map_err(|error| Error::SizeError {
+                            key,
+                            parent_key,
+                            error,
+                        })?
+                }
+            }
+        }
+
+        macro_rules! get_map {
+            ($map: expr, $key: expr, $parent_key: expr) => {
+                {
+                    let key = $key;
+                    let parent_key = $parent_key;
+                    let obj: Object = 
+                        rune::from_value(
+                            $map.get(key)
+                                .ok_or(Error::FieldMissing{ key, parent_key, })?
+                        ).map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
+
+                    obj
+                }
+            }
+        }
+
+        macro_rules! get_array {
+            ($map: expr, $key: expr, $parent_key: expr) => {
+                {
+                    let key = $key;
+                    let parent_key = $parent_key;
+                    $map.get(key)
+                        .ok_or(Error::FieldMissing{ key, parent_key, })?
+                        .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: ik!(key), expected: "array", got })?
+                }
+            }
+        }
+
+        let map: Object = eval(code)?;
+
+        let segments = get_array!(map, "segments", ik!("#root"));
+
+        let mut segments_vec = Vec::with_capacity(segments.len());
+
+        for i in 0..segments.len() {
+            let parent_key = ik!("segments", i);
+
+            let segment: Object = rune::from_value(segments[i].clone())
+                .map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
+
+            let width = get_int!(segment, "width", parent_key);
+
+            let tiles = {
+                let key = "tiles";
+                let raw_tiles = segment.get(key)
+                    .ok_or(Error::FieldMissing{ key, parent_key, })?
+                    .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: ik!(key), expected: "array", got })?;
+
+                let mut tiles: Vec<TileFlags> = Vec::with_capacity(raw_tiles.len());
+
+                for i in 0..raw_tiles.len() {
+                    let got = raw_tiles[i]
+                        .as_signed().map_err(|got| Error::TypeMismatch{ key: ik!(key, i), expected: "int", got })?;
+
+                    let tile_flags = match TileFlags::try_from(got) {
+                        Ok(tf) => tf,
+                        Err(_) => { return Err(Error::UnexpectedTileKind { index: i, got }); },
+                    };
+
+                    tiles.push(tile_flags);
+                }
+
+                tiles
+            };
+
+            segments_vec.push(WorldSegment {
+                width,
+                tiles,
+            });
+        }
+
+        let segments = segments_vec.try_into().map_err(|_| Error::NoSegmentsFound)?;
+
+        let entities = get_array!(map, "entities", ik!("#root"));
+
+        let mut entities_vec = Vec::with_capacity(entities.len());
+
+        let entity_def_count = DefId::try_from(entities.len())
+            .map_err(|_| Error::TooManyEntityDefinitions{ got: entities.len() })?;
+
+        for id in 0..entity_def_count {
+            fn deref_def_id(
+                base: DefId,
+                map: &Object,
+                entity_def_count: DefId,
+                parent_key: IndexableKey,
+            ) -> Result<DefId, Error> {
+                let kind: EntityDefIdRefKind = get_int!(*map, "kind", parent_key);
+
+                let key = "value";
+
+                let value: models::DefIdNextLargerSigned = get_int!(*map, key, parent_key);
+
+                let def_id = match kind {
+                    models::consts::RELATIVE => {
+                        let delta = convert_to!(value => DefIdDelta, key, parent_key);
+
+                        base.checked_add_signed(delta).ok_or(Error::DefIdOverflow{ key, parent_key, base, delta })?
+                    },
+                    models::consts::ABSOLUTE => convert_to!(value => DefId, key, parent_key),
+                    _ => return Err(Error::UnknownEntityDefIdRefKind { key, parent_key, kind }),
+                };
+
+                // TODO? Validate that the target is a valid kind of entity here?
+                if def_id >= entity_def_count {
+                    return Err(Error::OutOfBoundsDefId{ key, parent_key, def_id });
+                }
+
+                Ok(def_id)
+            }
+
+            let parent_key = ik!("entities", id.into());
+
+            let entity: Object = rune::from_value(entities[usize::from(id)].clone())
+                .map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
+
+            let flags = get_int!(entity, "flags", parent_key);
+
+            let tile_sprite = get_int!(entity, "tile_sprite", parent_key);
+
+            let speeches: Vec<Vec<Speech>> = 'speeches: {
+                let key = "speeches";
+                let raw_speeches_list = match entity.get(key) {
+                    None => break 'speeches vec![],
+                    Some(dynamic) => dynamic
+                        .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+                };
+
+                let mut speeches = Vec::with_capacity(raw_speeches_list.len());
+
+                for list_i in 0..raw_speeches_list.len() {
+                    let raw_speeches = raw_speeches_list[list_i]
+                    .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?;
+
+                    let mut individual_speeches = Vec::with_capacity(raw_speeches.len());
+
+                    for i in 0..raw_speeches.len() {
+                        let raw_text = raw_speeches[i].clone()
+                            .into_string().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "string", got })?;
+
+                        // TODO? Allow avoiding this reflow per speech?
+                        individual_speeches.push(Speech::from(raw_text.as_str()));
+                    }
+
+                    speeches.push(individual_speeches);
+                }
+
+                speeches
+            };
+
+            let inventory_description: Vec<Vec<Speech>> = 'inventory_description: {
+                let key = "inventory_description";
+                let raw_inventory_description_list = match entity.get(key) {
+                    None => break 'inventory_description vec![],
+                    Some(dynamic) => dynamic
+                        .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+                };
+
+                let mut inventory_description = Vec::with_capacity(raw_inventory_description_list.len());
+
+                for list_i in 0..raw_inventory_description_list.len() {
+                    let raw_inventory_description = raw_inventory_description_list[list_i]
+                    .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?;
+
+                    let mut individual_inventory_description = Vec::with_capacity(raw_inventory_description.len());
+
+                    for i in 0..raw_inventory_description.len() {
+                        let raw_text = raw_inventory_description[i].clone()
+                            .into_string().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "string", got })?;
+
+                        // TODO? Allow avoiding this reflow per speech?
+                        individual_inventory_description.push(Speech::from(raw_text.as_str()));
+                    }
+
+                    inventory_description.push(individual_inventory_description);
+                }
+
+                inventory_description
+            };
+
+            let wants = 'wants: {
+                let key = "wants";
+                let raw_wants = match entity.get(key) {
+                    None => break 'wants vec![],
+                    Some(dynamic) => dynamic
+                        .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+                };
+
+                let want_count: DefId = convert_to!(raw_wants.len() => DefId, key, parent_key);
+
+                let mut wants = Vec::with_capacity(raw_wants.len());
+
+                for i in 0..want_count {
+                    let parent_key = ik!("wants", i.into());
+
+                    let map: Object = rune::from_value(raw_wants[i as usize].clone())
+                        .map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
+
+                    let def_id = deref_def_id(
+                        id,
+                        &map,
+                        entity_def_count,
+                        parent_key,
+                    )?;
+
+                    wants.push(def_id);
+                }
+
+                wants
+            };
+
+            let on_collect = 'on_collect: {
+                let key = "on_collect";
+                let raw_on_collect = match entity.get(key) {
+                    None => break 'on_collect vec![],
+                    Some(dynamic) => dynamic
+                        .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+                };
+
+                let on_collect_count: DefId = convert_to!(raw_on_collect.len() => DefId, key, parent_key);
+
+                let mut on_collect = Vec::with_capacity(raw_on_collect.len());
+
+                for i in 0..on_collect_count {
+                    let action_map: Object = rune::from_value(raw_on_collect[i as usize].clone())
+                        .map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
+
+                    let parent_key = ik!("on_collect", i.into());
+
+                    let kind: CollectActionKind = get_int!(action_map, "kind", parent_key);
+
+                    match kind {
+                        models::consts::TRANSFORM => {
+                            let from_map = get_map!(action_map, "from", parent_key);
+
+                            let from = deref_def_id(
+                                id,
+                                &from_map,
+                                entity_def_count,
+                                parent_key,
+                            )?;
+
+                            let to_map = get_map!(action_map, "to", parent_key);
+
+                            let to = deref_def_id(
+                                id,
+                                &to_map,
+                                entity_def_count,
+                                parent_key,
+                            )?;
+
+                            on_collect.push(CollectAction::Transform(models::Transform{ from, to }));
+                        },
+                        _ => return Err(Error::UnknownCollectActionKind { key, parent_key, kind }),
+                    }
+
+
+                }
+
+                on_collect
+            };
+
+            entities_vec.push(EntityDef {
+                flags,
+                speeches,
+                inventory_description,
+                id,
+                tile_sprite,
+                wants,
+                on_collect,
+            });
+        }
+
+        let entities = entities_vec.try_into().map_err(|_| Error::NoEntitiesFound)?;
+
+        let hallways = get_array!(map, "hallways", ik!("#root"));
+
+        let mut hallways_vec = Vec::with_capacity(hallways.len());
+
+        for i in 0..hallways.len() {
+            use models::config::HallwaySpec;
+            let parent_key = ik!("hallways", i.into());
+
+            let hallway: Object = rune::from_value(hallways[i].clone())
+                .map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
+
+            let key = "kind";
+
+            let kind: models::consts::HallwayKind = get_int!(hallway, key, parent_key);
+
+            let spec = match kind {
+                models::consts::NONE => HallwaySpec::None,
+                models::consts::ICE_PUZZLE => HallwaySpec::IcePuzzle,
+                _ => return Err(Error::UnknownHallwayKind{ key, parent_key, kind }),
+            };
+
+            hallways_vec.push(spec);
+        }
+
+        // Interpret an empty hallways array as an array with a None kind in it.
+        let hallways = hallways_vec.try_into().unwrap_or_default();
 
         Ok(Config {
-            segments: h_config.segments,
-            entities: h_config.entities,
-            hallways: h_config.hallways,
+            segments,
+            entities,
+            hallways,
         })
     }
 
