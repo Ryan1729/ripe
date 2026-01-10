@@ -192,6 +192,12 @@ mod rune_based {
     }
 
     pub fn parse(code: &str) -> Result<Config, Error> {
+        let map: Object = eval(code)?;
+
+        to_config(map)
+    }
+
+    fn to_config(map: Object) -> Result<Config, Error> {
         use std::ops::Deref;
         use rune::runtime::Object;
         use rune::{Value};
@@ -207,13 +213,23 @@ mod rune_based {
             }
         }
 
+        macro_rules! to_array {
+            ($val: expr, $key: expr) => ({
+                let vec: Vec<Value> = rune::from_value(
+                    $val
+                ).map_err(|got| Error::TypeMismatch{ key: $key, expected: "array", got })?;
+
+                vec
+            })
+        }
+
         macro_rules! get_int {
             ($map: expr, $key: expr, $parent_key: expr) => {
                 {
                     let key = $key;
                     let parent_key = $parent_key;
 
-                    let value: &Value = 
+                    let value: &Value =
                         $map.get(key)
                             .ok_or(Error::FieldMissing{ key, parent_key, })?;
 
@@ -233,7 +249,7 @@ mod rune_based {
                 {
                     let key = $key;
                     let parent_key = $parent_key;
-                    let obj: Object = 
+                    let obj: Object =
                         rune::from_value(
                             $map.get(key)
                                 .ok_or(Error::FieldMissing{ key, parent_key, })?
@@ -249,14 +265,15 @@ mod rune_based {
                 {
                     let key = $key;
                     let parent_key = $parent_key;
-                    $map.get(key)
-                        .ok_or(Error::FieldMissing{ key, parent_key, })?
-                        .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: ik!(key), expected: "array", got })?
+
+                    to_array!(
+                        $map.get(key)
+                            .ok_or(Error::FieldMissing{ key, parent_key, })?,
+                        ik!(key)
+                    )
                 }
             }
         }
-
-        let map: Object = eval(code)?;
 
         let segments = get_array!(map, "segments", ik!("#root"));
 
@@ -272,9 +289,7 @@ mod rune_based {
 
             let tiles = {
                 let key = "tiles";
-                let raw_tiles = segment.get(key)
-                    .ok_or(Error::FieldMissing{ key, parent_key, })?
-                    .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: ik!(key), expected: "array", got })?;
+                let raw_tiles = get_array!(segment, key, parent_key);
 
                 let mut tiles: Vec<TileFlags> = Vec::with_capacity(raw_tiles.len());
 
@@ -307,8 +322,9 @@ mod rune_based {
 
         let entity_def_count = DefId::try_from(entities.len())
             .map_err(|_| Error::TooManyEntityDefinitions{ got: entities.len() })?;
-
+        dbg!(entity_def_count);
         for id in 0..entity_def_count {
+            dbg!("define deref_def_id");
             fn deref_def_id(
                 base: DefId,
                 map: &Object,
@@ -350,17 +366,18 @@ mod rune_based {
 
             let speeches: Vec<Vec<Speech>> = 'speeches: {
                 let key = "speeches";
+
                 let raw_speeches_list = match entity.get(key) {
                     None => break 'speeches vec![],
-                    Some(dynamic) => dynamic
-                        .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+                    Some(dynamic) => to_array!(dynamic, ik!(key)),
                 };
 
                 let mut speeches = Vec::with_capacity(raw_speeches_list.len());
 
                 for list_i in 0..raw_speeches_list.len() {
-                    let raw_speeches = raw_speeches_list[list_i]
-                    .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?;
+                    let parent_key = ik!(key, list_i);
+
+                    let raw_speeches = to_array!(raw_speeches_list[list_i].clone(), parent_key);
 
                     let mut individual_speeches = Vec::with_capacity(raw_speeches.len());
 
@@ -380,17 +397,18 @@ mod rune_based {
 
             let inventory_description: Vec<Vec<Speech>> = 'inventory_description: {
                 let key = "inventory_description";
+
                 let raw_inventory_description_list = match entity.get(key) {
                     None => break 'inventory_description vec![],
-                    Some(dynamic) => dynamic
-                        .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+                    Some(dynamic) => to_array!(dynamic, ik!(key)),
                 };
 
                 let mut inventory_description = Vec::with_capacity(raw_inventory_description_list.len());
 
                 for list_i in 0..raw_inventory_description_list.len() {
-                    let raw_inventory_description = raw_inventory_description_list[list_i]
-                    .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?;
+                    let parent_key = ik!(key, list_i);
+
+                    let raw_inventory_description = to_array!(&raw_inventory_description_list[list_i], parent_key);
 
                     let mut individual_inventory_description = Vec::with_capacity(raw_inventory_description.len());
 
@@ -410,12 +428,12 @@ mod rune_based {
 
             let wants = 'wants: {
                 let key = "wants";
+                dbg!(key);
                 let raw_wants = match entity.get(key) {
                     None => break 'wants vec![],
-                    Some(dynamic) => dynamic
-                        .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+                    Some(dynamic) => to_array!(dynamic, ik!(key)),
                 };
-
+                dbg!(key);
                 let want_count: DefId = convert_to!(raw_wants.len() => DefId, key, parent_key);
 
                 let mut wants = Vec::with_capacity(raw_wants.len());
@@ -441,17 +459,18 @@ mod rune_based {
 
             let on_collect = 'on_collect: {
                 let key = "on_collect";
+                dbg!(key);
                 let raw_on_collect = match entity.get(key) {
                     None => break 'on_collect vec![],
-                    Some(dynamic) => dynamic
-                        .borrow_tuple_ref().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "array", got })?
+                    Some(dynamic) => to_array!(dynamic, ik!(key)),
                 };
-
+                dbg!(key);
                 let on_collect_count: DefId = convert_to!(raw_on_collect.len() => DefId, key, parent_key);
 
                 let mut on_collect = Vec::with_capacity(raw_on_collect.len());
 
                 for i in 0..on_collect_count {
+                    dbg!(key, i);
                     let action_map: Object = rune::from_value(raw_on_collect[i as usize].clone())
                         .map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
 
@@ -484,12 +503,11 @@ mod rune_based {
                         _ => return Err(Error::UnknownCollectActionKind { key, parent_key, kind }),
                     }
 
-
                 }
-
+                dbg!(&on_collect);
                 on_collect
             };
-
+            dbg!("pre push");
             entities_vec.push(EntityDef {
                 flags,
                 speeches,
@@ -499,14 +517,15 @@ mod rune_based {
                 wants,
                 on_collect,
             });
+            dbg!("post push");
         }
-
+        dbg!("after");
         let entities = entities_vec.try_into().map_err(|_| Error::NoEntitiesFound)?;
-
+        dbg!();
         let hallways = get_array!(map, "hallways", ik!("#root"));
 
         let mut hallways_vec = Vec::with_capacity(hallways.len());
-
+        dbg!();
         for i in 0..hallways.len() {
             use models::config::HallwaySpec;
             let parent_key = ik!("hallways", i.into());
@@ -526,7 +545,7 @@ mod rune_based {
 
             hallways_vec.push(spec);
         }
-
+        dbg!();
         // Interpret an empty hallways array as an array with a None kind in it.
         let hallways = hallways_vec.try_into().unwrap_or_default();
 
@@ -569,7 +588,7 @@ mod rune_based {
             Err(e) => Err(Error::Runtime(e)),
         }
 
-        
+
     }
 
     fn sources_with_helpers() -> Result<Sources, AllocError> {
@@ -855,6 +874,52 @@ mod rune_based {
             "#;
 
             test_eval(&code);
+        }
+
+        #[test]
+        fn to_config_works_on_a_small_config() {
+            let code = r#"
+                use hallways as HW;
+                use tile_flags as TF;
+                const A = TF::FLOOR | TF::ITEM_START | TF::NPC_START;
+
+                pub fn main() {
+                    Ok(#{
+                        hallways: [
+                            #{
+                                kind: HW::NONE,
+                            },
+                        ],
+                        entities: [
+                            #{
+                                flags: 0,
+                                inventory_description: [
+                                    ["Test enitity"]
+                                ],
+                                tile_sprite: 0,
+                            },
+                        ],
+                        segments: [
+                            #{
+                                width: 1,
+                                tiles: [
+                                    A,
+                                    A,
+                                    A,
+                                    A,
+                                    A,
+                                    A,
+                                    A,
+                                ],
+                            },
+                        ],
+                    })
+                }
+            "#;
+
+            let obj = eval(&code).expect("should eval properly");
+
+            to_config(obj).expect("should extract config properly");
         }
     }
 
