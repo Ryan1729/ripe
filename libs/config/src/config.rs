@@ -41,6 +41,24 @@ mod rune_based {
         };
     }
 
+    impl From<&'static str> for IndexableKey {
+        fn from(key: &'static str) -> Self {
+            ik!(key)
+        }
+    }
+
+    impl core::fmt::Display for IndexableKey {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            write!(f, "{}", self.key)?;
+
+            if let Some(index) = self.index {
+                write!(f, "[{index}]")
+            } else {
+                Ok(())
+            }
+        }
+    }
+
     #[derive(Debug)]
     pub enum Error {
         Hardcoded(crate::hardcoded::Error),
@@ -63,14 +81,14 @@ mod rune_based {
         },
         UnexpectedTileKind {
             index: usize,
-            got: i64,
+            got: u64,
         },
         UnexpectedEntityKind {
             index: usize,
-            got: i64,
+            got: u64,
         },
         SizeError {
-            key: &'static str,
+            key: IndexableKey,
             parent_key: IndexableKey,
             error: std::num::TryFromIntError,
         },
@@ -153,7 +171,7 @@ mod rune_based {
                     Ok(())
                 },
                 Runtime(e) => {
-                    write!(f, "Rune RuntimeError: {e}")
+                    write!(f, " Rune RuntimeError:\n  {e}")
                 }
                 Vm(e) => {
                     write!(f, " Rune VmError:\n  {e}")
@@ -161,8 +179,15 @@ mod rune_based {
                 FromConfig(e) => {
                     write!(f, " FromConfig Error:\n  {e}")
                 }
+                TypeMismatch {
+                    key,
+                    expected,
+                    got,
+                } => {
+                    write!(f, " TypeMismatch @ {key}, expected {expected}:\n  {got}")
+                }
                 // TODO implement proper human readable display here
-                _ => write!(f, "fmt::Debug Fallback: {self:#?}"),
+                _ => write!(f, " fmt::Debug Fallback:\n  {self:#?}"),
             }
         }
     }
@@ -199,22 +224,46 @@ mod rune_based {
 
     fn to_config(map: Object) -> Result<Config, Error> {
         use std::ops::Deref;
-        use rune::runtime::Object;
+        use rune::runtime::{BorrowRef, Object};
         use rune::{Value};
-        use models::{consts::{EntityDefIdRefKind, CollectActionKind}, DefId, EntityDef, Speech, CollectAction};
+        use models::{
+            consts::{EntityDefIdRefKind, CollectActionKind},
+            CollectAction,
+            DefId,
+            EntityDef,
+            SegmentWidth,
+            Speech
+        };
 
         macro_rules! convert_to {
-            ($from: expr => $to: ty, $key: expr, $parent_key: expr) => {
+            ($from: expr => $to: ty, $key: expr, $parent_key: expr $(,)?) => {
                 <$to>::try_from($from).map_err(|error| Error::SizeError {
-                    key: $key,
+                    key: $key.into(),
                     parent_key: $parent_key,
                     error,
                 })?
             }
         }
 
+        macro_rules! to_int {
+            ($val: expr, $key: expr, $parent_key: expr $(,)?) => ({
+                let key = $key;
+                let parent_key = $parent_key;
+
+                let int: i64 = 
+                    $val.as_integer().map_err(|got| Error::TypeMismatch{ key, expected: "int", got })?;
+
+                int
+                    .try_into().map_err(|error| Error::SizeError {
+                        key,
+                        parent_key,
+                        error,
+                    })?
+            })
+        }
+
         macro_rules! to_array {
-            ($val: expr, $key: expr) => ({
+            ($val: expr, $key: expr $(,)?) => ({
                 let vec: Vec<Value> = rune::from_value(
                     $val
                 ).map_err(|got| Error::TypeMismatch{ key: $key, expected: "array", got })?;
@@ -224,7 +273,7 @@ mod rune_based {
         }
 
         macro_rules! get_int {
-            ($map: expr, $key: expr, $parent_key: expr) => {
+            ($map: expr, $key: expr, $parent_key: expr $(,)?) => {
                 {
                     let key = $key;
                     let parent_key = $parent_key;
@@ -233,19 +282,17 @@ mod rune_based {
                         $map.get(key)
                             .ok_or(Error::FieldMissing{ key, parent_key, })?;
 
-                    value
-                        .as_signed().map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "int", got })?
-                        .try_into().map_err(|error| Error::SizeError {
-                            key,
-                            parent_key,
-                            error,
-                        })?
+                    to_int!(
+                        value,
+                        ik!(key),
+                        parent_key,
+                    )
                 }
             }
         }
 
         macro_rules! get_map {
-            ($map: expr, $key: expr, $parent_key: expr) => {
+            ($map: expr, $key: expr, $parent_key: expr $(,)?) => {
                 {
                     let key = $key;
                     let parent_key = $parent_key;
@@ -253,7 +300,7 @@ mod rune_based {
                         rune::from_value(
                             $map.get(key)
                                 .ok_or(Error::FieldMissing{ key, parent_key, })?
-                        ).map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
+                        ).map_err(|got| Error::TypeMismatch{ key: key.into(), expected: "map", got })?;
 
                     obj
                 }
@@ -261,7 +308,7 @@ mod rune_based {
         }
 
         macro_rules! get_array {
-            ($map: expr, $key: expr, $parent_key: expr) => {
+            ($map: expr, $key: expr, $parent_key: expr $(,)?) => {
                 {
                     let key = $key;
                     let parent_key = $parent_key;
@@ -285,7 +332,7 @@ mod rune_based {
             let segment: Object = rune::from_value(segments[i].clone())
                 .map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
 
-            let width = get_int!(segment, "width", parent_key);
+            let width: SegmentWidth = get_int!(segment, "width", parent_key);
 
             let tiles = {
                 let key = "tiles";
@@ -294,8 +341,7 @@ mod rune_based {
                 let mut tiles: Vec<TileFlags> = Vec::with_capacity(raw_tiles.len());
 
                 for i in 0..raw_tiles.len() {
-                    let got = raw_tiles[i]
-                        .as_signed().map_err(|got| Error::TypeMismatch{ key: ik!(key, i), expected: "int", got })?;
+                    let got = to_int!(raw_tiles[i], ik!(key, i), parent_key);
 
                     let tile_flags = match TileFlags::try_from(got) {
                         Ok(tf) => tf,
@@ -322,9 +368,8 @@ mod rune_based {
 
         let entity_def_count = DefId::try_from(entities.len())
             .map_err(|_| Error::TooManyEntityDefinitions{ got: entities.len() })?;
-        dbg!(entity_def_count);
+
         for id in 0..entity_def_count {
-            dbg!("define deref_def_id");
             fn deref_def_id(
                 base: DefId,
                 map: &Object,
@@ -428,12 +473,12 @@ mod rune_based {
 
             let wants = 'wants: {
                 let key = "wants";
-                dbg!(key);
+                
                 let raw_wants = match entity.get(key) {
                     None => break 'wants vec![],
                     Some(dynamic) => to_array!(dynamic, ik!(key)),
                 };
-                dbg!(key);
+
                 let want_count: DefId = convert_to!(raw_wants.len() => DefId, key, parent_key);
 
                 let mut wants = Vec::with_capacity(raw_wants.len());
@@ -459,18 +504,17 @@ mod rune_based {
 
             let on_collect = 'on_collect: {
                 let key = "on_collect";
-                dbg!(key);
+
                 let raw_on_collect = match entity.get(key) {
                     None => break 'on_collect vec![],
                     Some(dynamic) => to_array!(dynamic, ik!(key)),
                 };
-                dbg!(key);
+
                 let on_collect_count: DefId = convert_to!(raw_on_collect.len() => DefId, key, parent_key);
 
                 let mut on_collect = Vec::with_capacity(raw_on_collect.len());
 
                 for i in 0..on_collect_count {
-                    dbg!(key, i);
                     let action_map: Object = rune::from_value(raw_on_collect[i as usize].clone())
                         .map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
 
@@ -480,23 +524,43 @@ mod rune_based {
 
                     match kind {
                         models::consts::TRANSFORM => {
-                            let from_map = get_map!(action_map, "from", parent_key);
+                            let from = {
+                                let key = "from";
+                                    
+                                let value: &Value = action_map.get(key)
+                                    .ok_or(Error::FieldMissing{ key, parent_key, })?;
+                                // We previously observed a "Cannot take" error when using `get_map!`,
+                                // which is why we borrow instead.
+                                let from_ref: BorrowRef<Object> = value.borrow_ref().map_err(Error::Runtime)?;
+    
+                                let from_map: &Object = from_ref.as_ref();
+    
+                                deref_def_id(
+                                    id,
+                                    from_map,
+                                    entity_def_count,
+                                    parent_key,
+                                )?
+                            };
 
-                            let from = deref_def_id(
-                                id,
-                                &from_map,
-                                entity_def_count,
-                                parent_key,
-                            )?;
-
-                            let to_map = get_map!(action_map, "to", parent_key);
-
-                            let to = deref_def_id(
-                                id,
-                                &to_map,
-                                entity_def_count,
-                                parent_key,
-                            )?;
+                            let to = {
+                                let key = "to";
+                                    
+                                let value: &Value = action_map.get(key)
+                                    .ok_or(Error::FieldMissing{ key, parent_key, })?;
+                                // We previously observed a "Cannot take" error when using `get_map!`,
+                                // which is why we borrow instead.
+                                let to_ref: BorrowRef<Object> = value.borrow_ref().map_err(Error::Runtime)?;
+    
+                                let to_map: &Object = to_ref.as_ref();
+    
+                                deref_def_id(
+                                    id,
+                                    to_map,
+                                    entity_def_count,
+                                    parent_key,
+                                )?
+                            };
 
                             on_collect.push(CollectAction::Transform(models::Transform{ from, to }));
                         },
@@ -504,10 +568,10 @@ mod rune_based {
                     }
 
                 }
-                dbg!(&on_collect);
+
                 on_collect
             };
-            dbg!("pre push");
+
             entities_vec.push(EntityDef {
                 flags,
                 speeches,
@@ -517,15 +581,14 @@ mod rune_based {
                 wants,
                 on_collect,
             });
-            dbg!("post push");
         }
-        dbg!("after");
+
         let entities = entities_vec.try_into().map_err(|_| Error::NoEntitiesFound)?;
-        dbg!();
+
         let hallways = get_array!(map, "hallways", ik!("#root"));
 
         let mut hallways_vec = Vec::with_capacity(hallways.len());
-        dbg!();
+
         for i in 0..hallways.len() {
             use models::config::HallwaySpec;
             let parent_key = ik!("hallways", i.into());
@@ -545,7 +608,7 @@ mod rune_based {
 
             hallways_vec.push(spec);
         }
-        dbg!();
+
         // Interpret an empty hallways array as an array with a None kind in it.
         let hallways = hallways_vec.try_into().unwrap_or_default();
 
@@ -1271,7 +1334,7 @@ mod rhai_based {
         macro_rules! convert_to {
             ($from: expr => $to: ty, $key: expr, $parent_key: expr) => {
                 <$to>::try_from($from).map_err(|error| Error::SizeError {
-                    key: $key,
+                    key: $key.into(),
                     parent_key: $parent_key,
                     error,
                 })?
