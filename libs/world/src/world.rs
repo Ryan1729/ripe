@@ -495,7 +495,7 @@ mod get_non_final_lock_and_keys_works {
             get_non_final_lock_and_keys(
                 ItemAndDoorDefs {
                     item_defs: &[some_key.clone()],
-                    door_defs: &[SOME_LOCKED_DOOR],
+                    door_defs: &[SOME_LOCKED_DOOR, SOME_OPEN_DOOR],
                 },
             ),
             Some(
