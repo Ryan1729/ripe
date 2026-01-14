@@ -1,6 +1,6 @@
 use common::*;
 use gfx::{Commands};
-use platform_types::{command, unscaled, Button, Input, Speaker, SFX};
+use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 use xs::{Xs, Seed};
 
 use platform::Chars;
@@ -13,6 +13,53 @@ pub struct State {
 
 const TILE_SIZE: unscaled::Inner = 20;
 
+fn str_to_sprite_xy(s: &str) -> sprite::XY {
+    let (sx, sy) = match s {
+        "☐" => (0, 0),
+        "☒" => (1 * TILE_SIZE, 0),
+        "\u{E010}" => (2 * TILE_SIZE, 0),
+        "\u{E011}" => (3 * TILE_SIZE, 0),
+        "\u{E012}" => (4 * TILE_SIZE, 0),
+        "\u{E013}" => (5 * TILE_SIZE, 0),
+        "\u{E014}" => (6 * TILE_SIZE, 0),
+        "\u{E015}" => (7 * TILE_SIZE, 0),
+        "\u{E016}" => (8 * TILE_SIZE, 0),
+        "\u{E017}" => (9 * TILE_SIZE, 0),
+        "\u{E018}" => (10 * TILE_SIZE, 0),
+        "@" => (0 * TILE_SIZE, 1 * TILE_SIZE),
+        "#" => (1 * TILE_SIZE, 1 * TILE_SIZE),
+        "$" => (2 * TILE_SIZE, 1 * TILE_SIZE),
+        "%" => (3 * TILE_SIZE, 1 * TILE_SIZE),
+        "R" => (4 * TILE_SIZE, 1 * TILE_SIZE),
+        "↑" => (0 * TILE_SIZE, 2 * TILE_SIZE),
+        "←" => (1 * TILE_SIZE, 2 * TILE_SIZE),
+        "↓" => (2 * TILE_SIZE, 2 * TILE_SIZE),
+        "→" => (3 * TILE_SIZE, 2 * TILE_SIZE),
+        "┌" => (0 * TILE_SIZE, 3 * TILE_SIZE),
+        "─" => (1 * TILE_SIZE, 3 * TILE_SIZE),
+        "╖" => (2 * TILE_SIZE, 3 * TILE_SIZE),
+        "│" => (3 * TILE_SIZE, 3 * TILE_SIZE),
+        "╘" => (4 * TILE_SIZE, 3 * TILE_SIZE),
+        "┘" => (5 * TILE_SIZE, 3 * TILE_SIZE),
+        "╔" => (0 * TILE_SIZE, 4 * TILE_SIZE),
+        "═" => (1 * TILE_SIZE, 4 * TILE_SIZE),
+        "╕" => (2 * TILE_SIZE, 4 * TILE_SIZE),
+        "║" => (3 * TILE_SIZE, 4 * TILE_SIZE),
+        "╙" => (4 * TILE_SIZE, 4 * TILE_SIZE),
+        "╝" => (5 * TILE_SIZE, 4 * TILE_SIZE),
+        _ => {
+            debug_assert!(false, "unknown tile str: \"{s}\"");
+            (0, 0)
+        }
+    };
+
+    sprite::XY {
+        // + 128 to put us at the start of the spritesheet section for this sub-game
+        x: sprite::X(sx + 128),
+        y: sprite::Y(sy),
+    }
+}
+
 fn p_xy(commands: &mut Commands, x_in: i32, y_in: i32, s: &'static str) {
     use platform_types::{sprite};
     type X = unscaled::Inner;
@@ -22,48 +69,8 @@ fn p_xy(commands: &mut Commands, x_in: i32, y_in: i32, s: &'static str) {
 
     match (X::try_from(x_in), Y::try_from(y_in)) {
         (Ok(x), Ok(y)) => {
-            let (sx, sy) = match s {
-                "☐" => (0, 0),
-                "☒" => (1 * TILE_SIZE, 0),
-                "\u{E010}" => (2 * TILE_SIZE, 0),
-                "\u{E011}" => (3 * TILE_SIZE, 0),
-                "\u{E012}" => (4 * TILE_SIZE, 0),
-                "\u{E013}" => (5 * TILE_SIZE, 0),
-                "\u{E014}" => (6 * TILE_SIZE, 0),
-                "\u{E015}" => (7 * TILE_SIZE, 0),
-                "\u{E016}" => (8 * TILE_SIZE, 0),
-                "\u{E017}" => (9 * TILE_SIZE, 0),
-                "\u{E018}" => (10 * TILE_SIZE, 0),
-                "@" => (0 * TILE_SIZE, 1 * TILE_SIZE),
-                "R" => (1 * TILE_SIZE, 1 * TILE_SIZE),
-                "↑" => (0 * TILE_SIZE, 2 * TILE_SIZE),
-                "←" => (1 * TILE_SIZE, 2 * TILE_SIZE),
-                "↓" => (2 * TILE_SIZE, 2 * TILE_SIZE),
-                "→" => (3 * TILE_SIZE, 2 * TILE_SIZE),
-                "┌" => (0 * TILE_SIZE, 3 * TILE_SIZE),
-                "─" => (1 * TILE_SIZE, 3 * TILE_SIZE),
-                "╖" => (2 * TILE_SIZE, 3 * TILE_SIZE),
-                "│" => (3 * TILE_SIZE, 3 * TILE_SIZE),
-                "╘" => (4 * TILE_SIZE, 3 * TILE_SIZE),
-                "┘" => (5 * TILE_SIZE, 3 * TILE_SIZE),
-                "╔" => (0 * TILE_SIZE, 4 * TILE_SIZE),
-                "═" => (1 * TILE_SIZE, 4 * TILE_SIZE),
-                "╕" => (2 * TILE_SIZE, 4 * TILE_SIZE),
-                "║" => (3 * TILE_SIZE, 4 * TILE_SIZE),
-                "╙" => (4 * TILE_SIZE, 4 * TILE_SIZE),
-                "╝" => (5 * TILE_SIZE, 4 * TILE_SIZE),
-                _ => {
-                    debug_assert!(false, "unknown tile str: \"{s}\"");
-                    (0, 0)
-                }
-            };
-
             commands.sspr(
-                sprite::XY {
-                    // + 128 to put us at the start of the spritesheet section for this sub-game
-                    x: sprite::X(sx + 128),
-                    y: sprite::Y(sy),
-                },
+                str_to_sprite_xy(s),
                 command::Rect::from_unscaled(unscaled::Rect {
                     x: unscaled::X((x * TILE_SIZE) as _),
                     y: unscaled::Y((y * TILE_SIZE) as _),
@@ -255,47 +262,8 @@ mod platform {
     /// `platform` state management
     pub fn push_commands(commands: &mut Commands) {
         for ((x, y), s) in state!().chars.iter() {
-            let (sx, sy) = match *s {
-                "☐" => (0, 0),
-                "☒" => (1 * TILE_SIZE, 0),
-                "\u{E010}" => (2 * TILE_SIZE, 0),
-                "\u{E011}" => (3 * TILE_SIZE, 0),
-                "\u{E012}" => (4 * TILE_SIZE, 0),
-                "\u{E013}" => (5 * TILE_SIZE, 0),
-                "\u{E014}" => (6 * TILE_SIZE, 0),
-                "\u{E015}" => (7 * TILE_SIZE, 0),
-                "\u{E016}" => (8 * TILE_SIZE, 0),
-                "\u{E017}" => (9 * TILE_SIZE, 0),
-                "\u{E018}" => (10 * TILE_SIZE, 0),
-                "@" => (3 * TILE_SIZE, 1 * TILE_SIZE),
-                "R" => (4 * TILE_SIZE, 1 * TILE_SIZE),
-                "↑" => (3 * TILE_SIZE, 2 * TILE_SIZE),
-                "←" => (4 * TILE_SIZE, 2 * TILE_SIZE),
-                "↓" => (5 * TILE_SIZE, 2 * TILE_SIZE),
-                "→" => (6 * TILE_SIZE, 2 * TILE_SIZE),
-                "┌" => (3 * TILE_SIZE, 3 * TILE_SIZE),
-                "─" => (4 * TILE_SIZE, 3 * TILE_SIZE),
-                "╖" => (5 * TILE_SIZE, 3 * TILE_SIZE),
-                "│" => (6 * TILE_SIZE, 3 * TILE_SIZE),
-                "╘" => (7 * TILE_SIZE, 3 * TILE_SIZE),
-                "┘" => (8 * TILE_SIZE, 3 * TILE_SIZE),
-                "╔" => (3 * TILE_SIZE, 4 * TILE_SIZE),
-                "═" => (4 * TILE_SIZE, 4 * TILE_SIZE),
-                "╕" => (5 * TILE_SIZE, 4 * TILE_SIZE),
-                "║" => (6 * TILE_SIZE, 4 * TILE_SIZE),
-                "╙" => (7 * TILE_SIZE, 4 * TILE_SIZE),
-                "╝" => (8 * TILE_SIZE, 4 * TILE_SIZE),
-                _ => {
-                    debug_assert!(false, "unknown tile str: \"{s}\"");
-                    (0, 0)
-                }
-            };
-            dbg!(*s);
             commands.sspr(
-                sprite::XY {
-                    x: sprite::X(sx),
-                    y: sprite::Y(sy),
-                },
+                str_to_sprite_xy(s),
                 command::Rect::from_unscaled(unscaled::Rect {
                     x: unscaled::X((x * TILE_SIZE) as _),
                     y: unscaled::Y((y * TILE_SIZE) as _),
@@ -304,7 +272,6 @@ mod platform {
                 })
             );
         }
-        //eprintln!("{:p} post push_commands {}", &state!().chars, &state!().chars.len());
     }
         
     pub fn end_frame() {

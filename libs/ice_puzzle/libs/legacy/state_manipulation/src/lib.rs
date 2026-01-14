@@ -93,28 +93,33 @@ fn cross_mode_event_handling(platform: &Platform, state: &mut State, event: &Eve
         Event::KeyPressed { key: KeyCode::Up, ctrl: _, shift: _ } => {
             if state.motion == Stopped {
                 state.motion = Up;
+                state.player_facing_direction = Dir::Up;
             }
         }
         Event::KeyPressed { key: KeyCode::D, ctrl: _, shift: _ } |
         Event::KeyPressed { key: KeyCode::Right, ctrl: _, shift: _ } => {
             if state.motion == Stopped {
                 state.motion = Right;
+                state.player_facing_direction = Dir::Right;
             }
         }
         Event::KeyPressed { key: KeyCode::S, ctrl: _, shift: _ } |
         Event::KeyPressed { key: KeyCode::Down, ctrl: _, shift: _ } => {
             if state.motion == Stopped {
                 state.motion = Down;
+                state.player_facing_direction = Dir::Down;
             }
         }
         Event::KeyPressed { key: KeyCode::A, ctrl: _, shift: _ } |
         Event::KeyPressed { key: KeyCode::Left, ctrl: _, shift: _ } => {
             if state.motion == Stopped {
                 state.motion = Left;
+                state.player_facing_direction = Dir::Left;
             }
         }
         Event::KeyPressed { key: KeyCode::R, ctrl: false, shift: _ } => {
             state.player_pos = state.initial_player_pos;
+            state.player_facing_direction = Dir::default();
         }
         Event::KeyPressed { key: KeyCode::R, ctrl: true, shift: _ } => {
             *state = new_state((platform.size)(), xs::new_seed(&mut state.rng));
@@ -199,8 +204,15 @@ fn draw(commands: &mut Commands, platform: &Platform, state: &State) {
 
     print_tuple(commands, platform, state.initial_player_pos, "☐");
 
+    let player = match state.player_facing_direction {
+        Dir::Up => "@",
+        Dir::Right => "#",
+        Dir::Down => "$",
+        Dir::Left => "%",
+    };
+
     with_layer!(platform, 1, {
-        print_tuple(commands, platform, state.player_pos, "@");
+        print_tuple(commands, platform, state.player_pos, player);
     })
 
 }
@@ -344,6 +356,7 @@ fn next_level(size: Size, mut rng: Xs, max_steps: u8) -> State {
     State {
         player_pos: player_pos,
         initial_player_pos: player_pos,
+        player_facing_direction: <_>::default(),
         cells: cells,
         rng: rng,
         frame_count: 0,

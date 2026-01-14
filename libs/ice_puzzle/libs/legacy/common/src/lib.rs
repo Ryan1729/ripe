@@ -29,6 +29,7 @@ pub struct Platform {
 pub struct State {
     pub player_pos: (i32, i32),
     pub initial_player_pos: (i32, i32),
+    pub player_facing_direction: Dir,
     pub cells: Cells,
     pub rng: Xs,
     pub frame_count: u32,
@@ -48,6 +49,15 @@ use Cell::*;
 #[derive(Copy, Clone, PartialEq)]
 pub enum Motion {
     Stopped,
+    Up,
+    Right,
+    Down,
+    Left,
+}
+
+#[derive(Copy, Clone, Default, PartialEq)]
+pub enum Dir {
+    #[default]
     Up,
     Right,
     Down,

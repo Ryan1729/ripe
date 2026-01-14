@@ -1,4 +1,6 @@
-//use hardcoded as used_mod;
+#[cfg(false)]
+use hardcoded as used_mod;
+
 use rune_based as used_mod;
 
 pub use used_mod::{parse, Error};
@@ -60,7 +62,6 @@ mod rune_based {
 
     #[derive(Debug)]
     pub enum Error {
-        Hardcoded(crate::hardcoded::Error),
         Alloc(AllocError),
         Build(BuildError),
         Context(ContextError),
@@ -994,6 +995,7 @@ mod rune_based {
     }
 }
 
+#[cfg(false)]
 mod hardcoded {
     use models::{Config};
 
