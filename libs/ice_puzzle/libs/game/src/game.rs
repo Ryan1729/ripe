@@ -1,9 +1,7 @@
 use common::*;
 use gfx::{Commands};
-use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
-use xs::{Xs, Seed};
-
-use platform::Chars;
+use platform_types::{command, sprite, unscaled, Button, Input, Speaker};
+use xs::{Seed};
 
 pub struct State {
     pub state: common::State,
@@ -61,7 +59,6 @@ fn str_to_sprite_xy(s: &str) -> sprite::XY {
 }
 
 fn p_xy(commands: &mut Commands, x_in: i32, y_in: i32, s: &'static str) {
-    use platform_types::{sprite};
     type X = unscaled::Inner;
     type Y = unscaled::Inner;
 
@@ -94,21 +91,7 @@ impl State {
             ),
             platform: Platform {
                 p_xy,
-                print_xy: platform::print_xy,
-                clear: platform::clear,
                 size: platform::size,
-                pick: platform::pick,
-                mouse_position: platform::mouse_position,
-                clicks: platform::clicks,
-                key_pressed: platform::key_pressed,
-                set_colors: platform::set_colors,
-                get_colors: platform::get_colors,
-                set_foreground: platform::set_foreground,
-                get_foreground: platform::get_foreground,
-                set_background: platform::set_background,
-                get_background: platform::get_background,
-                set_layer: platform::set_layer,
-                get_layer: platform::get_layer,
             },
             events: Vec::with_capacity(1),
         }
@@ -118,7 +101,7 @@ impl State {
         commands: &mut Commands,
         state: &mut State,
         input: Input,
-        speaker: &mut Speaker,
+        _speaker: &mut Speaker,
     ) {
         state.events.clear();
 
@@ -152,7 +135,7 @@ impl State {
             }
         }
 
-        let ignored = state_manipulation::update_and_render(
+        state_manipulation::update_and_render(
             commands,
             &state.platform,
             &mut state.state,
@@ -167,10 +150,9 @@ impl State {
 
 mod platform {
     use super::*;
-    use platform_types::{sprite};
     use std::{
         collections::HashMap,
-        sync::{Mutex, OnceLock}
+        sync::{Mutex}
     };
 
     type X = unscaled::Inner;
@@ -196,67 +178,8 @@ mod platform {
     }
 
     /// `Platform` function pointers
-
-    pub fn print_xy(x_in: i32, y_in: i32, s: &'static str) {
-        assert_eq!(s.chars().count(), 1, "{s}");
-
-        match (X::try_from(x_in), Y::try_from(y_in)) {
-            (Ok(x), Ok(y)) => {
-                { state!().chars.insert((x, y), s); }
-                {
-                    let c: &Chars = &(state!().chars);
-                    eprintln!("{:p} print_xy {}", c, c.len());
-                }
-            },
-            _ => {
-                assert!(false, "bad (x, y): ({x_in}, {y_in})");
-            }
-        }
-    }
-    pub fn clear(rect: Option<Rect>) {
-
-    }
     pub fn size() -> Size {
         Size::new(24, 16)
-    }
-    pub fn pick(point: Point, _: i32) -> char {
-        '\0'
-    }
-    pub fn mouse_position() -> Point {
-        Point::default()
-    }
-    pub fn clicks() -> i32 {
-        0
-    }
-    pub fn key_pressed(key: KeyCode) -> bool {
-        false
-    }
-    pub fn set_colors(foreground: Color, background: Color) {
-        
-    }
-    pub fn get_colors() -> (Color, Color) {
-        (
-            Color { red: 255, green: 0, blue: 255, alpha: 255 },
-            Color { red: 255, green: 0, blue: 255, alpha: 255 },
-        )
-    }
-    pub fn set_foreground(foreground: Color) {
-
-    }
-    pub fn get_foreground() -> (Color) {
-        get_colors().0
-    }
-    pub fn set_background(background: Color) {
-
-    }
-    pub fn get_background() -> (Color) {
-        get_colors().1
-    }
-    pub fn set_layer(layer: i32) {
-
-    }
-    pub fn get_layer() -> i32 {
-        0
     }
 
     /// `platform` state management

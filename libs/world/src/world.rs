@@ -105,7 +105,6 @@ pub type EntityKey = entities::Key;
 pub mod hallway {
     use features::{invariant_assert};
     use crate::entities::Key as EntityKey;
-    use xs::Xs;
 
     use std::collections::BTreeMap;
 
@@ -118,7 +117,7 @@ pub mod hallway {
         pub fn tick(&mut self) {
             use State::*;
             match self {
-                IcePuzzle(inner) => {},
+                IcePuzzle(_inner) => {},
             }
         }
 

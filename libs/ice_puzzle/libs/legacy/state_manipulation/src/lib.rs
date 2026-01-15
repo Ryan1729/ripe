@@ -20,29 +20,15 @@ pub fn new_state(
     next_level(size, rng, max_steps)
 }
 
-const START_POS: (i32, i32) = (7, 3);
-
-//returns true if quit requested
 pub fn update_and_render(
     commands: &mut Commands,
     platform: &Platform,
     state: &mut State,
     events: &mut Vec<Event>
-) -> bool {
+) {
     state.frame_count = state.frame_count.overflowing_add(1).0;
 
-    game_update_and_render(commands, platform, state, events)
-}
-
-fn draw_button(commands: &mut Commands, platform: &Platform, x: i32, y: i32, w: i32, h: i32, label: &'static str, pressed: bool) {
-
-    if pressed {
-        draw_pressed_button_rect(commands, platform, x, y, w, h);
-    } else {
-        draw_unpressed_button_rect(commands, platform, x, y, w, h);
-    }
-
-    (platform.p_xy)(commands, x + 1, y + 1, label);
+    game_update_and_render(commands, platform, state, events);
 }
 
 pub fn game_update_and_render(
@@ -50,15 +36,9 @@ pub fn game_update_and_render(
     platform: &Platform,
     state: &mut State,
     events: &mut Vec<Event>
-) -> bool {
+) {
     for event in events {
         cross_mode_event_handling(platform, state, event);
-
-        match *event {
-            Event::Close |
-            Event::KeyPressed { key: KeyCode::Escape, ctrl: _, shift: _ } => return true,
-            _ => (),
-        }
     }
 
     move_player((platform.size)(), state);
@@ -69,8 +49,6 @@ pub fn game_update_and_render(
     }
 
     draw(commands, platform, state);
-
-    false
 }
 
 fn move_player(size: Size, state: &mut State) {
@@ -184,19 +162,6 @@ fn print_tuple(commands: &mut Commands, platform: &Platform, (x, y): (i32, i32),
     }
 }
 
-macro_rules! with_layer {
-    ($platform:expr, $layer:expr, $code:block) => {
-        {
-            let current = ($platform.get_layer)();
-            ($platform.set_layer)($layer);
-
-            $code
-
-            ($platform.set_layer)(current);
-        }
-    }
-}
-
 fn draw(commands: &mut Commands, platform: &Platform, state: &State) {
     for (&coords, &cell) in state.cells.iter() {
         print_cell(commands, platform, coords, cell, state.frame_count);
@@ -211,56 +176,8 @@ fn draw(commands: &mut Commands, platform: &Platform, state: &State) {
         Dir::Left => "%",
     };
 
-    with_layer!(platform, 1, {
-        print_tuple(commands, platform, state.player_pos, player);
-    })
+    print_tuple(commands, platform, state.player_pos, player);
 
-}
-
-fn draw_unpressed_button_rect(commands: &mut Commands, platform: &Platform, x: i32, y: i32, w: i32, h: i32) {
-    draw_rect_with(commands,
-                   platform,
-                   x,
-                   y,
-                   w,
-                   h,
-                   ["┌", "─", "╖", "│", "║", "╘", "═", "╝"]);
-}
-
-fn draw_pressed_button_rect(commands: &mut Commands, platform: &Platform, x: i32, y: i32, w: i32, h: i32) {
-    draw_rect_with(commands,
-                   platform,
-                   x,
-                   y,
-                   w,
-                   h,
-                   ["╔", "═", "╕", "║", "│", "╙", "─", "┘"]);
-}
-
-fn draw_rect_with(commands: &mut Commands, platform: &Platform, x: i32, y: i32, w: i32, h: i32, edges: [&'static str; 8]) {
-    (platform.clear)(Some(Rect::from_values(x, y, w, h)));
-
-    let right = x + w - 1;
-    let bottom = y + h - 1;
-    // top
-    (platform.p_xy)(commands, x, y, edges[0]);
-    for i in (x + 1)..right {
-        (platform.p_xy)(commands, i, y, edges[1]);
-    }
-    (platform.p_xy)(commands, right, y, edges[2]);
-
-    // sides
-    for i in (y + 1)..bottom {
-        (platform.p_xy)(commands, x, i, edges[3]);
-        (platform.p_xy)(commands, right, i, edges[4]);
-    }
-
-    //bottom
-    (platform.p_xy)(commands, x, bottom, edges[5]);
-    for i in (x + 1)..right {
-        (platform.p_xy)(commands, i, bottom, edges[6]);
-    }
-    (platform.p_xy)(commands, right, bottom, edges[7]);
 }
 
 fn print_cell(commands: &mut Commands, platform: &Platform, coords: (i32, i32), cell: Cell, frame_count: u32) {
@@ -501,11 +418,6 @@ fn next_coord(size: Size, (x, y): (i32, i32)) -> (i32, i32) {
 use std::ops::Add;
 fn add<T: Add<Output = T>>((x1, y1): (T, T), (x2, y2): (T, T)) -> (T, T) {
     (x1 + x2, y1 + y2)
-}
-
-use std::ops::Sub;
-fn sub<T: Sub<Output = T>>((x1, y1): (T, T), (x2, y2): (T, T)) -> (T, T) {
-    (x1 - x2, y1 - y2)
 }
 
 fn increment_count(counts: &mut HashMap<(i32, i32), u32>, key: (i32, i32)) {

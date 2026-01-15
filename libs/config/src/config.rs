@@ -149,7 +149,7 @@ mod rune_based {
                         fn reset(&mut self) -> Result<(), std::io::Error> { Ok(()) }
                     }
 
-                    let mut write_wrapper = &mut Wrapper(f);
+                    let write_wrapper = &mut Wrapper(f);
 
                     for diagnostic in diagnostics {
                         match {
@@ -223,7 +223,6 @@ mod rune_based {
     }
 
     fn to_config(map: Object) -> Result<Config, Error> {
-        use std::ops::Deref;
         use rune::runtime::{BorrowRef, Object};
         use rune::{Value};
         use models::{
@@ -291,6 +290,7 @@ mod rune_based {
             }
         }
 
+        /*
         macro_rules! get_map {
             ($map: expr, $key: expr, $parent_key: expr $(,)?) => {
                 {
@@ -306,6 +306,7 @@ mod rune_based {
                 }
             }
         }
+        */
 
         macro_rules! get_array {
             ($map: expr, $key: expr, $parent_key: expr $(,)?) => {

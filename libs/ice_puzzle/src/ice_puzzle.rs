@@ -1,5 +1,5 @@
 use gfx::{Commands};
-use platform_types::{command, unscaled, Button, Input, Speaker, SFX};
+use platform_types::{Input, Speaker};
 use xs::Xs;
 
 //#[derive(Clone, Debug)]
