@@ -111,6 +111,8 @@ pub mod hallway {
     #[derive(Clone, Debug)]
     pub enum State {
         IcePuzzle(ice_puzzle::State),
+        // Staff Whacking Ordeal Required, Duh
+        SWORD(sword::State),
     }
 
     impl State {
@@ -118,6 +120,7 @@ pub mod hallway {
             use State::*;
             match self {
                 IcePuzzle(_inner) => {},
+                SWORD(_inner) => {},
             }
         }
 
@@ -125,6 +128,7 @@ pub mod hallway {
             use State::*;
             match self {
                 IcePuzzle(inner) => inner.is_complete(),
+                SWORD(inner) => inner.is_complete(),
             }
         }
     }
@@ -942,7 +946,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                 assert_door_targets_seem_right!();
     
                 invariant_assert!(config.hallways.len() as u128 <= u128::from(u32::MAX));
-                let hallway_index = 1;//xs::range(rng, 0..config.hallways.len() as u32) as usize;
+                let hallway_index = xs::range(rng, 0..config.hallways.len() as u32) as usize;
                 let hallway = &config.hallways[hallway_index];
 
                 use models::config::HallwaySpec;
@@ -954,6 +958,13 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                             key_i,
                             key_j,
                             hallway::State::IcePuzzle(ice_puzzle::State::new(rng)),
+                        );
+                    },
+                    HallwaySpec::SWORD => {
+                        hallway_states.insert(
+                            key_i,
+                            key_j,
+                            hallway::State::SWORD(sword::State::new(rng)),
                         );
                     },
                 }

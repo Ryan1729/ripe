@@ -1,0 +1,18 @@
+[package]
+name = "sword"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/sword.rs"
+
+[dependencies]
+
+[dependencies.gfx]
+path = "../gfx"
+
+[dependencies.platform_types]
+path = "../platform_types"
+
+[dependencies.xs]
+path = "../xs"

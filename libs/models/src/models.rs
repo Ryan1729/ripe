@@ -194,6 +194,7 @@ pub mod consts {
         ALL_HALLWAY_KINDS: CollectActionKind;
         NONE = 0,
         ICE_PUZZLE = 1,
+        SWORD = 2,
     }
 
     pub type TileFlags = u32;
@@ -661,6 +662,7 @@ pub mod config {
         #[default]
         None,
         IcePuzzle,
+        SWORD,
     }
 }
 pub use config::{Config, EntityDef};

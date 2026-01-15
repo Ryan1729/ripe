@@ -604,6 +604,7 @@ mod rune_based {
             let spec = match kind {
                 models::consts::NONE => HallwaySpec::None,
                 models::consts::ICE_PUZZLE => HallwaySpec::IcePuzzle,
+                models::consts::SWORD => HallwaySpec::SWORD,
                 _ => return Err(Error::UnknownHallwayKind{ key, parent_key, kind }),
             };
 

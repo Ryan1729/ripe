@@ -38,7 +38,7 @@ impl State {
         input: Input,
         speaker: &mut Speaker,
     ) {
-        // TODO allow backing out in case the palyer wants to give up on the puzzle
+        // TODO allow backing out in case the player wants to give up on the puzzle
 
         game::State::update_and_render(
             commands,

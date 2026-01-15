@@ -17,6 +17,9 @@ path = "../ice_puzzle"
 [dependencies.models]
 path = "../models"
 
+[dependencies.sword]
+path = "../sword"
+
 [dependencies.vec1]
 path = "../vec1"
 

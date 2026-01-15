@@ -2001,6 +2001,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
+name = "sword"
+version = "0.1.0"
+dependencies = [
+ "gfx",
+ "platform_types",
+ "xs",
+]
+
+[[package]]
 name = "syn"
 version = "1.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2731,6 +2740,7 @@ dependencies = [
  "features",
  "ice_puzzle",
  "models",
+ "sword",
  "vec1",
  "xs",
 ]

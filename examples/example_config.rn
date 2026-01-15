@@ -127,6 +127,10 @@ pub fn main() /* -> Result<Object, String> */ {
                 kind: HW::ICE_PUZZLE,
                 // TODO configuration of ice puzzle. Width and height probably?
             },
+            #{
+                kind: HW::SWORD,
+                // TODO configuration of SWORD.
+            },
         ],
         entities: entities,
         segments: [

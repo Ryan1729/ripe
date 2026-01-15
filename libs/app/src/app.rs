@@ -179,6 +179,13 @@ fn game_update(commands: &mut Commands, state: &mut game::State, input: Input, s
                         speaker,
                     );
                 },
+                Some(HallwayState::SWORD(sword)) => {
+                    sword.update_and_render(
+                        commands,
+                        input,
+                        speaker,
+                    );
+                },
                 None => {
                     invariant_assert!(false, "Hallway was not found while in Hallway mode!");
                     state.mode = Mode::Walking;
