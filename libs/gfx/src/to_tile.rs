@@ -4,6 +4,8 @@ use models::{Entity, xy::{XY}, TileSprite, offset};
 // TODO These should be changeable at runtime. Having it be here in this module as a static is inconvenient.
 //      I think the place for it is on the gfx::Commands. So move this module into there, and start passing
 //      them into these functions, adding high level methods to gfx::Commands as needed {
+// The time to do this appears to be now, just before we would start writing more code that would rely on these values
+// We should consider preparing an actual alternate tileset and actually implement loading it
 const TILE_W: unscaled::W = unscaled::W(16);
 const TILE_H: unscaled::H = unscaled::H(16);
 
