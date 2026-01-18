@@ -3,23 +3,40 @@ use hardcoded as used_mod;
 
 use rune_based as used_mod;
 
-pub use used_mod::{parse, Error};
+pub use used_mod::{MANIFEST_FILENAME, parse, parse_manifest, Error};
 
 mod rune_based {
     use platform_types::TILES_PER_ROW;
     use models::{
         config::{
             Config,
+            Manifest,
             WorldSegment,
         },
         consts::{TileFlags},
         DefId,
         DefIdDelta
     };
+
+    use std::path::PathBuf;
     use rune::{alloc::{Error as AllocError}, BuildError, Context, ContextError, Diagnostics, Source, Sources, Vm};
     use rune::diagnostics::{Diagnostic};
     use rune::runtime::{Object, RuntimeError, VmError};
     use rune::sync::Arc;
+
+    pub const MANIFEST_FILENAME: &str = "manifest.rn";
+
+    pub fn parse(code: &str) -> Result<Config, Error> {
+        let map: Object = eval(code)?;
+
+        to_config(map)
+    }
+
+    pub fn parse_manifest(code: &str) -> Result<Manifest, Error> {
+        let map: Object = eval(code)?;
+
+        to_manifest(map)
+    }
 
     #[derive(Clone, Copy, Debug)]
     pub struct IndexableKey {
@@ -192,6 +209,10 @@ mod rune_based {
         }
     }
 
+    impl std::error::Error for Error {
+        // TODO impl source when we have a need for that?
+    }
+
     impl From<AllocError> for Error {
         fn from(e: AllocError) -> Self {
             Self::Alloc(e)
@@ -214,12 +235,6 @@ mod rune_based {
         fn from(e: VmError) -> Self {
             Self::Vm(e)
         }
-    }
-
-    pub fn parse(code: &str) -> Result<Config, Error> {
-        let map: Object = eval(code)?;
-
-        to_config(map)
     }
 
     fn to_config(map: Object) -> Result<Config, Error> {
@@ -618,6 +633,36 @@ mod rune_based {
             segments,
             entities,
             hallways,
+        })
+    }
+
+    fn to_manifest(map: Object) -> Result<Manifest, Error> {
+        macro_rules! get_str {
+            ($map: expr, $key: expr, $parent_key: expr $(,)?) => {
+                {
+                    let key = $key;
+                    let parent_key = $parent_key;
+                    let string: String =
+                        rune::from_value(
+                            $map.get(key)
+                                .ok_or(Error::FieldMissing{ key, parent_key, })?
+                        ).map_err(|got| Error::TypeMismatch{ key: key.into(), expected: "String", got })?;
+
+                    string
+                }
+            }
+        }
+
+        let root_key = ik!("#root");
+
+        let name = get_str!(map, "name", root_key);
+        let config_path = PathBuf::from(get_str!(map, "config_path", root_key));
+        let spritesheet_path = PathBuf::from(get_str!(map, "spritesheet_path", root_key));
+
+        Ok(Manifest {
+            name,
+            config_path,
+            spritesheet_path,
         })
     }
 

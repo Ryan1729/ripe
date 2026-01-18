@@ -627,6 +627,7 @@ pub mod config {
     use crate::{
         consts::{EntityDefFlags, TileFlags}, DefId, OnCollect, SegmentWidth, Speech, TileSprite
     };
+    use std::path::PathBuf;
 
     /// A configuration WorldSegment that can be used to contruct game::WorldSegments later.
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -644,6 +645,22 @@ pub mod config {
         pub segments: Vec1<WorldSegment>,
         pub entities: Vec1<EntityDef>,
         pub hallways: Vec1<HallwaySpec>,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct Manifest {
+        pub name: String,
+        pub config_path: PathBuf,
+        pub spritesheet_path: PathBuf,
+    }
+
+    impl Manifest {
+        pub fn paths(&self) -> impl Iterator<Item = &std::path::Path> {
+            [
+                self.config_path.as_path(),
+                self.spritesheet_path.as_path()
+            ].into_iter()
+        }
     }
 
     #[derive(Clone, Debug)]
