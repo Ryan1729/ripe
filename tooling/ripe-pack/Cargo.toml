@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 xflags = "0.3.2"
+zip = { version = "7.0.0", default-features = false, features = ["deflate"] }
 
 [dependencies.config]
 path = "../../libs/config"

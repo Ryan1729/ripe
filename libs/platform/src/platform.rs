@@ -278,9 +278,8 @@ pub fn get_state_params() -> StateParams {
         args.next(); // exe name
     
         let override_config: Option<String> = args.next().and_then(
-            |file_name| std::fs::read_to_string(file_name).ok()
+            |file_name| dbg!(std::fs::read_to_string(file_name)).ok()
         );
-
         override_config
     }
 

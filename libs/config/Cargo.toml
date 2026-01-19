@@ -11,9 +11,9 @@ default = []
 wasm = [] # Leftover from before
 
 [dependencies]
-#rune = { version = "0.14.1", features = [] }
+#rune = { version = "0.14.1", default-features = false, features = ["alloc", "emit"] }
 # Currently needed for bitwise operations. Once a new version is released to crates.io, we'd prefer to use that version.
-rune = { git = "https://github.com/rune-rs/rune.git", rev = "734b79e", features = [] }
+rune = { git = "https://github.com/rune-rs/rune.git", rev = "734b79e", default-features = false, features = ["alloc", "emit"] }
 
 [dependencies.platform_types]
 path = "../platform_types"
