@@ -12,7 +12,7 @@ fn inner_main() -> Result<(), Box<dyn std::error::Error>> {
 
     let input_dir = flags.input.unwrap_or_else(|| PathBuf::from("."));
 
-    let manifest_path = input_dir.join(config::MANIFEST_FILENAME);
+    let manifest_path = input_dir.join(pak::MANIFEST_FILENAME);
     
     let manifest_string = std::fs::read_to_string(manifest_path)?;
 
@@ -65,7 +65,7 @@ fn inner_main() -> Result<(), Box<dyn std::error::Error>> {
             let path = input_dir.join(rel_path);
 
             zip.start_file_from_path(
-                &path,
+                &rel_path,
                 zip::write::SimpleFileOptions::default(),
             )?;
 
@@ -73,7 +73,7 @@ fn inner_main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         zip.start_file_from_path(
-            config::MANIFEST_FILENAME,
+            pak::MANIFEST_FILENAME,
             zip::write::SimpleFileOptions::default(),
         )?;
 

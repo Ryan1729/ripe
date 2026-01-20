@@ -67,6 +67,7 @@ dependencies = [
  "gfx",
  "ice_puzzle",
  "models",
+ "pak",
  "platform_types",
  "vec1",
  "xs",
@@ -1466,6 +1467,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pak"
+version = "0.1.0"
+dependencies = [
+ "config",
+ "models",
+ "platform_types",
+ "zip",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1748,6 +1759,7 @@ name = "ripe-pack"
 version = "0.1.0"
 dependencies = [
  "config",
+ "pak",
  "xflags",
  "zip",
 ]

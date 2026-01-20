@@ -3,7 +3,7 @@ use hardcoded as used_mod;
 
 use rune_based as used_mod;
 
-pub use used_mod::{MANIFEST_FILENAME, parse, parse_manifest, Error};
+pub use used_mod::{parse, parse_manifest, Error};
 
 mod rune_based {
     use platform_types::TILES_PER_ROW;
@@ -23,8 +23,6 @@ mod rune_based {
     use rune::diagnostics::{Diagnostic};
     use rune::runtime::{Object, RuntimeError, VmError};
     use rune::sync::Arc;
-
-    pub const MANIFEST_FILENAME: &str = "manifest.rn";
 
     pub fn parse(code: &str) -> Result<Config, Error> {
         let map: Object = eval(code)?;

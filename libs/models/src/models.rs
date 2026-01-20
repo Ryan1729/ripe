@@ -684,6 +684,14 @@ pub mod config {
 }
 pub use config::{Config, EntityDef};
 
+// TODO actually store the spreadsheet or a handle to it here, and read from it when rendering.
+pub type Spritesheet = ();
+
+pub struct Pak {
+    pub config: Config,
+    pub spritesheet: Spritesheet,
+}
+
 impl From<&EntityDef> for MiniEntityDef {
     fn from(def: &EntityDef) -> Self {
         Self {

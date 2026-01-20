@@ -26,6 +26,9 @@ path = "../gfx"
 [dependencies.models]
 path = "../models"
 
+[dependencies.pak]
+path = "../pak"
+
 [dependencies.platform_types]
 path = "../platform_types"
 

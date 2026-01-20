@@ -1312,14 +1312,25 @@ pub enum Dir {
 }
 
 pub type Logger = Option<fn(&str) -> ()>;
-pub type ConfigLoader = Option<fn() -> Option<String>>;
+
+pub trait PakReader
+where 
+    Self: std::io::Read + std::io::Seek
+{}
+
+impl<T: ?Sized> PakReader for T
+where
+    Self: std::io::Read + std::io::Seek
+{}
+
+pub type PakLoader = Option<fn() -> Option<Box<dyn PakReader>>>;
 
 #[derive(Clone, Copy)]
 pub struct StateParams {
     pub seed: [u8; 16], 
     pub logger: Logger,
     pub error_logger: Logger, 
-    pub config_loader: ConfigLoader,
+    pub pak_loader: PakLoader,
 }
 
 // reportedly colourblind friendly colours

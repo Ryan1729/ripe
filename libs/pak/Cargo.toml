@@ -1,14 +1,19 @@
 [package]
-name = "ripe-pack"
+name = "pak"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+path = "src/pak.rs"
+
 [dependencies]
-xflags = "0.3.2"
 zip = { version = "7.0.0", default-features = false, features = ["deflate"] }
 
 [dependencies.config]
-path = "../../libs/config"
+path = "../config"
 
-[dependencies.pak]
-path = "../../libs/pak"
+[dependencies.models]
+path = "../models"
+
+[dependencies.platform_types]
+path = "../platform_types"

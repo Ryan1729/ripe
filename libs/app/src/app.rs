@@ -1,13 +1,13 @@
 use features::invariant_assert;
 use gfx::{Commands, nine_slice, next_arrow, speech, to_tile};
-use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker, SFX};
+use platform_types::{command, sprite, unscaled, Button, Dir, Input, PakReader, Speaker, SFX};
 pub use platform_types::StateParams;
 use game::{FadeMessageSpec, HallwayState, Mode, TalkingState, PostTalkingAction};
-use models::{Entity, Speeches, XY, i_to_xy, TileSprite, Speech};
+use models::{Entity, i_to_xy, Pak, Speech, Speeches, TileSprite, XY};
 
 #[derive(Debug)]
 pub enum Error {
-    Config(config::Error),
+    Pak(pak::Error),
     Game(game::Error),
 }
 
@@ -15,7 +15,7 @@ impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use Error::*;
         match self {
-            Config(error) => write!(f, "Config Error:\n{error}"),
+            Pak(error) => write!(f, "Pak Error:\n{error}"),
             Game(error) => write!(f, "Game Error:\n{error:#?}"),
         }
     }
@@ -62,16 +62,34 @@ impl State {
 
         const HARDCODED_CONFIG: &str = include_str!("../../../examples/example_config.rn");
 
-        let override_config = params.config_loader.and_then(|f| f());
+        let pak_reader_opt: Option<Box<dyn PakReader>> = params.pak_loader.and_then(|f| f());
 
         let game_state = 'game_state: {
-            let config = match ::config::parse(override_config.as_ref().map_or(HARDCODED_CONFIG, |s| s)) {
-                Ok(c) => c,
-                Err(err) => {
-                    break 'game_state Err(Error::Config(err))
-                }
+            let pak = match pak_reader_opt {
+                Some(reader) => {
+                    match pak::from_reader(reader) {
+                        Ok(c) => c,
+                        Err(err) => {
+                            break 'game_state Err(Error::Pak(err))
+                        }
+                    }
+                },
+                None => {
+                    // TODO Can we construct a Zip in code? Or maybe we should embed one at compile time?
+                    let config = match config::parse(HARDCODED_CONFIG) {
+                        Ok(c) => c,
+                        Err(err) => {
+                            break 'game_state Err(Error::Pak(pak::Error::Config(err)))
+                        }
+                    };
+
+                    Pak {
+                        config,
+                        spritesheet: (),
+                    }
+                },
             };
-            game::State::new(seed, config).map_err(Error::Game)
+            game::State::new(seed, pak.config).map_err(Error::Game)
         }.map_err(ErrorState::from);
 
         Self {

@@ -1,4 +1,5 @@
 use platform_types::{
+    PakReader,
     StateParams,
 };
 
@@ -273,12 +274,17 @@ pub fn get_state_params() -> StateParams {
         eprintln!("{}", s);
     }
 
-    fn config_loader() -> Option<String> {
+    fn pak_loader() -> Option<Box<dyn PakReader>> {
         let mut args = std::env::args();
         args.next(); // exe name
     
-        let override_config: Option<String> = args.next().and_then(
-            |file_name| dbg!(std::fs::read_to_string(file_name)).ok()
+        let override_config: Option<Box<dyn PakReader>> = args.next().and_then(
+            |file_name| -> Option<Box<dyn PakReader>> {
+                match std::fs::File::open(file_name) {
+                    Ok(file) => Some(Box::new(file)),
+                    Err(_) => None
+                }
+            }
         );
         override_config
     }
@@ -287,7 +293,7 @@ pub fn get_state_params() -> StateParams {
         seed: new_seed(),
         logger: Some(logger),
         error_logger: Some(error_logger),
-        config_loader: Some(config_loader),
+        pak_loader: Some(pak_loader),
     }
 }
 
