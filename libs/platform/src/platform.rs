@@ -260,7 +260,7 @@ pub fn get_state_params() -> StateParams {
         seed,
         logger: Some(logger),
         error_logger: Some(error_logger),
-        config_loader: None,
+        pak_loader: None,
     }
 }
 
