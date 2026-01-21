@@ -6,6 +6,8 @@ edition = "2021"
 [lib]
 path="src/models.rs"
 
+[dependencies.gfx_sizes]
+path = "../gfx_sizes"
 
 [dependencies.text]
 path = "../text"

@@ -1,5 +1,5 @@
 use xs::Xs;
-use models::{Speech, ShakeAmount};
+use models::{ShakeAmount, Speech};
 
 pub mod to_tile;
 

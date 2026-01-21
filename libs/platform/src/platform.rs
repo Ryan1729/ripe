@@ -24,7 +24,7 @@ use app::*;
     lib_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/release")
 )]
 mod hot_app {
-    use platform_types::SFX;
+    use platform_types::{ARGB, SFX};
     pub use app::State;
     hot_functions_from_file!("libs/app/src/app.rs");
 }
@@ -118,7 +118,7 @@ pub fn run(mut state: app::State) {
             }
             Event::MainEventsCleared => {
                 // `frame` comes from the `app` crate.
-                let (commands, sounds) = frame(&mut state);
+                let (commands, gfx, sounds) = frame(&mut state);
 
                 handle_sounds(&mut sound_handler, sounds);
 
@@ -131,6 +131,7 @@ pub fn run(mut state: app::State) {
                 let needs_redraw = render::render(
                     &mut output_frame_buffer,
                     commands,
+                    gfx,
                 );
 
                 if NeedsRedraw::Yes == needs_redraw

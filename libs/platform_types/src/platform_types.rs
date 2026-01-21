@@ -1,7 +1,4 @@
-/// A colour represented as a byte for each of Alpha, Red, Green, and Blue.
-/// Alpha is the most significant byte, blue is the least:
-/// `0xaarrggbb`
-pub type ARGB = u32;
+pub use gfx_sizes::*;
 
 pub mod unscaled {
     ///! Values are in pixels.
@@ -624,17 +621,7 @@ pub mod unscaled {
     }
 }
 
-pub const GFX_WIDTH: usize = 768;
-pub const GFX_HEIGHT: usize = 256;
-pub const GFX_LENGTH: usize = GFX_WIDTH * GFX_HEIGHT;
-
-pub const FONT_BASE_Y: u8 = 128;
-pub const FONT_WIDTH: usize = 128;
-pub const FONT_HEIGHT: usize = 128;
-pub const FONT_LENGTH: usize = FONT_WIDTH * FONT_HEIGHT;
-
 pub type PaletteIndex = u8;
-
 
 pub mod sprite {
     pub use super::unscaled::{W, H};

@@ -1,9 +1,9 @@
 use features::invariant_assert;
 use gfx::{Commands, nine_slice, next_arrow, speech, to_tile};
-use platform_types::{command, sprite, unscaled, Button, Dir, Input, PakReader, Speaker, SFX};
+use platform_types::{ARGB, GFX_WIDTH, command, sprite, unscaled, Button, Dir, Input, PakReader, Speaker, SFX};
 pub use platform_types::StateParams;
 use game::{FadeMessageSpec, HallwayState, Mode, TalkingState, PostTalkingAction};
-use models::{Entity, i_to_xy, Pak, Speech, Speeches, TileSprite, XY};
+use models::{Entity, i_to_xy, Pak, Speech, Speeches, Spritesheet, TileSprite, XY};
 
 #[derive(Debug)]
 pub enum Error {
@@ -43,6 +43,7 @@ pub struct State {
     pub commands: Commands,
     pub input: Input,
     pub speaker: Speaker,
+    pub spritesheet: Spritesheet,
     // Retained for restarting in error scenarios
     pub params: StateParams,
 }
@@ -62,35 +63,43 @@ impl State {
 
         const HARDCODED_CONFIG: &str = include_str!("../../../examples/example_config.rn");
 
+        let get_hardcoded_spritesheet = || Spritesheet {
+            pixels: assets::GFX.into(),
+            width: GFX_WIDTH,
+        };
+
         let pak_reader_opt: Option<Box<dyn PakReader>> = params.pak_loader.and_then(|f| f());
 
-        let game_state = 'game_state: {
-            let pak = match pak_reader_opt {
-                Some(reader) => {
-                    match pak::from_reader(reader) {
-                        Ok(c) => c,
-                        Err(err) => {
-                            break 'game_state Err(Error::Pak(err))
-                        }
-                    }
-                },
-                None => {
-                    // TODO Can we construct a Zip in code? Or maybe we should embed one at compile time?
-                    let config = match config::parse(HARDCODED_CONFIG) {
-                        Ok(c) => c,
-                        Err(err) => {
-                            break 'game_state Err(Error::Pak(pak::Error::Config(err)))
-                        }
-                    };
-
-                    Pak {
+        let pak_result = match pak_reader_opt {
+            Some(reader) => {
+                pak::from_reader(reader)
+                    .map_err(Error::Pak)
+            },
+            None => {
+                // TODO Can we construct a Zip in code? Or maybe we should embed one at compile time?
+                match config::parse(HARDCODED_CONFIG) {
+                    Ok(config) => Ok(Pak {
                         config,
-                        spritesheet: (),
+                        spritesheet: get_hardcoded_spritesheet(),
+                    }),
+                    Err(err) => {
+                        Err(Error::Pak(pak::Error::Config(err)))
                     }
-                },
-            };
-            game::State::new(seed, pak.config).map_err(Error::Game)
-        }.map_err(ErrorState::from);
+                }
+            },
+        };
+
+        let (game_state, spritesheet) = match pak_result {
+            Ok(pak) => (
+                game::State::new(seed, pak.config)
+                    .map_err(Error::Game)
+                    .map_err(ErrorState::from),
+                pak.spritesheet,
+            ),
+            Err(e) => {
+                (Err(ErrorState::from(e)), get_hardcoded_spritesheet())
+            }
+        };
 
         Self {
             game_state,
@@ -98,13 +107,14 @@ impl State {
             commands: Commands::new(seed),
             input: Input::default(),
             speaker: Speaker::default(),
+            spritesheet,
             params,
         }
     }
 }
 
 #[cfg_attr(feature = "reload", unsafe(no_mangle))]
-pub fn frame(state: &mut State) -> (&[platform_types::Command], &[SFX]) {
+pub fn frame(state: &mut State) -> (&[platform_types::Command], (&[ARGB], usize), &[SFX]) {
     let mut shake_amount_fallback = 0;
     let shake_amount = match &mut state.game_state {
         Ok(s) => &mut s.shake_amount,
@@ -131,7 +141,7 @@ pub fn frame(state: &mut State) -> (&[platform_types::Command], &[SFX]) {
 
     state.input.previous_gamepad = state.input.gamepad;
 
-    (state.commands.slice(), state.speaker.slice())
+    (state.commands.slice(), state.spritesheet.slice(), state.speaker.slice())
 }
 
 pub fn press(state: &mut State, button: Button) {

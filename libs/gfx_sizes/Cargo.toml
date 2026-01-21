@@ -1,0 +1,9 @@
+[package]
+name = "gfx_sizes"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/gfx_sizes.rs"
+
+[dependencies]

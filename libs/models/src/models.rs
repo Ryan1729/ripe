@@ -1,3 +1,5 @@
+use gfx_sizes::ARGB;
+
 pub type SegmentWidth = usize;
 
 /// 64k world segments ought to be enough for anybody!
@@ -684,8 +686,16 @@ pub mod config {
 }
 pub use config::{Config, EntityDef};
 
-// TODO actually store the spreadsheet or a handle to it here, and read from it when rendering.
-pub type Spritesheet = ();
+pub struct Spritesheet {
+    pub pixels: Vec<ARGB>,
+    pub width: usize,
+}
+
+impl Spritesheet {
+    pub fn slice(&self) -> (&[ARGB], usize) {
+        (&self.pixels, self.width)
+    }
+}
 
 pub struct Pak {
     pub config: Config,

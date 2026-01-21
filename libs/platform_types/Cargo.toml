@@ -7,6 +7,9 @@ edition = "2021"
 [lib]
 path = "src/platform_types.rs"
 
+[dependencies.gfx_sizes]
+path = "../gfx_sizes"
+
 [dependencies.xs]
 path = "../xs"
 

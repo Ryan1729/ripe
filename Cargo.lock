@@ -61,6 +61,7 @@ checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 name = "app"
 version = "0.1.0"
 dependencies = [
+ "assets",
  "config",
  "features",
  "game",
@@ -565,6 +566,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fdeflate"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
+dependencies = [
+ "simd-adler32",
+]
+
+[[package]]
 name = "features"
 version = "0.1.0"
 dependencies = [
@@ -693,6 +703,10 @@ dependencies = [
  "text",
  "xs",
 ]
+
+[[package]]
+name = "gfx_sizes"
+version = "0.1.0"
 
 [[package]]
 name = "gimli"
@@ -1105,6 +1119,7 @@ dependencies = [
 name = "models"
 version = "0.1.0"
 dependencies = [
+ "gfx_sizes",
  "text",
  "vec1",
  "xs",
@@ -1473,6 +1488,7 @@ dependencies = [
  "config",
  "models",
  "platform_types",
+ "png",
  "zip",
 ]
 
@@ -1602,7 +1618,21 @@ dependencies = [
 name = "platform_types"
 version = "0.1.0"
 dependencies = [
+ "gfx_sizes",
  "xs",
+]
+
+[[package]]
+name = "png"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97baced388464909d42d89643fe4361939af9b7ce7a31ee32a168f832a70f2a0"
+dependencies = [
+ "bitflags 2.9.4",
+ "crc32fast",
+ "fdeflate",
+ "flate2",
+ "miniz_oxide",
 ]
 
 [[package]]

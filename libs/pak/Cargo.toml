@@ -7,6 +7,9 @@ edition = "2024"
 path = "src/pak.rs"
 
 [dependencies]
+# TODO? PNG uses DEFLATE compression, same as zip files. Might be worth seeing whether
+# we can get down to shipping only one DEFLATE implementation.
+png = { version = "0.18.0", default-features = false, features = [] }
 zip = { version = "7.0.0", default-features = false, features = ["deflate"] }
 
 [dependencies.config]

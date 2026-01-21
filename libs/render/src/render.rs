@@ -1,15 +1,12 @@
 #![deny(clippy::shadow_unrelated)]
 use platform_types::{
     Command,
-    GFX_WIDTH,
     ARGB,
     colours,
     command::{self, Rect},
     sprite,
     unscaled,
 };
-
-use assets::GFX;
 
 pub mod clip {
     use core::ops::Range;
@@ -994,6 +991,7 @@ mod wide_tests {
 pub fn render(
     frame_buffer: &mut FrameBuffer,
     commands: &[Command],
+    (gfx, gfx_width): (&[ARGB], usize),
 ) -> NeedsRedraw {
     if frame_buffer.width < command::WIDTH
     || frame_buffer.height < command::HEIGHT {
@@ -1106,7 +1104,7 @@ pub fn render(
         let sprite_x = usize::from(sprite_x);
         let sprite_y = usize::from(sprite_y);
 
-        let src_w = GFX_WIDTH as usize;
+        let src_w = gfx_width;
 
         let mut y_iter_count = 0;
         for y in y_min..y_end {
@@ -1134,15 +1132,15 @@ pub fn render(
                     (sprite_y + y_iter_count) * src_w
                     + (sprite_x + x_iter_count);
                 debug_assert!(
-                    base_src_i < GFX.len(), 
+                    base_src_i < gfx.len(), 
                     "({sprite_y} + {y_iter_count}) * {src_w} + ({sprite_x} + {x_iter_count})
 {base_src_i} >= {}
 ({x_min} to {x_end}, {y_min} to {y_end})",
-                    GFX.len()
+                    gfx.len()
                 );
                 let gfx_colours = unsafe {
                     wide::load!(
-                        GFX.as_ptr(),
+                        gfx.as_ptr(),
                         base_src_i
                     )
                 };

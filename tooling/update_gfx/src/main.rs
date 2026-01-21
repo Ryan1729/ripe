@@ -1,7 +1,6 @@
 //Read in the png and:
 //     * output the data as a text array
 //     * output a transformed copy of the png
-use png::ColorType;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -25,33 +24,18 @@ mod filenames {
 use filenames::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let decoder = png::Decoder::new(BufReader::new(File::open(IMAGE_FILENAME)?));
-    let mut reader = decoder.read_info()?;
-
-    // Allocate the output buffer.
-    let mut buf = vec![0; reader.output_buffer_size().expect("Size should fit into memory")];
-
-    // Read the next frame. Currently this function should only called once.
-    let output_info = reader.next_frame(&mut buf)?;
-
-   println!(
+    let frame = pak::read_png_frame(BufReader::new(File::open(IMAGE_FILENAME)?));
+    
+    println!(
         "{} : {:?}",
         IMAGE_FILENAME,
         (
-            output_info.width,
-            output_info.height,
-            output_info.color_type,
-            output_info.bit_depth,
-            output_info.line_size
+            frame.info.width,
+            frame.info.height,
+            frame.info.color_type,
+            frame.info.bit_depth,
         )
     );
-
-    let info = reader.info().clone();
-
-    assert_eq!(output_info.width, info.width);
-    assert_eq!(output_info.height, info.height);
-    assert_eq!(output_info.color_type, info.color_type);
-    assert_eq!(output_info.bit_depth, info.bit_depth);
 
     //
     // Write into the inline output
@@ -60,37 +44,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let inline_output_filename = INLINE_OUTPUT_FILENAME;
     
         let mut file = File::create(inline_output_filename)?;
+
+        let spritesheet = pak::spritesheet_from_png_frame(&png_frame);
     
-        use ColorType::*;
-        let pixel_width = match info.color_type {
-            Rgba => 4,
-            _ => unimplemented!(
-                "This program cannot handle {:?} images (yet.)",
-                info.color_type
-            ),
-        };
-    
-        let mut pixels = Vec::with_capacity(buf.len() / pixel_width);
-    
-        for colour in buf.chunks(pixel_width) {
-            let argb =
-            ((colour[3] as u32) << 24)
-            | ((colour[0] as u32) << 16)
-            | ((colour[1] as u32) << 8)
-            | ((colour[2] as u32));
-    
-            pixels.push(argb);
-        }
-    
+        assert_eq!(spritesheet.width, gfx_sizes::GFX_WIDTH, "Input PNG was not the right width");
+        assert_eq!(spritesheet.pixels.len(), gfx_sizes::GFX_LENGTH, "Input PNG was not the right length");
+
         let mut output = String::with_capacity(
-            pixels.len() * "0xFFFFFFFF, ".len()
+            spritesheet.pixels.len() * "0xFFFFFFFF, ".len()
             // Newlines for each row
             + 1024
             // Extra for start and end of array
             + 8
         );
         output.push_str("[\n");
-        for chunk in pixels.chunks(512) {
+        for chunk in spritesheet.pixels.chunks(gfx_sizes::GFX_WIDTH) {
             for colour in chunk.iter() {
                 output.push_str(&format!("0x{colour:08X}, "));
             }
@@ -112,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let ref mut writer = BufWriter::new(file);
         
-        let mut new_info = info.clone();
+        let mut new_info = frame.info.clone();
 
         new_info.height *= 2;
 
@@ -139,14 +107,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for y_index in 0..old_height {
             for x_index in 0..old_width {
                 for i in 0..bpp {
-                    data.push(buf[y_index * old_width * bpp + x_index * bpp + i])
+                    data.push(frame.buffer[y_index * old_width * bpp + x_index * bpp + i])
                 }
             }
 
             // Add extra row
             for x_index in 0..old_width {
                 for i in 0..bpp {
-                    data.push(buf[y_index * old_width * bpp + x_index * bpp + i])
+                    data.push(frame.buffer[y_index * old_width * bpp + x_index * bpp + i])
                 }
             }
         }
