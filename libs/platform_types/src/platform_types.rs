@@ -624,33 +624,93 @@ pub mod unscaled {
 pub type PaletteIndex = u8;
 
 pub mod sprite {
-    pub use super::unscaled::{W, H};
+    pub use super::unscaled::{W, H, WH};
+    use std::marker::PhantomData;
+
+    /// Marker
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct Renderable;
+
+    /// Marker
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct Rooms;
+    
+    /// Marker
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct IcePuzzles;
+    
+    /// Marker
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct SWORD;
 
     pub type Inner = u16;
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct X(pub Inner);
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct Y(pub Inner);
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct X<Marker>(Inner, PhantomData<Marker>);
 
-    impl From<X> for usize {
-        fn from(x: X) -> Self {
+    impl<Marker> Clone for X<Marker> {
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+    
+    impl<Marker> Copy for X<Marker> {}
+
+    impl <Marker> Default for X<Marker> {
+        fn default() -> Self {
+            Self(<_>::default(), PhantomData)
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct Y<Marker>(Inner, PhantomData<Marker>);
+
+    impl<Marker> Clone for Y<Marker> {
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+    
+    impl<Marker> Copy for Y<Marker> {}
+
+    impl <Marker> Default for Y<Marker> {
+        fn default() -> Self {
+            Self(<_>::default(), PhantomData)
+        }
+    }
+
+    pub const fn x<Marker>(inner: Inner) -> X<Marker> {
+        X(
+            inner,
+            PhantomData,
+        )
+    }
+
+    pub const fn y<Marker>(inner: Inner) -> Y<Marker> {
+        Y(
+            inner,
+            PhantomData,
+        )
+    }
+
+    impl <Marker> From<X<Marker>> for usize {
+        fn from(x: X<Marker>) -> Self {
             x.0.into()
         }
     }
 
-    impl From<Y> for usize {
-        fn from(y: Y) -> Self {
+    impl <Marker> From<Y<Marker>> for usize {
+        fn from(y: Y<Marker>) -> Self {
             y.0.into()
         }
     }
 
-    impl core::ops::AddAssign<W> for X {
+    impl <Marker> core::ops::AddAssign<W> for X<Marker> {
         fn add_assign(&mut self, other: W) {
             self.0 += other.0;
         }
     }
 
-    impl core::ops::Add<W> for X {
+    impl <Marker> core::ops::Add<W> for X<Marker> {
         type Output = Self;
 
         fn add(mut self, other: W) -> Self::Output {
@@ -659,17 +719,17 @@ pub mod sprite {
         }
     }
 
-    pub const fn x_const_add_w(x: X, w: W) -> X {
-        X(x.0 + w.0)
+    pub const fn x_const_add_w<Marker>(x: X<Marker>, w: W) -> X<Marker> {
+        X(x.0 + w.0, PhantomData)
     }
 
-    impl core::ops::AddAssign<H> for Y {
+    impl <Marker> core::ops::AddAssign<H> for Y<Marker> {
         fn add_assign(&mut self, other: H) {
             self.0 += other.0;
         }
     }
 
-    impl core::ops::Add<H> for Y {
+    impl <Marker> core::ops::Add<H> for Y<Marker> {
         type Output = Self;
 
         fn add(mut self, other: H) -> Self::Output {
@@ -678,23 +738,23 @@ pub mod sprite {
         }
     }
 
-    pub const fn y_const_add_h(y: Y, h: H) -> Y {
-        Y(y.0 + h.0)
+    pub const fn y_const_add_h<Marker>(y: Y<Marker>, h: H) -> Y<Marker> {
+        Y(y.0 + h.0, PhantomData)
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct XY {
-        pub x: X,
-        pub y: Y,
+    pub struct XY<Marker> {
+        pub x: X<Marker>,
+        pub y: Y<Marker>,
     }
 
-    impl core::ops::AddAssign<W> for XY {
+    impl <Marker> core::ops::AddAssign<W> for XY<Marker> {
         fn add_assign(&mut self, other: W) {
             self.x += other;
         }
     }
 
-    impl core::ops::Add<W> for XY {
+    impl <Marker> core::ops::Add<W> for XY<Marker> {
         type Output = Self;
 
         fn add(mut self, other: W) -> Self::Output {
@@ -703,18 +763,51 @@ pub mod sprite {
         }
     }
 
-    impl core::ops::AddAssign<H> for XY {
+    impl <Marker> core::ops::AddAssign<H> for XY<Marker> {
         fn add_assign(&mut self, other: H) {
             self.y += other;
         }
     }
 
-    impl core::ops::Add<H> for XY {
+    impl <Marker> core::ops::Add<H> for XY<Marker> {
         type Output = Self;
 
         fn add(mut self, other: H) -> Self::Output {
             self += other;
             self
+        }
+    }
+
+    pub struct Spec<Marker> {
+        offset: WH,
+        marker: PhantomData<Marker>,
+    }
+
+    pub fn spec<Marker>(offset: WH) -> Spec<Marker> {
+        Spec::<Marker> {
+            offset,
+            marker: PhantomData,
+        }
+    }
+
+    impl <Marker> X<Marker> {
+        pub fn apply(self, spec: &Spec<Marker>) -> X<Renderable> {
+            X((self + spec.offset.w).0, PhantomData)
+        }
+    }
+
+    impl <Marker> Y<Marker> {
+        pub fn apply(self, spec: &Spec<Marker>) -> Y<Renderable> {
+            Y((self + spec.offset.h).0, PhantomData)
+        }
+    }
+
+    impl <Marker> XY<Marker> {
+        pub fn apply(self, spec: &Spec<Marker>) -> XY<Renderable> {
+            XY::<Renderable>{
+                x: self.x.apply(spec),
+                y: self.y.apply(spec),
+            }
         }
     }
 }
@@ -1141,7 +1234,7 @@ pub mod command {
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct Command {
         pub rect: Rect,
-        pub sprite_xy: sprite::XY,
+        pub sprite_xy: sprite::XY<sprite::Renderable>,
         pub colour_override: ARGB,
     }    
 }

@@ -1,6 +1,6 @@
 use common::*;
 use gfx::{Commands};
-use platform_types::{command, sprite, unscaled, Button, Input, Speaker};
+use platform_types::{command, sprite::{self, IcePuzzles}, unscaled, Button, Input, Speaker};
 use xs::{Seed};
 
 pub struct State {
@@ -11,7 +11,7 @@ pub struct State {
 
 const TILE_SIZE: unscaled::Inner = 20;
 
-fn str_to_sprite_xy(s: &str) -> sprite::XY {
+fn str_to_sprite_xy(s: &str) -> sprite::XY<sprite::Renderable> {
     let (sx, sy) = match s {
         "☐" => (0, 0),
         "☒" => (1 * TILE_SIZE, 0),
@@ -51,11 +51,14 @@ fn str_to_sprite_xy(s: &str) -> sprite::XY {
         }
     };
 
+    // TODO make this a parameter that ultimately comes from the config file.
+    // + 128 to put us at the start of the spritesheet section for this sub-game
+    let spec = sprite::spec::<IcePuzzles>(sprite::WH{ w: sprite::W(128), h: sprite::H(0) });
+
     sprite::XY {
-        // + 128 to put us at the start of the spritesheet section for this sub-game
-        x: sprite::X(sx + 128),
-        y: sprite::Y(sy),
-    }
+        x: sprite::x::<IcePuzzles>(sx),
+        y: sprite::y::<IcePuzzles>(sy),
+    }.apply(&spec)
 }
 
 fn p_xy(commands: &mut Commands, x_in: i32, y_in: i32, s: &'static str) {

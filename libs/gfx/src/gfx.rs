@@ -3,7 +3,7 @@ use models::{ShakeAmount, Speech};
 
 pub mod to_tile;
 
-use platform_types::{Command, PALETTE, sprite, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
+use platform_types::{Command, PALETTE, sprite::{self, Renderable}, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
 use text::byte_slice as text;
 
 /// 64k fade frames ought to be enough for anybody!
@@ -107,7 +107,7 @@ impl Commands {
 
     pub fn sspr(
         &mut self,
-        sprite_xy: sprite::XY,
+        sprite_xy: sprite::XY<Renderable>,
         rect: command::Rect,
     ) {
         push_with_screenshake(
@@ -214,17 +214,17 @@ mod print {
         y: unscaled::Y,
         colour: PaletteIndex
     ) {
-        fn get_char_xy(sprite_number: u8) -> sprite::XY {
+        fn get_char_xy(sprite_number: u8) -> sprite::XY<Renderable> {
             type Inner = sprite::Inner;
             let sprite_number = Inner::from(sprite_number);
             const CH_SIZE: Inner = CHAR_SIZE as Inner;
             const SPRITES_PER_ROW: Inner = FONT_WIDTH as Inner / CH_SIZE;
         
-            sprite::XY {
-                x: sprite::X(
+            sprite::XY::<Renderable> {
+                x: sprite::x::<Renderable>(
                     (sprite_number % SPRITES_PER_ROW) * CH_SIZE
                 ),
-                y: sprite::Y(
+                y: sprite::y::<Renderable>(
                     FONT_BASE_Y as Inner + 
                     (sprite_number / SPRITES_PER_ROW) * CH_SIZE
                 ),
@@ -402,8 +402,8 @@ pub mod next_arrow {
         y: unscaled::Y,
     ) {
         let sprite_xy = match next_arrow_sprite & 1 {
-            1 => sprite::XY { x: sprite::X(0), y: sprite::Y(4) },
-            _ => sprite::XY { x: sprite::X(0), y: sprite::Y(0) },
+            1 => sprite::XY::<Renderable> { x: sprite::x::<Renderable>(0), y: sprite::y::<Renderable>(4) },
+            _ => sprite::XY::<Renderable> { x: sprite::x::<Renderable>(0), y: sprite::y::<Renderable>(0) },
         };
 
         commands.sspr(
@@ -452,59 +452,60 @@ pub mod nine_slice {
 
     struct Slices {
         // Top left point on the rect that makes up the top left corner of the sprite.
-        top_left: sprite::XY,
+        top_left: sprite::XY<Renderable>,
         // Top left point on the rect that makes up the top right corner of the sprite.
-        top_right: sprite::XY,
+        top_right: sprite::XY<Renderable>,
         // Top left point on the rect that makes up the bottom left corner of the sprite.
-        bottom_left: sprite::XY,
+        bottom_left: sprite::XY<Renderable>,
         // Top left point on the rect that makes up the bottom right corner of the sprite.
-        bottom_right: sprite::XY,
+        bottom_right: sprite::XY<Renderable>,
         // Top left point on the rect that makes up the middle of the sprite.
-        middle: sprite::XY,
+        middle: sprite::XY<Renderable>,
         // Top left point on the rect that makes up the top edge of the sprite.
-        top: sprite::XY,
+        top: sprite::XY<Renderable>,
         // Top left point on the rect that makes up the left edge of the sprite.
-        left: sprite::XY,
+        left: sprite::XY<Renderable>,
         // Top left point on the rect that makes up the right edge of the sprite.
-        right: sprite::XY,
+        right: sprite::XY<Renderable>,
         // Top left point on the rect that makes up the bottom edge of the sprite.
-        bottom: sprite::XY,
+        bottom: sprite::XY<Renderable>,
     }
 
+    // TODO? Should these be allowed to be moved elsewhere on the spreadsheet?
     const TALKING_SLICES: Slices = {
-        let top_left: sprite::XY = sprite::XY {
-            x: sprite::X(0),
-            y: sprite::Y(8),
+        let top_left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+            x: sprite::x::<Renderable>(0),
+            y: sprite::y::<Renderable>(8),
         };
-        let top_right: sprite::XY = sprite::XY {
-            x: sprite::X(20),
-            y: sprite::Y(8),
+        let top_right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+            x: sprite::x::<Renderable>(20),
+            y: sprite::y::<Renderable>(8),
         };
-        let bottom_left: sprite::XY = sprite::XY {
-            x: sprite::X(0),
-            y: sprite::Y(28),
+        let bottom_left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+            x: sprite::x::<Renderable>(0),
+            y: sprite::y::<Renderable>(28),
         };
-        let bottom_right: sprite::XY = sprite::XY {
-            x: sprite::X(20),
-            y: sprite::Y(28),
+        let bottom_right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+            x: sprite::x::<Renderable>(20),
+            y: sprite::y::<Renderable>(28),
         };
-        let middle: sprite::XY = sprite::XY {
+        let middle: sprite::XY<Renderable> = sprite::XY::<Renderable> {
             x: sprite::x_const_add_w(top_left.x, EDGE_W),
             y: sprite::y_const_add_h(top_left.y, EDGE_H),
         };
-        let top: sprite::XY = sprite::XY {
+        let top: sprite::XY<Renderable> = sprite::XY::<Renderable> {
             x: middle.x,
             y: top_left.y,
         };
-        let left: sprite::XY = sprite::XY {
+        let left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
             x: top_left.x,
             y: middle.y,
         };
-        let right: sprite::XY = sprite::XY {
+        let right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
             x: top_right.x,
             y: middle.y,
         };
-        let bottom: sprite::XY = sprite::XY {
+        let bottom: sprite::XY<Renderable> = sprite::XY::<Renderable> {
             x: top.x,
             y: bottom_left.y,
         };
@@ -523,39 +524,39 @@ pub mod nine_slice {
     };
 
     const INVENTORY_SLICES: Slices = {
-        let top_left: sprite::XY = sprite::XY {
-            x: sprite::X(0),
-            y: sprite::Y(32),
+        let top_left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+            x: sprite::x::<Renderable>(0),
+            y: sprite::y::<Renderable>(32),
         };
-        let top_right: sprite::XY = sprite::XY {
-            x: sprite::X(20),
-            y: sprite::Y(32),
+        let top_right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+            x: sprite::x::<Renderable>(20),
+            y: sprite::y::<Renderable>(32),
         };
-        let bottom_left: sprite::XY = sprite::XY {
-            x: sprite::X(0),
-            y: sprite::Y(52),
+        let bottom_left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+            x: sprite::x::<Renderable>(0),
+            y: sprite::y::<Renderable>(52),
         };
-        let bottom_right: sprite::XY = sprite::XY {
-            x: sprite::X(20),
-            y: sprite::Y(52),
+        let bottom_right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+            x: sprite::x::<Renderable>(20),
+            y: sprite::y::<Renderable>(52),
         };
-        let middle: sprite::XY = sprite::XY {
+        let middle: sprite::XY<Renderable> = sprite::XY::<Renderable> {
             x: sprite::x_const_add_w(top_left.x, EDGE_W),
             y: sprite::y_const_add_h(top_left.y, EDGE_H),
         };
-        let top: sprite::XY = sprite::XY {
+        let top: sprite::XY<Renderable> = sprite::XY::<Renderable> {
             x: middle.x,
             y: top_left.y,
         };
-        let left: sprite::XY = sprite::XY {
+        let left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
             x: top_left.x,
             y: middle.y,
         };
-        let right: sprite::XY = sprite::XY {
+        let right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
             x: top_right.x,
             y: middle.y,
         };
-        let bottom: sprite::XY = sprite::XY {
+        let bottom: sprite::XY<Renderable> = sprite::XY::<Renderable> {
             x: top.x,
             y: bottom_left.y,
         };

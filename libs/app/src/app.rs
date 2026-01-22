@@ -1,6 +1,6 @@
 use features::invariant_assert;
 use gfx::{Commands, nine_slice, next_arrow, speech, to_tile};
-use platform_types::{ARGB, GFX_WIDTH, command, sprite, unscaled, Button, Dir, Input, PakReader, Speaker, SFX};
+use platform_types::{ARGB, GFX_WIDTH, command, sprite::{self, Renderable, Rooms}, unscaled, Button, Dir, Input, PakReader, Speaker, SFX};
 pub use platform_types::StateParams;
 use game::{FadeMessageSpec, HallwayState, Mode, TalkingState, PostTalkingAction};
 use models::{Entity, i_to_xy, Pak, Speech, Speeches, Spritesheet, TileSprite, XY};
@@ -404,7 +404,9 @@ fn game_render(commands: &mut Commands, state: &game::State) {
     // Render World
     //
 
-    fn draw_talking(commands: &mut Commands, speeches: &Speeches, talking: &TalkingState) {
+    let spec = sprite::spec::<Rooms>(sprite::WH{ w: sprite::W(0), h: sprite::H(0) });
+
+    let draw_talking = |commands: &mut Commands, speeches: &Speeches, talking: &TalkingState| {
         commands.nine_slice(nine_slice::TALKING, speech::OUTER_RECT);
 
         if let Some(speech) = game::get_speech(speeches, talking.key, talking.speech_index) {
@@ -412,34 +414,34 @@ fn game_render(commands: &mut Commands, state: &game::State) {
         }
 
         commands.next_arrow_in_corner_of(next_arrow::TALKING, talking.arrow_timer, speech::INNER_RECT);
-    }
+    };
 
-    fn draw_tile(commands: &mut Commands, xy: XY, sprite: TileSprite) {
-        draw_tile_sprite(commands, to_tile::min_corner(xy), sprite);
-    }
-
-    fn draw_tile_sprite(commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite) {
+    let draw_tile_sprite = |commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite| {
         commands.sspr(
-            to_tile::sprite_xy(sprite),
+            to_tile::sprite_xy(&spec, sprite),
             command::Rect::from_unscaled(to_tile::rect(xy)),
         );
-    }
+    };
 
-    fn draw_tile_sprite_centered_at(commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite) {
+    let draw_tile = |commands: &mut Commands, xy: XY, sprite: TileSprite| {
+        draw_tile_sprite(commands, to_tile::min_corner(xy), sprite);
+    };
+
+    let draw_tile_sprite_centered_at = |commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite| {
         commands.sspr(
-            to_tile::sprite_xy(sprite),
+            to_tile::sprite_xy(&spec, sprite),
             command::Rect::from_unscaled(to_tile::rect(to_tile::center_to_min_corner(xy))),
         );
-    }
+    };
 
-    fn draw_entity(commands: &mut Commands, entity: &Entity) {
+    let draw_entity = |commands: &mut Commands, entity: &Entity| {
         commands.sspr(
-            to_tile::sprite_xy(entity.transformable.tile_sprite),
+            to_tile::sprite_xy(&spec, entity.transformable.tile_sprite),
             command::Rect::from_unscaled(to_tile::entity_rect(entity)),
         );
-    }
+    };
 
-    fn render_world(commands: &mut Commands, state: &game::State) {
+    let render_world = |commands: &mut Commands, state: &game::State| {
         let Some(segment) = state.world.segments.get(state.world.segment_id as usize) else {
             debug_assert!(false, "We somehow went to a non-existant segment?!");
             return
@@ -460,13 +462,13 @@ fn game_render(commands: &mut Commands, state: &game::State) {
         for (_, mob) in state.world.mobs.for_id(state.world.segment_id) {
             draw_entity(commands, mob);
         }
-    }
+    };
 
-    fn render_walking(commands: &mut Commands, state: &game::State) {
+    let render_walking = |commands: &mut Commands, state: &game::State| {
         render_world(commands, state);
 
         draw_entity(commands, &state.world.player);
-    }
+    };
 
     //
     // Conditional rendering
@@ -606,9 +608,9 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                 // draw selectrum
                 if inventory_index == *current_index {
                     commands.sspr(
-                        sprite::XY {
-                            x: sprite::X(24),
-                            y: sprite::Y(8),
+                        sprite::XY::<Renderable> {
+                            x: sprite::x::<Renderable>(24),
+                            y: sprite::y::<Renderable>(8),
                         },
                         command::Rect::from_unscaled(
                             unscaled::Rect {
@@ -733,25 +735,27 @@ fn err_update(
 #[inline]
 fn err_render(commands: &mut Commands, error_state: &ErrorState) {
     let error = &error_state.error;
-    let width = 64;
-    for i in 0..(width * width) {
-        let x = unscaled::X(((i % width) * 16) as _);
-        let y = unscaled::Y(((i / width) * 16) as _);
-        let sprite = models::FLOOR_SPRITE as sprite::Inner;
-
-        commands.sspr(
-            sprite::XY {
-                x: sprite::X(sprite * 16),
-                y: sprite::Y(60),
-            },
-            command::Rect::from_unscaled(unscaled::Rect {
-                x,
-                y,
-                w: unscaled::W(16),
-                h: unscaled::H(16),
-            })
-        );
-    }
+    // TODO Look at the error state and decide if this is worth porting
+    // to use sprite::Spec
+    //let width = 64;
+    //for i in 0..(width * width) {
+        //let x = unscaled::X(((i % width) * 16) as _);
+        //let y = unscaled::Y(((i / width) * 16) as _);
+        //let sprite = models::FLOOR_SPRITE as sprite::Inner;
+//
+        //commands.sspr(
+            //sprite::XY {
+                //x: sprite::X(sprite * 16),
+                //y: sprite::Y(60),
+            //},
+            //command::Rect::from_unscaled(unscaled::Rect {
+                //x,
+                //y,
+                //w: unscaled::W(16),
+                //h: unscaled::H(16),
+            //})
+        //);
+    //}
 
     // TODO allow scrolling the text by allowing changing this.
     let top_index_with_offset = 0;
