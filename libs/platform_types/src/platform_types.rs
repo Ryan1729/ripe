@@ -704,6 +704,18 @@ pub mod sprite {
         }
     }
 
+    impl <Marker> From<X<Marker>> for u16 {
+        fn from(x: X<Marker>) -> Self {
+            x.0.into()
+        }
+    }
+
+    impl <Marker> From<Y<Marker>> for u16 {
+        fn from(y: Y<Marker>) -> Self {
+            y.0.into()
+        }
+    }
+
     impl <Marker> core::ops::AddAssign<W> for X<Marker> {
         fn add_assign(&mut self, other: W) {
             self.0 += other.0;

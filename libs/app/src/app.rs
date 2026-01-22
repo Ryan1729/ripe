@@ -735,27 +735,6 @@ fn err_update(
 #[inline]
 fn err_render(commands: &mut Commands, error_state: &ErrorState) {
     let error = &error_state.error;
-    // TODO Look at the error state and decide if this is worth porting
-    // to use sprite::Spec
-    //let width = 64;
-    //for i in 0..(width * width) {
-        //let x = unscaled::X(((i % width) * 16) as _);
-        //let y = unscaled::Y(((i / width) * 16) as _);
-        //let sprite = models::FLOOR_SPRITE as sprite::Inner;
-//
-        //commands.sspr(
-            //sprite::XY {
-                //x: sprite::X(sprite * 16),
-                //y: sprite::Y(60),
-            //},
-            //command::Rect::from_unscaled(unscaled::Rect {
-                //x,
-                //y,
-                //w: unscaled::W(16),
-                //h: unscaled::H(16),
-            //})
-        //);
-    //}
 
     // TODO allow scrolling the text by allowing changing this.
     let top_index_with_offset = 0;

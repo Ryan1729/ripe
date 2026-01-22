@@ -80,8 +80,8 @@ mod hash {
         u16(hash, x_max.get().get());
         u16(hash, y_max.get().get());
 
-        u16(hash, sprite_xy.x.0);
-        u16(hash, sprite_xy.y.0);
+        u16(hash, sprite_xy.x.into());
+        u16(hash, sprite_xy.y.into());
 
         bytes(hash, &colour_override.to_ne_bytes());
     }
