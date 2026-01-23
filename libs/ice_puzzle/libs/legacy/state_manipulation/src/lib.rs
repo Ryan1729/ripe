@@ -158,7 +158,7 @@ fn goal_string(frame_count: u32) -> &'static str {
 
 fn print_tuple(commands: &mut Commands, platform: &Platform, (x, y): (i32, i32), text: &'static str) {
     if x >= 0 && y >= 0 {
-        (platform.p_xy)(commands, x, y, text);
+        (platform.p_xy)(commands, &platform.spec, x, y, text);
     }
 }
 

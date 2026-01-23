@@ -24,7 +24,8 @@ use app::*;
     lib_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/release")
 )]
 mod hot_app {
-    use platform_types::{ARGB, SFX};
+    use gfx_sizes::{ARGB};
+    use platform_types::{SFX};
     pub use app::State;
     hot_functions_from_file!("libs/app/src/app.rs");
 }

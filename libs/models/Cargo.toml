@@ -9,6 +9,9 @@ path="src/models.rs"
 [dependencies.gfx_sizes]
 path = "../gfx_sizes"
 
+[dependencies.pak_types]
+path = "../pak_types"
+
 [dependencies.text]
 path = "../text"
 

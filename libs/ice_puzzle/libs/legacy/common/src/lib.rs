@@ -1,12 +1,14 @@
 use gfx::{Commands};
+use platform_types::sprite::{self, IcePuzzles};
 
 use std::fmt;
 use std::collections::HashMap;
 use xs::Xs;
 
 pub struct Platform {
-    pub p_xy: fn(&mut Commands, i32, i32, &'static str),
+    pub p_xy: fn(&mut Commands, &sprite::Spec::<IcePuzzles>, i32, i32, &'static str),
     pub size: fn() -> Size,
+    pub spec: sprite::Spec::<IcePuzzles>,
 }
 
 pub struct State {

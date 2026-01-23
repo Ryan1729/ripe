@@ -66,9 +66,11 @@ dependencies = [
  "features",
  "game",
  "gfx",
+ "gfx_sizes",
  "ice_puzzle",
  "models",
  "pak",
+ "pak_types",
  "platform_types",
  "vec1",
  "xs",
@@ -87,6 +89,7 @@ dependencies = [
 name = "assets"
 version = "0.1.0"
 dependencies = [
+ "gfx_sizes",
  "platform_types",
 ]
 
@@ -271,6 +274,7 @@ name = "common"
 version = "0.1.0"
 dependencies = [
  "gfx",
+ "platform_types",
  "xs",
 ]
 
@@ -1120,6 +1124,7 @@ name = "models"
 version = "0.1.0"
 dependencies = [
  "gfx_sizes",
+ "pak_types",
  "text",
  "vec1",
  "xs",
@@ -1486,10 +1491,21 @@ name = "pak"
 version = "0.1.0"
 dependencies = [
  "config",
+ "gfx_sizes",
  "models",
+ "pak_types",
  "platform_types",
  "png",
  "zip",
+]
+
+[[package]]
+name = "pak_types"
+version = "0.1.0"
+dependencies = [
+ "gfx_sizes",
+ "text",
+ "vec1",
 ]
 
 [[package]]
@@ -1601,6 +1617,7 @@ name = "platform"
 version = "0.1.0"
 dependencies = [
  "app",
+ "gfx_sizes",
  "hot-lib-reloader",
  "js-sys",
  "platform_types",
@@ -1619,6 +1636,7 @@ name = "platform_types"
 version = "0.1.0"
 dependencies = [
  "gfx_sizes",
+ "pak_types",
  "xs",
 ]
 
@@ -1771,6 +1789,8 @@ name = "render"
 version = "0.1.0"
 dependencies = [
  "assets",
+ "gfx_sizes",
+ "pak_types",
  "platform_types",
 ]
 

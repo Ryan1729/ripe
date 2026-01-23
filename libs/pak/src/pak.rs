@@ -1,5 +1,6 @@
-use models::{Pak, Spritesheet};
-use platform_types::{ARGB, PakReader};
+use pak_types::{Pak, Spritesheet, Specs};
+use gfx_sizes::ARGB;
+use platform_types::{PakReader};
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -119,6 +120,9 @@ pub fn from_reader<R>(reader: R) -> Result<Pak, Error>
         config::parse_manifest(&manifest_code)?
     };
 
+    // TODO actually read these from the manifest if present
+    let specs = Specs::default();
+
     let config = {
         let mut config_file = by_path!(&manifest.config_path);
     
@@ -152,6 +156,7 @@ pub fn from_reader<R>(reader: R) -> Result<Pak, Error>
     Ok(Pak {
         config,
         spritesheet,
+        specs,
     })
 }
 

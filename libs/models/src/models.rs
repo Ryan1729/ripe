@@ -1,11 +1,6 @@
 use gfx_sizes::ARGB;
 
-pub type SegmentWidth = usize;
-
-/// 64k world segments ought to be enough for anybody!
-pub type SegmentId = u16;
-
-pub type TileSprite = u8;
+pub use pak_types::*;
 
 pub const WALL_SPRITE: TileSprite = 32;
 pub const FLOOR_SPRITE: TileSprite = 33;
@@ -25,14 +20,6 @@ pub mod offset {
     pub type X = f32;
     pub type Y = f32;
 }
-
-/// 64k entity definitions ought to be enough for anybody!
-pub type DefId = u16;
-// TODO? allow large enough deltas to represent going from DefId::MIN to DefId::MAX?
-//     I suspect no one will
-pub type DefIdDelta = i16;
-
-pub type DefIdNextLargerSigned = i32;
 
 /// Higher overrides lower.
 pub type Precedence = u8;
@@ -97,6 +84,18 @@ pub struct MiniEntityDef {
     pub wants: Vec<DefId>,
 }
 
+impl From<&EntityDef> for MiniEntityDef {
+    fn from(def: &EntityDef) -> Self {
+        Self {
+            id: def.id,
+            flags: def.flags,
+            tile_sprite: def.tile_sprite,
+            wants: def.wants.clone(),
+            on_collect: def.on_collect.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct EntityTransformable {
     pub id: DefId,
@@ -119,106 +118,7 @@ impl From<&MiniEntityDef> for EntityTransformable {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Transform {
-    pub from: DefId, 
-    pub to: DefId,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum CollectAction {
-    Transform(Transform),
-}
-
-pub type OnCollect = Vec<CollectAction>;
-
 pub type Inventory = Vec<Entity>;
-
-pub mod consts {
-    macro_rules! consts_def {
-        (
-            $all_name: ident : $type: ty;
-            $($name: ident = $value: expr),+ $(,)?
-        ) => {
-    
-    
-            pub const $all_name: [(&str, $type); const {
-                let mut count = 0;
-    
-                $(
-                    // Use the repetition for something so we can take the count
-                    const _: $type = $value;
-                    count += 1;
-                )+
-    
-                count
-            }] = [
-                $(
-                    (stringify!($name), $value),
-                )+
-            ];
-    
-            $(
-                pub const $name: $type = $value;
-            )+
-        };
-    }
-    
-    pub type CollectActionKind = u8;
-    
-    consts_def!{
-        ALL_COLLECT_ACTION_KINDS: CollectActionKind;
-        TRANSFORM = 1,
-    }
-
-    pub type EntityDefIdRefKind = u8;
-    
-    consts_def!{
-        ALL_ENTITY_ID_REFERENCE_KINDS: EntityDefIdRefKind;
-        RELATIVE = 1,
-        ABSOLUTE = 2,
-    }
-
-    pub type EntityDefFlags = u8;
-    
-    consts_def!{
-        ALL_ENTITY_FLAGS: EntityDefFlags;
-        COLLECTABLE = super::COLLECTABLE,
-        STEPPABLE = super::STEPPABLE,
-        VICTORY = super::VICTORY,
-        DOOR = super::DOOR,
-        NOT_SPAWNED_AT_START = 1 << 4,
-    }
-
-    pub type HallwayKind = u8;
-    
-    consts_def!{
-        ALL_HALLWAY_KINDS: CollectActionKind;
-        NONE = 0,
-        ICE_PUZZLE = 1,
-        SWORD = 2,
-    }
-
-    pub type TileFlags = u32;
-    
-    consts_def!{
-        ALL_TILE_FLAGS: TileFlags;
-        // Can't be anything but a blocker
-        WALL = 0,
-        FLOOR = 1 << 0,
-        PLAYER_START = 1 << 2,
-        ITEM_START = 1 << 3,
-        NPC_START = 1 << 4,
-        DOOR_START = 1 << 5,
-    }
-}
-
-pub type EntityFlags = u8;
-
-pub const COLLECTABLE: EntityFlags = 1 << 0;
-pub const STEPPABLE: EntityFlags = 1 << 1;
-pub const VICTORY: EntityFlags = 1 << 2;
-pub const DOOR: EntityFlags = 1 << 3;
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Location {
@@ -624,123 +524,8 @@ pub fn i_to_xy(segment_width: SegmentWidth, index: Index) -> XY {
     }
 }
 
-pub mod config {
-    use vec1::{Vec1};
-    use crate::{
-        consts::{EntityDefFlags, TileFlags}, DefId, OnCollect, SegmentWidth, Speech, TileSprite
-    };
-    use std::path::PathBuf;
-
-    /// A configuration WorldSegment that can be used to contruct game::WorldSegments later.
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub struct WorldSegment {
-        pub width: SegmentWidth,
-        // TODO? Nonempty Vec?
-        // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that rsstriction clear, so we
-        // can't have like PC only worlds that break in weird ways online. Probably no one will ever need that
-        // many tiles per segment. Plus, then xs conversions go away.
-        pub tiles: Vec<TileFlags>,
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct Config {
-        pub segments: Vec1<WorldSegment>,
-        pub entities: Vec1<EntityDef>,
-        pub hallways: Vec1<HallwaySpec>,
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct Manifest {
-        pub name: String,
-        pub config_path: PathBuf,
-        pub spritesheet_path: PathBuf,
-    }
-
-    impl Manifest {
-        pub fn paths(&self) -> impl Iterator<Item = &std::path::Path> {
-            [
-                self.config_path.as_path(),
-                self.spritesheet_path.as_path()
-            ].into_iter()
-        }
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct EntityDef {
-        pub speeches: Vec<Vec<Speech>>,
-        pub inventory_description: Vec<Vec<Speech>>,
-        pub id: DefId,
-        pub flags: EntityDefFlags,
-        pub tile_sprite: TileSprite,
-        pub wants: Vec<DefId>,
-        pub on_collect: OnCollect,
-    }
-
-    #[derive(Clone, Debug, Default)]
-    pub enum HallwaySpec {
-        #[default]
-        None,
-        IcePuzzle,
-        SWORD,
-    }
-}
-pub use config::{Config, EntityDef};
-
-pub struct Spritesheet {
-    pub pixels: Vec<ARGB>,
-    pub width: usize,
-}
-
-impl Spritesheet {
-    pub fn slice(&self) -> (&[ARGB], usize) {
-        (&self.pixels, self.width)
-    }
-}
-
-pub struct Pak {
-    pub config: Config,
-    pub spritesheet: Spritesheet,
-}
-
-impl From<&EntityDef> for MiniEntityDef {
-    fn from(def: &EntityDef) -> Self {
-        Self {
-            id: def.id,
-            flags: def.flags,
-            tile_sprite: def.tile_sprite,
-            wants: def.wants.clone(),
-            on_collect: def.on_collect.clone(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct Speech {
-    pub text: String,
-}
-
-impl From<String> for Speech {
-    fn from(text: String) -> Self {
-        Self::from(text.as_str())
-    }
-}
-
-impl From<&String> for Speech {
-    fn from(text: &String) -> Self {
-        Self::from(text.as_str())
-    }
-}
-
-impl From<&str> for Speech {
-    fn from(raw_text: &str) -> Self {
-        Self {
-            text: text::string::reflow(&raw_text.to_lowercase(), 54),
-        }
-    }
-}
-
 pub mod speeches {
-    use crate::{DefId, Speech};
+    use pak_types::{DefId, Speech};
     use std::collections::BTreeMap;
 
     /// The state of the entity in so far as it relates to which speech

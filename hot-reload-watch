@@ -1,1 +1,1 @@
-cargo watch -w libs/app/ -w libs/game -w libs/gfx -w libs/config -w libs/ice_puzzle -w libs/models -w libs/platform_types -w libs/vec1 -w libs/world -w libs/sword -w libs/pak -x 'build --release --package app --features "invariant-checking,reload,refresh"'
+cargo watch -w libs/app/ -w libs/game -w libs/gfx -w libs/config -w libs/ice_puzzle -w libs/models -w libs/platform_types -w libs/vec1 -w libs/world -w libs/sword -w libs/pak  -w libs/pak_types -x 'build --release --package app --features "invariant-checking,reload,refresh"'

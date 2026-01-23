@@ -11,7 +11,7 @@ pub struct State {
 
 const TILE_SIZE: unscaled::Inner = 20;
 
-fn str_to_sprite_xy(s: &str) -> sprite::XY<sprite::Renderable> {
+fn str_to_sprite_xy(s: &str) -> sprite::XY<IcePuzzles> {
     let (sx, sy) = match s {
         "☐" => (0, 0),
         "☒" => (1 * TILE_SIZE, 0),
@@ -51,17 +51,13 @@ fn str_to_sprite_xy(s: &str) -> sprite::XY<sprite::Renderable> {
         }
     };
 
-    // TODO make this a parameter that ultimately comes from the config file.
-    // + 128 to put us at the start of the spritesheet section for this sub-game
-    let spec = sprite::spec::<IcePuzzles>(sprite::WH{ w: sprite::W(128), h: sprite::H(0) });
-
     sprite::XY {
         x: sprite::x::<IcePuzzles>(sx),
         y: sprite::y::<IcePuzzles>(sy),
-    }.apply(&spec)
+    }
 }
 
-fn p_xy(commands: &mut Commands, x_in: i32, y_in: i32, s: &'static str) {
+fn p_xy(commands: &mut Commands, spec: &sprite::Spec::<IcePuzzles>, x_in: i32, y_in: i32, s: &'static str) {
     type X = unscaled::Inner;
     type Y = unscaled::Inner;
 
@@ -70,7 +66,7 @@ fn p_xy(commands: &mut Commands, x_in: i32, y_in: i32, s: &'static str) {
     match (X::try_from(x_in), Y::try_from(y_in)) {
         (Ok(x), Ok(y)) => {
             commands.sspr(
-                str_to_sprite_xy(s),
+                str_to_sprite_xy(s).apply(spec),
                 command::Rect::from_unscaled(unscaled::Rect {
                     x: unscaled::X((x * TILE_SIZE) as _),
                     y: unscaled::Y((y * TILE_SIZE) as _),
@@ -95,6 +91,9 @@ impl State {
             platform: Platform {
                 p_xy,
                 size: platform::size,
+                // TODO make this a parameter that ultimately comes from the config file.
+                // + 128 to put us at the start of the spritesheet section for this sub-game
+                spec: sprite::spec::<IcePuzzles>(sprite::WH{ w: sprite::W(128), h: sprite::H(0) }),
             },
             events: Vec::with_capacity(1),
         }
@@ -145,7 +144,7 @@ impl State {
             &mut state.events
         );
 
-        platform::push_commands(commands);
+        platform::push_commands(commands, &state.platform.spec);
 
         platform::end_frame();
     }
@@ -186,10 +185,10 @@ mod platform {
     }
 
     /// `platform` state management
-    pub fn push_commands(commands: &mut Commands) {
+    pub fn push_commands(commands: &mut Commands, spec: &sprite::Spec::<IcePuzzles>) {
         for ((x, y), s) in state!().chars.iter() {
             commands.sspr(
-                str_to_sprite_xy(s),
+                str_to_sprite_xy(s).apply(spec),
                 command::Rect::from_unscaled(unscaled::Rect {
                     x: unscaled::X((x * TILE_SIZE) as _),
                     y: unscaled::Y((y * TILE_SIZE) as _),

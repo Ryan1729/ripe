@@ -1,6 +1,8 @@
 use features::invariant_assert;
 use gfx::{Commands, nine_slice, next_arrow, speech, to_tile};
-use platform_types::{ARGB, GFX_WIDTH, command, sprite::{self, Renderable, Rooms}, unscaled, Button, Dir, Input, PakReader, Speaker, SFX};
+use gfx_sizes::{ARGB, GFX_WIDTH};
+use pak_types::{Specs};
+use platform_types::{command, sprite::{self, BaseUI}, unscaled, Button, Dir, Input, PakReader, Speaker, SFX};
 pub use platform_types::StateParams;
 use game::{FadeMessageSpec, HallwayState, Mode, TalkingState, PostTalkingAction};
 use models::{Entity, i_to_xy, Pak, Speech, Speeches, Spritesheet, TileSprite, XY};
@@ -41,6 +43,7 @@ type GameState = Result<game::State, ErrorState>;
 pub struct State {
     pub game_state: GameState,
     pub commands: Commands,
+    pub specs: Specs,
     pub input: Input,
     pub speaker: Speaker,
     pub spritesheet: Spritesheet,
@@ -81,6 +84,7 @@ impl State {
                     Ok(config) => Ok(Pak {
                         config,
                         spritesheet: get_hardcoded_spritesheet(),
+                        specs: Specs::default(),
                     }),
                     Err(err) => {
                         Err(Error::Pak(pak::Error::Config(err)))
@@ -89,22 +93,26 @@ impl State {
             },
         };
 
-        let (game_state, spritesheet) = match pak_result {
+        let (game_state, spritesheet, specs) = match pak_result {
             Ok(pak) => (
                 game::State::new(seed, pak.config)
                     .map_err(Error::Game)
                     .map_err(ErrorState::from),
                 pak.spritesheet,
+                pak.specs,
             ),
-            Err(e) => {
-                (Err(ErrorState::from(e)), get_hardcoded_spritesheet())
-            }
+            Err(e) => (
+                Err(ErrorState::from(e)),
+                get_hardcoded_spritesheet(),
+                Specs::default(),
+            )
         };
 
         Self {
             game_state,
             // This doesn't have to use the same seed, but there's currently no reason not to.
             commands: Commands::new(seed),
+            specs,
             input: Input::default(),
             speaker: Speaker::default(),
             spritesheet,
@@ -125,6 +133,7 @@ pub fn frame(state: &mut State) -> (&[platform_types::Command], (&[ARGB], usize)
     state.speaker.clear();
     let effect = update_and_render(
         &mut state.commands,
+        &state.specs,
         &mut state.game_state,
         state.input,
         &mut state.speaker,
@@ -399,12 +408,10 @@ fn game_update(commands: &mut Commands, state: &mut game::State, input: Input, s
 
 
 #[inline]
-fn game_render(commands: &mut Commands, state: &game::State) {
+fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
     //
     // Render World
     //
-
-    let spec = sprite::spec::<Rooms>(sprite::WH{ w: sprite::W(0), h: sprite::H(0) });
 
     let draw_talking = |commands: &mut Commands, speeches: &Speeches, talking: &TalkingState| {
         commands.nine_slice(nine_slice::TALKING, speech::OUTER_RECT);
@@ -418,7 +425,7 @@ fn game_render(commands: &mut Commands, state: &game::State) {
 
     let draw_tile_sprite = |commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite| {
         commands.sspr(
-            to_tile::sprite_xy(&spec, sprite),
+            to_tile::sprite_xy(&specs.base_tiles, sprite),
             command::Rect::from_unscaled(to_tile::rect(xy)),
         );
     };
@@ -429,14 +436,14 @@ fn game_render(commands: &mut Commands, state: &game::State) {
 
     let draw_tile_sprite_centered_at = |commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite| {
         commands.sspr(
-            to_tile::sprite_xy(&spec, sprite),
+            to_tile::sprite_xy(&specs.base_tiles, sprite),
             command::Rect::from_unscaled(to_tile::rect(to_tile::center_to_min_corner(xy))),
         );
     };
 
     let draw_entity = |commands: &mut Commands, entity: &Entity| {
         commands.sspr(
-            to_tile::sprite_xy(&spec, entity.transformable.tile_sprite),
+            to_tile::sprite_xy(&specs.base_tiles, entity.transformable.tile_sprite),
             command::Rect::from_unscaled(to_tile::entity_rect(entity)),
         );
     };
@@ -608,10 +615,10 @@ fn game_render(commands: &mut Commands, state: &game::State) {
                 // draw selectrum
                 if inventory_index == *current_index {
                     commands.sspr(
-                        sprite::XY::<Renderable> {
-                            x: sprite::x::<Renderable>(24),
-                            y: sprite::y::<Renderable>(8),
-                        },
+                        sprite::XY::<BaseUI> {
+                            x: sprite::x::<BaseUI>(24),
+                            y: sprite::y::<BaseUI>(8),
+                        }.apply(&specs.base_ui),
                         command::Rect::from_unscaled(
                             unscaled::Rect {
                                 x: at.x,
@@ -677,6 +684,7 @@ enum Effect {
 #[inline]
 fn update_and_render(
     commands: &mut Commands,
+    specs: &Specs,
     game_state: &mut GameState,
     input: Input,
     speaker: &mut Speaker,
@@ -695,7 +703,7 @@ fn update_and_render(
             for FadeMessageSpec { message, xy } in state.fade_message_specs.drain(..) {
                 commands.push_fade_message(message.into(), xy);
             }
-            game_render(commands, state);
+            game_render(commands, specs, state);
 
             <_>::default()
         },

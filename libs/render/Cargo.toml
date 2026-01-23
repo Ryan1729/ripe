@@ -11,6 +11,12 @@ path = "src/render.rs"
 [dependencies.assets]
 path = "../assets"
 
+[dependencies.gfx_sizes]
+path = "../gfx_sizes"
+
+[dependencies.pak_types]
+path = "../pak_types"
+
 [dependencies.platform_types]
 path = "../platform_types"
 

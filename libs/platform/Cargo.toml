@@ -25,6 +25,9 @@ xs = { path = "../xs" }
 [dependencies.app]
 path = "../app"
 
+[dependencies.gfx_sizes]
+path = "../gfx_sizes"
+
 [dependencies.platform_types]
 path = "../platform_types"
 

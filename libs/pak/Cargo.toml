@@ -15,8 +15,14 @@ zip = { version = "7.0.0", default-features = false, features = ["deflate"] }
 [dependencies.config]
 path = "../config"
 
+[dependencies.gfx_sizes]
+path = "../gfx_sizes"
+
 [dependencies.models]
 path = "../models"
+
+[dependencies.pak_types]
+path = "../pak_types"
 
 [dependencies.platform_types]
 path = "../platform_types"

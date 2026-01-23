@@ -1,0 +1,18 @@
+[package]
+name = "pak_types"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/pak_types.rs"
+
+[dependencies]
+
+[dependencies.gfx_sizes]
+path = "../gfx_sizes"
+
+[dependencies.text]
+path = "../text"
+
+[dependencies.vec1]
+path = "../vec1"

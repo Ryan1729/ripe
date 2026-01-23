@@ -1,4 +1,4 @@
-use platform_types::{sprite, sprite::{Renderable, Rooms}, unscaled, TILES_PER_ROW};
+use platform_types::{sprite, sprite::{Renderable, BaseTiles}, unscaled, TILES_PER_ROW};
 use models::{Entity, xy::{XY}, TileSprite, offset};
 
 // TODO These should be changeable at runtime. Having it be here in this module as a static is inconvenient.
@@ -42,8 +42,8 @@ pub fn center_to_min_corner(xy: unscaled::XY) -> unscaled::XY {
     xy - CENTER_OFFSET
 }
 
-pub fn sprite_xy(spec: &sprite::Spec<Rooms>, tile_sprite: TileSprite) -> sprite::XY<Renderable> {
-    sprite::XY::<Rooms> {
+pub fn sprite_xy(spec: &sprite::Spec<BaseTiles>, tile_sprite: TileSprite) -> sprite::XY<Renderable> {
+    sprite::XY::<BaseTiles> {
         x: sprite::x(0) + sprite::W(tile_sprite as sprite::Inner % sprite::Inner::from(TILES_PER_ROW)) * TILE_W.get(),
         y: sprite::y(0) + sprite::H(tile_sprite as sprite::Inner / sprite::Inner::from(TILES_PER_ROW)) * TILE_H.get(),
     }.apply(spec)

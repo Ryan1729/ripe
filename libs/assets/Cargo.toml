@@ -8,5 +8,8 @@ path = "src/assets.rs"
 
 [dependencies]
 
+[dependencies.gfx_sizes]
+path = "../gfx_sizes"
+
 [dependencies.platform_types]
 path = "../platform_types"
