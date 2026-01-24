@@ -10,6 +10,9 @@ path = "src/gfx.rs"
 [dependencies.models]
 path = "../models"
 
+[dependencies.pak_types]
+path = "../pak_types"
+
 [dependencies.platform_types]
 path = "../platform_types"
 

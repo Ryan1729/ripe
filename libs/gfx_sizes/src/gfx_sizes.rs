@@ -7,5 +7,4 @@ pub const GFX_WIDTH: usize = 768;
 pub const GFX_HEIGHT: usize = 256;
 pub const GFX_LENGTH: usize = GFX_WIDTH * GFX_HEIGHT;
 
-pub const FONT_BASE_Y: u8 = 128;
 pub const FONT_WIDTH: usize = 128;

@@ -3,7 +3,8 @@ use models::{ShakeAmount, Speech};
 
 pub mod to_tile;
 
-use platform_types::{Command, PALETTE, sprite::{self, Renderable}, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
+use pak_types::{sprite::{self, Renderable, BaseFont, BaseUI},};
+use platform_types::{Command, PALETTE, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_WIDTH};
 use text::byte_slice as text;
 
 /// 64k fade frames ought to be enough for anybody!
@@ -23,6 +24,8 @@ pub type FadeMessages = Vec<FadeMessage>;
 
 pub struct Commands {
     commands: Vec<Command>,
+    font_spec: sprite::Spec<BaseFont>,
+    ui_spec: sprite::Spec<BaseUI>,
     shake_xd: unscaled::XD,
     shake_yd: unscaled::YD,
     rng: Xs,
@@ -30,9 +33,15 @@ pub struct Commands {
 }
 
 impl Commands {
-    pub fn new(seed: xs::Seed) -> Self {
+    pub fn new(
+        seed: xs::Seed,
+        font_spec: sprite::Spec<BaseFont>,
+        ui_spec: sprite::Spec<BaseUI>,
+    ) -> Self {
         Self {
             commands: <_>::default(),
+            font_spec,
+            ui_spec,
             shake_xd: <_>::default(),
             shake_yd: <_>::default(),
             rng: xs::from_seed(seed),
@@ -95,6 +104,7 @@ impl Commands {
         for message in &self.fade_messages {
             print::lines(
                 &mut self.commands,
+                &self.font_spec,
                 self.shake_xd,
                 self.shake_yd,
                 message.xy,
@@ -124,13 +134,14 @@ impl Commands {
 
     pub fn print_char(
         &mut self,
-        character: u8, 
+        character: u8,
         x: unscaled::X,
         y: unscaled::Y,
         colour: PaletteIndex
     ) {
         print::char(
             &mut self.commands,
+            &self.font_spec,
             self.shake_xd,
             self.shake_yd,
             character,
@@ -148,6 +159,7 @@ impl Commands {
     ) {
         print::line(
             &mut self.commands,
+            &self.font_spec,
             self.shake_xd,
             self.shake_yd,
             bytes,
@@ -165,6 +177,7 @@ impl Commands {
     ) {
         print::lines(
             &mut self.commands,
+            &self.font_spec,
             self.shake_xd,
             self.shake_yd,
             base_xy,
@@ -207,6 +220,7 @@ mod print {
 
     pub fn char(
         command_vec: &mut Vec<Command>, 
+        spec: &sprite::Spec<BaseFont>,
         shake_xd: unscaled::XD,
         shake_yd: unscaled::YD,
         character: u8, 
@@ -214,24 +228,23 @@ mod print {
         y: unscaled::Y,
         colour: PaletteIndex
     ) {
-        fn get_char_xy(sprite_number: u8) -> sprite::XY<Renderable> {
+        fn get_char_xy(sprite_number: u8) -> sprite::XY<BaseFont> {
             type Inner = sprite::Inner;
             let sprite_number = Inner::from(sprite_number);
             const CH_SIZE: Inner = CHAR_SIZE as Inner;
             const SPRITES_PER_ROW: Inner = FONT_WIDTH as Inner / CH_SIZE;
         
-            sprite::XY::<Renderable> {
-                x: sprite::x::<Renderable>(
+            sprite::XY::<BaseFont> {
+                x: sprite::x::<BaseFont>(
                     (sprite_number % SPRITES_PER_ROW) * CH_SIZE
                 ),
-                y: sprite::y::<Renderable>(
-                    FONT_BASE_Y as Inner + 
+                y: sprite::y::<BaseFont>(
                     (sprite_number / SPRITES_PER_ROW) * CH_SIZE
                 ),
             }
         }
     
-        let sprite_xy = get_char_xy(character);
+        let sprite_xy = get_char_xy(character).apply(spec);
         push_with_screenshake(
             command_vec,
             shake_xd,
@@ -250,7 +263,8 @@ mod print {
     }
     
     pub fn line(
-        command_vec: &mut Vec<Command>, 
+        command_vec: &mut Vec<Command>,
+        font_spec: &sprite::Spec<BaseFont>,
         shake_xd: unscaled::XD,
         shake_yd: unscaled::YD,
         bytes: &[u8],
@@ -260,6 +274,7 @@ mod print {
         for &c in bytes.iter() {
             char(
                 command_vec,
+                font_spec,
                 shake_xd,
                 shake_yd,
                 c,
@@ -272,7 +287,8 @@ mod print {
     }
     
     pub fn lines(
-        command_vec: &mut Vec<Command>, 
+        command_vec: &mut Vec<Command>,
+        font_spec: &sprite::Spec<BaseFont>,
         shake_xd: unscaled::XD,
         shake_yd: unscaled::YD,
         base_xy: unscaled::XY,
@@ -290,7 +306,8 @@ mod print {
             let offset = top_index_with_offset as u16 % CHAR_H.get();
     
             line(
-                command_vec, 
+                command_vec,
+                font_spec,
                 shake_xd,
                 shake_yd,
                 text_line,
@@ -402,12 +419,12 @@ pub mod next_arrow {
         y: unscaled::Y,
     ) {
         let sprite_xy = match next_arrow_sprite & 1 {
-            1 => sprite::XY::<Renderable> { x: sprite::x::<Renderable>(0), y: sprite::y::<Renderable>(4) },
-            _ => sprite::XY::<Renderable> { x: sprite::x::<Renderable>(0), y: sprite::y::<Renderable>(0) },
+            1 => sprite::XY::<BaseUI> { x: sprite::x::<BaseUI>(0), y: sprite::y::<BaseUI>(4) },
+            _ => sprite::XY::<BaseUI> { x: sprite::x::<BaseUI>(0), y: sprite::y::<BaseUI>(0) },
         };
 
         commands.sspr(
-            sprite_xy,
+            sprite_xy.apply(&commands.ui_spec),
             Rect::from_unscaled(unscaled::Rect {
                 x,
                 y,
@@ -452,60 +469,60 @@ pub mod nine_slice {
 
     struct Slices {
         // Top left point on the rect that makes up the top left corner of the sprite.
-        top_left: sprite::XY<Renderable>,
+        top_left: sprite::XY<BaseUI>,
         // Top left point on the rect that makes up the top right corner of the sprite.
-        top_right: sprite::XY<Renderable>,
+        top_right: sprite::XY<BaseUI>,
         // Top left point on the rect that makes up the bottom left corner of the sprite.
-        bottom_left: sprite::XY<Renderable>,
+        bottom_left: sprite::XY<BaseUI>,
         // Top left point on the rect that makes up the bottom right corner of the sprite.
-        bottom_right: sprite::XY<Renderable>,
+        bottom_right: sprite::XY<BaseUI>,
         // Top left point on the rect that makes up the middle of the sprite.
-        middle: sprite::XY<Renderable>,
+        middle: sprite::XY<BaseUI>,
         // Top left point on the rect that makes up the top edge of the sprite.
-        top: sprite::XY<Renderable>,
+        top: sprite::XY<BaseUI>,
         // Top left point on the rect that makes up the left edge of the sprite.
-        left: sprite::XY<Renderable>,
+        left: sprite::XY<BaseUI>,
         // Top left point on the rect that makes up the right edge of the sprite.
-        right: sprite::XY<Renderable>,
+        right: sprite::XY<BaseUI>,
         // Top left point on the rect that makes up the bottom edge of the sprite.
-        bottom: sprite::XY<Renderable>,
+        bottom: sprite::XY<BaseUI>,
     }
 
     // TODO? Should these be allowed to be moved elsewhere on the spreadsheet?
     const TALKING_SLICES: Slices = {
-        let top_left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
-            x: sprite::x::<Renderable>(0),
-            y: sprite::y::<Renderable>(8),
+        let top_left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+            x: sprite::x::<BaseUI>(0),
+            y: sprite::y::<BaseUI>(8),
         };
-        let top_right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
-            x: sprite::x::<Renderable>(20),
-            y: sprite::y::<Renderable>(8),
+        let top_right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+            x: sprite::x::<BaseUI>(20),
+            y: sprite::y::<BaseUI>(8),
         };
-        let bottom_left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
-            x: sprite::x::<Renderable>(0),
-            y: sprite::y::<Renderable>(28),
+        let bottom_left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+            x: sprite::x::<BaseUI>(0),
+            y: sprite::y::<BaseUI>(28),
         };
-        let bottom_right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
-            x: sprite::x::<Renderable>(20),
-            y: sprite::y::<Renderable>(28),
+        let bottom_right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+            x: sprite::x::<BaseUI>(20),
+            y: sprite::y::<BaseUI>(28),
         };
-        let middle: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+        let middle: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
             x: sprite::x_const_add_w(top_left.x, EDGE_W),
             y: sprite::y_const_add_h(top_left.y, EDGE_H),
         };
-        let top: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+        let top: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
             x: middle.x,
             y: top_left.y,
         };
-        let left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+        let left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
             x: top_left.x,
             y: middle.y,
         };
-        let right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+        let right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
             x: top_right.x,
             y: middle.y,
         };
-        let bottom: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+        let bottom: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
             x: top.x,
             y: bottom_left.y,
         };
@@ -524,39 +541,39 @@ pub mod nine_slice {
     };
 
     const INVENTORY_SLICES: Slices = {
-        let top_left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
-            x: sprite::x::<Renderable>(0),
-            y: sprite::y::<Renderable>(32),
+        let top_left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+            x: sprite::x::<BaseUI>(0),
+            y: sprite::y::<BaseUI>(32),
         };
-        let top_right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
-            x: sprite::x::<Renderable>(20),
-            y: sprite::y::<Renderable>(32),
+        let top_right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+            x: sprite::x::<BaseUI>(20),
+            y: sprite::y::<BaseUI>(32),
         };
-        let bottom_left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
-            x: sprite::x::<Renderable>(0),
-            y: sprite::y::<Renderable>(52),
+        let bottom_left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+            x: sprite::x::<BaseUI>(0),
+            y: sprite::y::<BaseUI>(52),
         };
-        let bottom_right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
-            x: sprite::x::<Renderable>(20),
-            y: sprite::y::<Renderable>(52),
+        let bottom_right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+            x: sprite::x::<BaseUI>(20),
+            y: sprite::y::<BaseUI>(52),
         };
-        let middle: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+        let middle: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
             x: sprite::x_const_add_w(top_left.x, EDGE_W),
             y: sprite::y_const_add_h(top_left.y, EDGE_H),
         };
-        let top: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+        let top: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
             x: middle.x,
             y: top_left.y,
         };
-        let left: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+        let left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
             x: top_left.x,
             y: middle.y,
         };
-        let right: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+        let right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
             x: top_right.x,
             y: middle.y,
         };
-        let bottom: sprite::XY<Renderable> = sprite::XY::<Renderable> {
+        let bottom: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
             x: top.x,
             y: bottom_left.y,
         };
@@ -580,7 +597,12 @@ pub mod nine_slice {
     const EDGE_W: unscaled::W = unscaled::W(4);
     const EDGE_H: unscaled::H = unscaled::H(4);
 
-    pub(crate) fn render(commands: &mut Commands, nine_slice_sprite: Sprite, unscaled::Rect{ x, y, w, h }: unscaled::Rect) {
+    pub(crate) fn render(
+        commands: &mut Commands,
+        nine_slice_sprite: Sprite,
+        unscaled::Rect{ x, y, w, h }: unscaled::Rect
+    ) {
+        // TODO? Is it worth caching the spec application?
         let slices = match nine_slice_sprite & 1 {
             1 => INVENTORY_SLICES,
             _ => TALKING_SLICES,
@@ -601,7 +623,7 @@ pub mod nine_slice {
         for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(CENTER_H.get() as _).map(unscaled::Y) {
             for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(CENTER_W.get() as _).map(unscaled::X) {
                 commands.sspr(
-                    slices.middle,
+                    slices.middle.apply(&commands.ui_spec),
                     Rect::from_unscaled(unscaled::Rect {
                         x: fill_x,
                         y: fill_y,
@@ -616,7 +638,7 @@ pub mod nine_slice {
         // Draw B and H
         for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(CENTER_W.get() as _).map(unscaled::X) {
             commands.sspr(
-                slices.top,
+                slices.top.apply(&commands.ui_spec),
                 Rect::from_unscaled(unscaled::Rect {
                     x: fill_x,
                     y,
@@ -627,7 +649,7 @@ pub mod nine_slice {
             );
 
             commands.sspr(
-                slices.bottom,
+                slices.bottom.apply(&commands.ui_spec),
                 Rect::from_unscaled(unscaled::Rect {
                     x: fill_x,
                     y: above_bottom_corner,
@@ -641,7 +663,7 @@ pub mod nine_slice {
         // Draw D and F
         for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(CENTER_H.get() as _).map(unscaled::Y) {
             commands.sspr(
-                slices.left,
+                slices.left.apply(&commands.ui_spec),
                 Rect::from_unscaled(unscaled::Rect {
                     x,
                     y: fill_y,
@@ -652,7 +674,7 @@ pub mod nine_slice {
             );
 
             commands.sspr(
-                slices.right,
+                slices.right.apply(&commands.ui_spec),
                 Rect::from_unscaled(unscaled::Rect {
                     x: before_right_corner,
                     y: fill_y,
@@ -665,7 +687,7 @@ pub mod nine_slice {
 
         // Draw A
         commands.sspr(
-            slices.top_left,
+            slices.top_left.apply(&commands.ui_spec),
             Rect::from_unscaled(unscaled::Rect {
                 x,
                 y,
@@ -676,7 +698,7 @@ pub mod nine_slice {
 
         // Draw C
         commands.sspr(
-            slices.top_right,
+            slices.top_right.apply(&commands.ui_spec),
             Rect::from_unscaled(unscaled::Rect {
                 x: before_right_corner,
                 y,
@@ -687,7 +709,7 @@ pub mod nine_slice {
 
         // Draw G
         commands.sspr(
-            slices.bottom_left,
+            slices.bottom_left.apply(&commands.ui_spec),
             Rect::from_unscaled(unscaled::Rect {
                 x,
                 y: above_bottom_corner,
@@ -698,7 +720,7 @@ pub mod nine_slice {
 
         // Draw I
         commands.sspr(
-            slices.bottom_right,
+            slices.bottom_right.apply(&commands.ui_spec),
             Rect::from_unscaled(unscaled::Rect {
                 x: before_right_corner,
                 y: above_bottom_corner,
@@ -728,6 +750,4 @@ pub const SPADE_CHAR: u8 = 28;
 pub const CHAR_SIZE: u8 = 8;
 pub const CHAR_W: unscaled::W = unscaled::W(CHAR_SIZE as _);
 pub const CHAR_H: unscaled::H = unscaled::H(CHAR_SIZE as _);
-
-pub const FONT_FLIP: u8 = 128;
 

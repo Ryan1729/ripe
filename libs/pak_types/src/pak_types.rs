@@ -799,6 +799,7 @@ pub mod sprite {
         }
     }
 
+    #[derive(Clone, Debug)]
     pub struct Spec<Marker> {
         offset: WH,
         marker: PhantomData<Marker>,
@@ -1046,15 +1047,17 @@ impl Spritesheet {
 }
 
 pub struct Specs {
-    pub base_ui: sprite::Spec<sprite::BaseUI>,
+    pub base_font: sprite::Spec<sprite::BaseFont>,
     pub base_tiles: sprite::Spec<sprite::BaseTiles>,
+    pub base_ui: sprite::Spec<sprite::BaseUI>,
 }
 
 impl Default for Specs {
     fn default() -> Self {
         Self {
-            base_ui: sprite::spec::<sprite::BaseUI>(sprite::WH{ w: sprite::W(0), h: sprite::H(0) }),
+            base_font: sprite::spec::<sprite::BaseFont>(sprite::WH{ w: sprite::W(0), h: sprite::H(128) }),
             base_tiles: sprite::spec::<sprite::BaseTiles>(sprite::WH{ w: sprite::W(0), h: sprite::H(0) }),
+            base_ui: sprite::spec::<sprite::BaseUI>(sprite::WH{ w: sprite::W(0), h: sprite::H(0) }),
         }
     }
 }

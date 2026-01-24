@@ -111,7 +111,7 @@ impl State {
         Self {
             game_state,
             // This doesn't have to use the same seed, but there's currently no reason not to.
-            commands: Commands::new(seed),
+            commands: Commands::new(seed, specs.base_font.clone(), specs.base_ui.clone()),
             specs,
             input: Input::default(),
             speaker: Speaker::default(),
