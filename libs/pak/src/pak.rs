@@ -121,7 +121,19 @@ pub fn from_reader<R>(reader: R) -> Result<Pak, Error>
     };
 
     // TODO actually read these from the manifest if present
-    let specs = Specs::default();
+    let mut specs = Specs::default();
+
+    if let Some(base_font) = manifest.base_font {
+        specs.base_font = base_font;
+    }
+
+    if let Some(base_ui) = manifest.base_ui {
+        specs.base_ui = base_ui;
+    }
+
+    if let Some(base_tiles) = manifest.base_tiles {
+        specs.base_tiles = base_tiles;
+    }
 
     let config = {
         let mut config_file = by_path!(&manifest.config_path);

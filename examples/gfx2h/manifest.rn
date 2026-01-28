@@ -1,0 +1,27 @@
+pub fn main() {
+    let y_scale = 2;
+
+    Ok(#{
+        name: "gfx2h",
+        config_path: "./config.rn",
+        spritesheet_path: "./gfx2h.png",
+        base_font: #{
+            offset: #{
+                w: 0,
+                h: 128 * y_scale,
+            },
+        },
+        base_tiles: #{
+            offset: #{
+                w: 0,
+                h: 0,
+            },
+        },
+        base_ui: #{
+            offset: #{
+                w: 0,
+                h: 0,
+            },
+        },
+    })
+}

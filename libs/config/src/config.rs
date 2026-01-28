@@ -14,12 +14,13 @@ mod rune_based {
             WorldSegment,
         },
         consts::{TileFlags},
+        sprite::{self, H, W, WH},
         DefId,
-        DefIdDelta
+        DefIdDelta,
     };
 
     use std::path::PathBuf;
-    use rune::{alloc::{Error as AllocError}, BuildError, Context, ContextError, Diagnostics, Source, Sources, Vm};
+    use rune::{alloc::{Error as AllocError}, BuildError, Context, ContextError, Diagnostics, Source, Sources, Value, Vm};
     use rune::diagnostics::{Diagnostic};
     use rune::runtime::{Object, RuntimeError, VmError};
     use rune::sync::Arc;
@@ -235,6 +236,42 @@ mod rune_based {
         }
     }
 
+    macro_rules! to_int {
+        ($val: expr, $key: expr, $parent_key: expr $(,)?) => ({
+            let key = $key;
+            let parent_key = $parent_key.into();
+
+            let int: i64 = 
+                $val.as_integer().map_err(|got| Error::TypeMismatch{ key, expected: "int", got })?;
+
+            int
+                .try_into().map_err(|error| Error::SizeError {
+                    key,
+                    parent_key,
+                    error,
+                })?
+        })
+    }
+
+    macro_rules! get_int {
+        ($map: expr, $key: expr, $parent_key: expr $(,)?) => {
+            {
+                let key = $key;
+                let parent_key = $parent_key.into();
+
+                let value: &Value =
+                    $map.get(key)
+                        .ok_or(Error::FieldMissing{ key, parent_key, })?;
+
+                to_int!(
+                    value,
+                    ik!(key),
+                    parent_key,
+                )
+            }
+        }
+    }
+
     fn to_config(map: Object) -> Result<Config, Error> {
         use rune::runtime::{BorrowRef, Object};
         use rune::{Value};
@@ -257,23 +294,6 @@ mod rune_based {
             }
         }
 
-        macro_rules! to_int {
-            ($val: expr, $key: expr, $parent_key: expr $(,)?) => ({
-                let key = $key;
-                let parent_key = $parent_key;
-
-                let int: i64 = 
-                    $val.as_integer().map_err(|got| Error::TypeMismatch{ key, expected: "int", got })?;
-
-                int
-                    .try_into().map_err(|error| Error::SizeError {
-                        key,
-                        parent_key,
-                        error,
-                    })?
-            })
-        }
-
         macro_rules! to_array {
             ($val: expr, $key: expr $(,)?) => ({
                 let vec: Vec<Value> = rune::from_value(
@@ -282,25 +302,6 @@ mod rune_based {
 
                 vec
             })
-        }
-
-        macro_rules! get_int {
-            ($map: expr, $key: expr, $parent_key: expr $(,)?) => {
-                {
-                    let key = $key;
-                    let parent_key = $parent_key;
-
-                    let value: &Value =
-                        $map.get(key)
-                            .ok_or(Error::FieldMissing{ key, parent_key, })?;
-
-                    to_int!(
-                        value,
-                        ik!(key),
-                        parent_key,
-                    )
-                }
-            }
         }
 
         /*
@@ -656,11 +657,49 @@ mod rune_based {
         let name = get_str!(map, "name", root_key);
         let config_path = PathBuf::from(get_str!(map, "config_path", root_key));
         let spritesheet_path = PathBuf::from(get_str!(map, "spritesheet_path", root_key));
+        
+        macro_rules! get_spec {
+            (<$typ: path> $map: expr, $key: expr, $parent_key: expr $(,)?) => ({
+                let key = $key;
+
+                if let Some(v) = $map.get(key) {
+                    let spec: Object =
+                        rune::from_value(v).map_err(|got| Error::TypeMismatch{ key: key.into(), expected: "map", got })?;
+    
+                    let parent_key = key.into();
+                    let key = "offset";
+                    
+                    let offset: Object = rune::from_value(
+                            spec.get(key)
+                                .ok_or(Error::FieldMissing{ key, parent_key, })?
+                        ).map_err(|got| Error::TypeMismatch{ key: key.into(), expected: "map", got })?;
+    
+                    let parent_key = ik!(key);
+    
+                    let w_inner = get_int!(offset, "w", parent_key);
+                    let h_inner = get_int!(offset, "h", parent_key);
+    
+                    dbg!(Some(sprite::spec::<$typ>(WH {
+                        w: W(w_inner),
+                        h: H(h_inner),
+                    },)))
+                } else {
+                    None
+                }
+            })
+        }
+
+        let base_font = get_spec!(<sprite::BaseFont> map, "base_font", root_key);
+        let base_tiles = dbg!(get_spec!(<sprite::BaseTiles> map, "base_tiles", root_key));
+        let base_ui = get_spec!(<sprite::BaseUI> map, "base_ui", root_key);
 
         Ok(Manifest {
             name,
             config_path,
             spritesheet_path,
+            base_font,
+            base_tiles,
+            base_ui,
         })
     }
 

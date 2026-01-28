@@ -877,7 +877,9 @@ pub type TileSprite = u8;
 pub mod config {
     use vec1::{Vec1};
     use crate::{
-        consts::{EntityDefFlags, TileFlags}, DefId, OnCollect, SegmentWidth, Speech, TileSprite
+        consts::{EntityDefFlags, TileFlags},
+        sprite,
+        DefId, OnCollect, SegmentWidth, Speech, TileSprite
     };
     use std::path::PathBuf;
 
@@ -904,6 +906,9 @@ pub mod config {
         pub name: String,
         pub config_path: PathBuf,
         pub spritesheet_path: PathBuf,
+        pub base_font: Option<sprite::Spec<sprite::BaseFont>>,
+        pub base_tiles: Option<sprite::Spec<sprite::BaseTiles>>,
+        pub base_ui: Option<sprite::Spec<sprite::BaseUI>>,
     }
 
     impl Manifest {

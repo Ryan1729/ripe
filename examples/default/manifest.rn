@@ -1,0 +1,7 @@
+pub fn main() {
+    Ok(#{
+        name: "default",
+        config_path: "./config.rn",
+        spritesheet_path: "../../assets/gfx.png",
+    })
+}

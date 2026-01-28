@@ -1,7 +1,0 @@
-pub fn main() {
-    Ok(#{
-        name: "Example Pak",
-        config_path: "./example_config.rn",
-        spritesheet_path: "./gfx2h.png",
-    })
-}

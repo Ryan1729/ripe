@@ -1,0 +1,27 @@
+pub fn main() {
+    let x_shift = 256;
+
+    Ok(#{
+        name: "shifted",
+        config_path: "./config.rn",
+        spritesheet_path: "./shifted.png",
+        base_font: #{
+            offset: #{
+                w: x_shift,
+                h: 128,
+            },
+        },
+        base_tiles: #{
+            offset: #{
+                w: x_shift,
+                h: 0,
+            },
+        },
+        base_ui: #{
+            offset: #{
+                w: x_shift,
+                h: 0,
+            },
+        },
+    })
+}

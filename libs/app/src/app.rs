@@ -64,7 +64,7 @@ impl State {
         // not the macro.
         features::log(&format!("{:?}", seed));
 
-        const HARDCODED_CONFIG: &str = include_str!("../../../examples/example_config.rn");
+        const HARDCODED_CONFIG: &str = include_str!("../../../examples/default/config.rn");
 
         let get_hardcoded_spritesheet = || Spritesheet {
             pixels: assets::GFX.into(),

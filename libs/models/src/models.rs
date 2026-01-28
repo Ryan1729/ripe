@@ -1,5 +1,3 @@
-use gfx_sizes::ARGB;
-
 pub use pak_types::*;
 
 pub const WALL_SPRITE: TileSprite = 32;
