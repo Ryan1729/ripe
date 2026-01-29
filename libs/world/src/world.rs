@@ -1,6 +1,9 @@
 use features::{invariant_assert};
-use models::{config::{Config}, speeches, CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Speeches, Tile, TileSprite, Transform, WorldSegment, X, Y, SegmentId};
-use models::consts::{ITEM_START, NPC_START, PLAYER_START, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START, DOOR, FLOOR, DOOR_START};
+use models::{
+    config::{Config},
+    consts::{ITEM_START, NPC_START, PLAYER_START, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START, DOOR, FLOOR, DOOR_START},
+    speeches, CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Specs, Speeches, Tile, TileSprite, Transform, WorldSegment, X, Y, SegmentId
+};
 use vec1::Vec1;
 use xs::{Xs};
 

@@ -5,12 +5,13 @@ use std::fmt;
 use std::collections::HashMap;
 use xs::Xs;
 
+#[derive(Clone, Debug)]
 pub struct Platform {
     pub p_xy: fn(&mut Commands, &sprite::Spec::<IcePuzzles>, i32, i32, &'static str),
     pub size: fn() -> Size,
-    pub spec: sprite::Spec::<IcePuzzles>,
 }
 
+#[derive(Clone, Debug)]
 pub struct State {
     pub player_pos: (i32, i32),
     pub initial_player_pos: (i32, i32),
@@ -30,24 +31,6 @@ pub enum Cell {
     Goal,
 }
 use Cell::*;
-
-#[derive(Copy, Clone, PartialEq)]
-pub enum Motion {
-    Stopped,
-    Up,
-    Right,
-    Down,
-    Left,
-}
-
-#[derive(Copy, Clone, Default, PartialEq)]
-pub enum Dir {
-    #[default]
-    Up,
-    Right,
-    Down,
-    Left,
-}
 
 impl Cell {
     pub fn to_static_str(self) -> &'static str {
@@ -73,6 +56,23 @@ impl std::fmt::Debug for Cell {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Motion {
+    Stopped,
+    Up,
+    Right,
+    Down,
+    Left,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub enum Dir {
+    #[default]
+    Up,
+    Right,
+    Down,
+    Left,
+}
 
 
 

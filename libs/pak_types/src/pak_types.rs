@@ -879,7 +879,7 @@ pub mod config {
     use crate::{
         consts::{EntityDefFlags, TileFlags},
         sprite,
-        DefId, OnCollect, SegmentWidth, Speech, TileSprite
+        DefId, OnCollect, SegmentWidth, Specs, Speech, TileSprite
     };
     use std::path::PathBuf;
 
@@ -906,9 +906,7 @@ pub mod config {
         pub name: String,
         pub config_path: PathBuf,
         pub spritesheet_path: PathBuf,
-        pub base_font: Option<sprite::Spec<sprite::BaseFont>>,
-        pub base_tiles: Option<sprite::Spec<sprite::BaseTiles>>,
-        pub base_ui: Option<sprite::Spec<sprite::BaseUI>>,
+        pub specs: Specs,
     }
 
     impl Manifest {
@@ -1051,10 +1049,13 @@ impl Spritesheet {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Specs {
     pub base_font: sprite::Spec<sprite::BaseFont>,
     pub base_tiles: sprite::Spec<sprite::BaseTiles>,
     pub base_ui: sprite::Spec<sprite::BaseUI>,
+    pub ice_puzzles: sprite::Spec<sprite::IcePuzzles>,
+    pub sword: sprite::Spec<sprite::SWORD>,
 }
 
 impl Default for Specs {
@@ -1063,6 +1064,8 @@ impl Default for Specs {
             base_font: sprite::spec::<sprite::BaseFont>(sprite::WH{ w: sprite::W(0), h: sprite::H(128) }),
             base_tiles: sprite::spec::<sprite::BaseTiles>(sprite::WH{ w: sprite::W(0), h: sprite::H(0) }),
             base_ui: sprite::spec::<sprite::BaseUI>(sprite::WH{ w: sprite::W(0), h: sprite::H(0) }),
+            ice_puzzles: sprite::spec::<sprite::IcePuzzles>(sprite::WH{ w: sprite::W(128), h: sprite::H(0) }),
+            sword: sprite::spec::<sprite::SWORD>(sprite::WH{ w: sprite::W(128), h: sprite::H(48) }),
         }
     }
 }

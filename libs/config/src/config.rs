@@ -17,6 +17,7 @@ mod rune_based {
         sprite::{self, H, W, WH},
         DefId,
         DefIdDelta,
+        Specs,
     };
 
     use std::path::PathBuf;
@@ -679,27 +680,38 @@ mod rune_based {
                     let w_inner = get_int!(offset, "w", parent_key);
                     let h_inner = get_int!(offset, "h", parent_key);
     
-                    dbg!(Some(sprite::spec::<$typ>(WH {
+                    Some(sprite::spec::<$typ>(WH {
                         w: W(w_inner),
                         h: H(h_inner),
-                    },)))
+                    },))
                 } else {
                     None
                 }
             })
         }
 
-        let base_font = get_spec!(<sprite::BaseFont> map, "base_font", root_key);
-        let base_tiles = dbg!(get_spec!(<sprite::BaseTiles> map, "base_tiles", root_key));
-        let base_ui = get_spec!(<sprite::BaseUI> map, "base_ui", root_key);
+        let mut specs = Specs::default();
+
+        // Not intended for reuse outside this function.
+        macro_rules! assign_spec {
+            (<$typ: path> $key: ident) => ({
+                if let Some($key) = get_spec!(<$typ> map, stringify!($key), root_key) {
+                    specs.$key = $key;
+                }
+            })
+        }
+
+        assign_spec!(<sprite::BaseFont> base_font);
+        assign_spec!(<sprite::BaseTiles> base_tiles);
+        assign_spec!(<sprite::BaseUI> base_ui);
+        assign_spec!(<sprite::IcePuzzles> ice_puzzles);
+        assign_spec!(<sprite::SWORD> sword);
 
         Ok(Manifest {
             name,
             config_path,
             spritesheet_path,
-            base_font,
-            base_tiles,
-            base_ui,
+            specs,
         })
     }
 

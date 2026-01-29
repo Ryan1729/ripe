@@ -10,5 +10,8 @@ path = "../common"
 [dependencies.gfx]
 path = "../../../../gfx"
 
+[dependencies.pak_types]
+path = "../../../../pak_types"
+
 [dependencies.xs]
 path = "../../../../xs"

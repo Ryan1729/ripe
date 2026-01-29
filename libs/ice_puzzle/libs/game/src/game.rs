@@ -3,6 +3,7 @@ use gfx::{Commands};
 use platform_types::{command, sprite::{self, IcePuzzles}, unscaled, Button, Input, Speaker};
 use xs::{Seed};
 
+#[derive(Clone, Debug)]
 pub struct State {
     pub state: common::State,
     platform: Platform,
@@ -91,9 +92,6 @@ impl State {
             platform: Platform {
                 p_xy,
                 size: platform::size,
-                // TODO make this a parameter that ultimately comes from the config file.
-                // + 128 to put us at the start of the spritesheet section for this sub-game
-                spec: sprite::spec::<IcePuzzles>(sprite::WH{ w: sprite::W(128), h: sprite::H(0) }),
             },
             events: Vec::with_capacity(1),
         }
@@ -101,6 +99,7 @@ impl State {
 
     pub fn update_and_render(
         commands: &mut Commands,
+        spec: &sprite::Spec<IcePuzzles>,
         state: &mut State,
         input: Input,
         _speaker: &mut Speaker,
@@ -139,12 +138,13 @@ impl State {
 
         state_manipulation::update_and_render(
             commands,
+            spec,
             &state.platform,
             &mut state.state,
             &mut state.events
         );
 
-        platform::push_commands(commands, &state.platform.spec);
+        platform::push_commands(commands, spec);
 
         platform::end_frame();
     }
@@ -211,6 +211,7 @@ fn something_gets_drawn() {
     let mut state = State::new(seed);
 
     let mut commands = Commands::new(seed);
+    let spec = Specs::default().ice_puzzles;
     let input = <_>::default();
     let mut speaker = <_>::default();
 
@@ -218,6 +219,7 @@ fn something_gets_drawn() {
 
     State::update_and_render(
         &mut commands,
+        &spec,
         &mut state,
         input,
         &mut speaker,

@@ -4,6 +4,7 @@ use gfx::Commands;
 use common::*;
 use common::Cell::*;
 use common::Motion::*;
+use pak_types::sprite;
 
 use std::collections::HashMap;
 
@@ -22,17 +23,19 @@ pub fn new_state(
 
 pub fn update_and_render(
     commands: &mut Commands,
+    spec: &sprite::Spec::<sprite::IcePuzzles>,
     platform: &Platform,
     state: &mut State,
     events: &mut Vec<Event>
 ) {
     state.frame_count = state.frame_count.overflowing_add(1).0;
 
-    game_update_and_render(commands, platform, state, events);
+    game_update_and_render(commands, spec, platform, state, events);
 }
 
 pub fn game_update_and_render(
     commands: &mut Commands,
+    spec: &sprite::Spec::<sprite::IcePuzzles>,
     platform: &Platform,
     state: &mut State,
     events: &mut Vec<Event>
@@ -48,7 +51,7 @@ pub fn game_update_and_render(
         *state = next_level((platform.size)(), state.rng, state.max_steps);
     }
 
-    draw(commands, platform, state);
+    draw(commands, spec, platform, state);
 }
 
 fn move_player(size: Size, state: &mut State) {
@@ -156,18 +159,24 @@ fn goal_string(frame_count: u32) -> &'static str {
     }
 }
 
-fn print_tuple(commands: &mut Commands, platform: &Platform, (x, y): (i32, i32), text: &'static str) {
+fn print_tuple(
+    commands: &mut Commands,
+    spec: &sprite::Spec::<sprite::IcePuzzles>,
+    platform: &Platform,
+    (x, y): (i32, i32),
+    text: &'static str
+) {
     if x >= 0 && y >= 0 {
-        (platform.p_xy)(commands, &platform.spec, x, y, text);
+        (platform.p_xy)(commands, spec, x, y, text);
     }
 }
 
-fn draw(commands: &mut Commands, platform: &Platform, state: &State) {
+fn draw(commands: &mut Commands, spec: &sprite::Spec::<sprite::IcePuzzles>, platform: &Platform, state: &State) {
     for (&coords, &cell) in state.cells.iter() {
-        print_cell(commands, platform, coords, cell, state.frame_count);
+        print_cell(commands, spec, platform, coords, cell, state.frame_count);
     }
 
-    print_tuple(commands, platform, state.initial_player_pos, "☐");
+    print_tuple(commands, spec, platform, state.initial_player_pos, "☐");
 
     let player = match state.player_facing_direction {
         Dir::Up => "@",
@@ -176,14 +185,14 @@ fn draw(commands: &mut Commands, platform: &Platform, state: &State) {
         Dir::Left => "%",
     };
 
-    print_tuple(commands, platform, state.player_pos, player);
+    print_tuple(commands, spec, platform, state.player_pos, player);
 
 }
 
-fn print_cell(commands: &mut Commands, platform: &Platform, coords: (i32, i32), cell: Cell, frame_count: u32) {
+fn print_cell(commands: &mut Commands, spec: &sprite::Spec::<sprite::IcePuzzles>, platform: &Platform, coords: (i32, i32), cell: Cell, frame_count: u32) {
     match cell {
-        Goal => print_tuple(commands, platform, coords, goal_string(frame_count)),
-        _ => print_tuple(commands, platform, coords, cell.to_static_str()),
+        Goal => print_tuple(commands, spec, platform, coords, goal_string(frame_count)),
+        _ => print_tuple(commands, spec, platform, coords, cell.to_static_str()),
     }
 }
 

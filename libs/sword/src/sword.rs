@@ -1,10 +1,10 @@
 use gfx::{Commands};
-use platform_types::{Input, Speaker};
+use platform_types::{sprite, Input, Speaker};
 use xs::Xs;
 
 #[derive(Clone, Debug)]
 pub struct State {
-    rng: Xs
+    rng: Xs,
 }
 
 impl State {
@@ -23,6 +23,7 @@ impl State {
     pub fn update_and_render(
         &mut self,
         commands: &mut Commands,
+        spec: &sprite::Spec::<sprite::SWORD>,
         input: Input,
         speaker: &mut Speaker,
     ) {

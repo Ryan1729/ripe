@@ -171,7 +171,7 @@ const INVENTORY_WIDTH_CELLS: usize = 13;
 const INVENTORY_HEIGHT_CELLS: usize = 8;
 const INVENTORY_MAX_INDEX: usize = (INVENTORY_WIDTH_CELLS * INVENTORY_HEIGHT_CELLS) - 1;
 
-fn game_update(commands: &mut Commands, state: &mut game::State, input: Input, speaker: &mut Speaker) {
+fn game_update(commands: &mut Commands, specs: &Specs, state: &mut game::State, input: Input, speaker: &mut Speaker) {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum TalkingUpdateState {
         StillTalking,
@@ -212,6 +212,7 @@ fn game_update(commands: &mut Commands, state: &mut game::State, input: Input, s
                 Some(HallwayState::IcePuzzle(ice_puzzle)) => {
                     ice_puzzle.update_and_render(
                         commands,
+                        &specs.ice_puzzles,
                         input,
                         speaker,
                     );
@@ -219,6 +220,7 @@ fn game_update(commands: &mut Commands, state: &mut game::State, input: Input, s
                 Some(HallwayState::SWORD(sword)) => {
                     sword.update_and_render(
                         commands,
+                        &specs.sword,
                         input,
                         speaker,
                     );
@@ -698,7 +700,7 @@ fn update_and_render(
 
     match game_state {
         Ok(state) => {
-            game_update(commands, state, input, speaker);
+            game_update(commands, specs, state, input, speaker);
             // Empty message queue
             for FadeMessageSpec { message, xy } in state.fade_message_specs.drain(..) {
                 commands.push_fade_message(message.into(), xy);

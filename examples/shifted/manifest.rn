@@ -23,5 +23,17 @@ pub fn main() {
                 h: 0,
             },
         },
+        ice_puzzles: #{
+            offset: #{
+                w: 128 + x_shift,
+                h: 0,
+            },
+        },
+        sword: #{
+            offset: #{
+                w: 128 + x_shift,
+                h: 48,
+            },
+        },
     })
 }
