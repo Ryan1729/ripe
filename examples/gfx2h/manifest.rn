@@ -10,17 +10,49 @@ pub fn main() {
                 w: 0,
                 h: 128 * y_scale,
             },
+            tile: #{
+                w: 8,
+                h: 8 * y_scale,
+            },
         },
         base_tiles: #{
             offset: #{
                 w: 0,
                 h: 0,
             },
+            tile: #{
+                w: 16,
+                h: 16 * y_scale,
+            },
         },
         base_ui: #{
             offset: #{
                 w: 0,
                 h: 0,
+            },
+            tile: #{
+                w: 8,
+                h: 8 * y_scale,
+            },
+        },
+        ice_puzzles: #{
+            offset: #{
+                w: 128,
+                h: 0,
+            },
+            tile: #{
+                w: 20,
+                h: 20 * y_scale,
+            },
+        },
+        sword: #{
+            offset: #{
+                w: 128,
+                h: 48 * y_scale,
+            },
+            tile: #{
+                w: 16,
+                h: 16 * y_scale,
             },
         },
     })

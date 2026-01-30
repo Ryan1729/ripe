@@ -470,6 +470,16 @@ pub mod unscaled {
         pub h: H,
     }
 
+    impl WH {
+        /// Halves both components
+        pub const fn halve(self) -> Self {
+            Self {
+                w: self.w.halve(),
+                h: self.h.halve(),
+            }
+        }
+    }
+
     impl core::ops::AddAssign for WH {
         fn add_assign(&mut self, other: WH) {
             self.w += other.w;
@@ -802,12 +812,38 @@ pub mod sprite {
     #[derive(Clone, Debug)]
     pub struct Spec<Marker> {
         offset: WH,
+        tile: WH,
         marker: PhantomData<Marker>,
     }
 
-    pub fn spec<Marker>(offset: WH) -> Spec<Marker> {
+    impl <Marker> Spec<Marker> {
+        pub fn tile(&self) -> WH {
+            self.tile
+        }
+
+        /// Not advised for general use, but only when initally constructing the specs
+        /// while retaining the default values from Specs.
+        // TODO? Is there a clean way to allow that to work, and avoid exposing this?
+        // Exposing this is not the biggest deal of course. Keeping the rune stuff in 
+        // one crate seems more important than this project's code "relying too much"
+        // on itself.
+        pub fn pieces(&self) -> SpecPieces {
+            SpecPieces {
+                offset: self.offset,
+                tile: self.tile,
+            }
+        }
+    }
+
+    pub struct SpecPieces {
+        pub offset: WH,
+        pub tile: WH,
+    }
+
+    pub fn spec<Marker>(SpecPieces { offset, tile }: SpecPieces) -> Spec<Marker> {
         Spec::<Marker> {
             offset,
+            tile,
             marker: PhantomData,
         }
     }
@@ -832,7 +868,44 @@ pub mod sprite {
             }
         }
     }
+
+    #[derive(Clone, Debug)]
+    pub struct Specs {
+        pub base_font: Spec<BaseFont>,
+        pub base_tiles: Spec<BaseTiles>,
+        pub base_ui: Spec<BaseUI>,
+        pub ice_puzzles: Spec<IcePuzzles>,
+        pub sword: Spec<SWORD>,
+    }
+    
+    impl Default for Specs {
+        fn default() -> Self {
+            Self {
+                base_font: spec::<BaseFont>(SpecPieces{
+                    offset: WH{ w: W(0), h: H(128) },
+                    tile: WH{ w: W(8), h: H(8) }
+                }),
+                base_tiles: spec::<BaseTiles>(SpecPieces{
+                    offset: WH{ w: W(0), h: H(0) },
+                    tile: WH{ w: W(16), h: H(16) }
+                }),
+                base_ui: spec::<BaseUI>(SpecPieces{
+                    offset: WH{ w: W(0), h: H(0) },
+                    tile: WH{ w: W(8), h: H(8) }
+                }),
+                ice_puzzles: spec::<IcePuzzles>(SpecPieces{
+                    offset: WH{ w: W(128), h: H(0) },
+                    tile: WH{ w: W(20), h: H(20) }
+                }),
+                sword: spec::<SWORD>(SpecPieces{
+                    offset: WH{ w: W(128), h: H(48) },
+                    tile: WH{ w: W(16), h: H(16) }
+                }),
+            }
+        }
+    }
 }
+pub use sprite::Specs;
 
 /// 64k entity definitions ought to be enough for anybody!
 pub type DefId = u16;
@@ -1046,27 +1119,6 @@ pub struct Spritesheet {
 impl Spritesheet {
     pub fn slice(&self) -> (&[ARGB], usize) {
         (&self.pixels, self.width)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Specs {
-    pub base_font: sprite::Spec<sprite::BaseFont>,
-    pub base_tiles: sprite::Spec<sprite::BaseTiles>,
-    pub base_ui: sprite::Spec<sprite::BaseUI>,
-    pub ice_puzzles: sprite::Spec<sprite::IcePuzzles>,
-    pub sword: sprite::Spec<sprite::SWORD>,
-}
-
-impl Default for Specs {
-    fn default() -> Self {
-        Self {
-            base_font: sprite::spec::<sprite::BaseFont>(sprite::WH{ w: sprite::W(0), h: sprite::H(128) }),
-            base_tiles: sprite::spec::<sprite::BaseTiles>(sprite::WH{ w: sprite::W(0), h: sprite::H(0) }),
-            base_ui: sprite::spec::<sprite::BaseUI>(sprite::WH{ w: sprite::W(0), h: sprite::H(0) }),
-            ice_puzzles: sprite::spec::<sprite::IcePuzzles>(sprite::WH{ w: sprite::W(128), h: sprite::H(0) }),
-            sword: sprite::spec::<sprite::SWORD>(sprite::WH{ w: sprite::W(128), h: sprite::H(48) }),
-        }
     }
 }
 

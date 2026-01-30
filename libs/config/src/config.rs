@@ -242,7 +242,7 @@ mod rune_based {
             let key = $key;
             let parent_key = $parent_key.into();
 
-            let int: i64 = 
+            let int: i64 =
                 $val.as_integer().map_err(|got| Error::TypeMismatch{ key, expected: "int", got })?;
 
             int
@@ -489,7 +489,7 @@ mod rune_based {
 
             let wants = 'wants: {
                 let key = "wants";
-                
+
                 let raw_wants = match entity.get(key) {
                     None => break 'wants vec![],
                     Some(dynamic) => to_array!(dynamic, ik!(key)),
@@ -542,15 +542,15 @@ mod rune_based {
                         models::consts::TRANSFORM => {
                             let from = {
                                 let key = "from";
-                                    
+
                                 let value: &Value = action_map.get(key)
                                     .ok_or(Error::FieldMissing{ key, parent_key, })?;
                                 // We previously observed a "Cannot take" error when using `get_map!`,
                                 // which is why we borrow instead.
                                 let from_ref: BorrowRef<Object> = value.borrow_ref().map_err(Error::Runtime)?;
-    
+
                                 let from_map: &Object = from_ref.as_ref();
-    
+
                                 deref_def_id(
                                     id,
                                     from_map,
@@ -561,15 +561,15 @@ mod rune_based {
 
                             let to = {
                                 let key = "to";
-                                    
+
                                 let value: &Value = action_map.get(key)
                                     .ok_or(Error::FieldMissing{ key, parent_key, })?;
                                 // We previously observed a "Cannot take" error when using `get_map!`,
                                 // which is why we borrow instead.
                                 let to_ref: BorrowRef<Object> = value.borrow_ref().map_err(Error::Runtime)?;
-    
+
                                 let to_map: &Object = to_ref.as_ref();
-    
+
                                 deref_def_id(
                                     id,
                                     to_map,
@@ -658,45 +658,56 @@ mod rune_based {
         let name = get_str!(map, "name", root_key);
         let config_path = PathBuf::from(get_str!(map, "config_path", root_key));
         let spritesheet_path = PathBuf::from(get_str!(map, "spritesheet_path", root_key));
-        
-        macro_rules! get_spec {
-            (<$typ: path> $map: expr, $key: expr, $parent_key: expr $(,)?) => ({
-                let key = $key;
-
-                if let Some(v) = $map.get(key) {
-                    let spec: Object =
-                        rune::from_value(v).map_err(|got| Error::TypeMismatch{ key: key.into(), expected: "map", got })?;
-    
-                    let parent_key = key.into();
-                    let key = "offset";
-                    
-                    let offset: Object = rune::from_value(
-                            spec.get(key)
-                                .ok_or(Error::FieldMissing{ key, parent_key, })?
-                        ).map_err(|got| Error::TypeMismatch{ key: key.into(), expected: "map", got })?;
-    
-                    let parent_key = ik!(key);
-    
-                    let w_inner = get_int!(offset, "w", parent_key);
-                    let h_inner = get_int!(offset, "h", parent_key);
-    
-                    Some(sprite::spec::<$typ>(WH {
-                        w: W(w_inner),
-                        h: H(h_inner),
-                    },))
-                } else {
-                    None
-                }
-            })
-        }
 
         let mut specs = Specs::default();
 
         // Not intended for reuse outside this function.
         macro_rules! assign_spec {
-            (<$typ: path> $key: ident) => ({
-                if let Some($key) = get_spec!(<$typ> map, stringify!($key), root_key) {
-                    specs.$key = $key;
+            (<$typ: path> $spec_key: ident) => ({
+                let key = stringify!($spec_key);
+
+                if let Some(v) = map.get(key) {
+                    let spec: Object =
+                        rune::from_value(v)
+                            .map_err(|got| Error::TypeMismatch{ key: key.into(), expected: "map", got })?;
+
+                    let parent_key: IndexableKey = key.into();
+
+                    let mut pieces = specs.$spec_key.pieces();
+
+                    {
+                        let key = "offset";
+
+                        if let Some(raw_offset) = spec.get(key) {
+                            let offset: Object = rune::from_value(raw_offset)
+                                .map_err(|got| Error::TypeMismatch{ key: key.into(), expected: "map", got })?;
+
+                            let parent_key = ik!(key);
+
+                            pieces.offset = WH {
+                                w: W(get_int!(offset, "w", parent_key)),
+                                h: H(get_int!(offset, "h", parent_key)),
+                            };
+                        }
+                    }
+
+                    {
+                        let key = "tile";
+
+                        if let Some(raw_tile) = spec.get(key) {
+                            let tile: Object = rune::from_value(raw_tile)
+                                .map_err(|got| Error::TypeMismatch{ key: key.into(), expected: "map", got })?;
+
+                            let parent_key = ik!(key);
+
+                            pieces.tile = WH {
+                                w: W(get_int!(tile, "w", parent_key)),
+                                h: H(get_int!(tile, "h", parent_key)),
+                            };
+                        }
+                    }
+
+                    specs.$spec_key = sprite::spec(pieces);
                 }
             })
         }

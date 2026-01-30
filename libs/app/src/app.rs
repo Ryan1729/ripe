@@ -422,7 +422,9 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
             commands.speech(speech);
         }
 
-        commands.next_arrow_in_corner_of(next_arrow::TALKING, talking.arrow_timer, speech::INNER_RECT);
+        let inner_rect = nine_slice::inner_rect(commands.ui_edge_wh(), speech::OUTER_RECT);
+
+        commands.next_arrow_in_corner_of(next_arrow::TALKING, talking.arrow_timer, inner_rect);
     };
 
     let draw_tile_sprite = |commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite| {
@@ -544,6 +546,7 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
         } => {
             render_walking(commands, state);
 
+            // TODO should this be derived from the sprite specs?
             const SPACING: unscaled::Inner = 20;
 
             let menu_y = unscaled::Y(SPACING);
@@ -565,13 +568,15 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
                 h: menu_h,
             };
 
+            let edge_wh = commands.ui_edge_wh();
+
             //
             //  Draw the goal description
             //
 
             commands.nine_slice(nine_slice::INVENTORY, goal_outer_rect);
 
-            let goal_inner_rect = nine_slice::inner_rect(goal_outer_rect);
+            let goal_inner_rect = nine_slice::inner_rect(edge_wh, goal_outer_rect);
 
             commands.print_lines(
                 goal_inner_rect.xy(),
@@ -594,51 +599,41 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
             //  Draw the inventory
             //
 
-            const CELL_W: unscaled::W = unscaled::W(24);
-            const CELL_H: unscaled::H = unscaled::H(24);
-
-            const CELL_INSET: unscaled::WH = unscaled::WH{
-                w: unscaled::W(4),
-                h: unscaled::H(4),
-            };
+            let cell_wh = edge_wh + specs.base_tiles.tile() + edge_wh;
 
             commands.nine_slice(nine_slice::INVENTORY, inv_outer_rect);
 
-            let inv_inner_rect = nine_slice::inner_rect(inv_outer_rect);
+            let inv_inner_rect = nine_slice::inner_rect(edge_wh, inv_outer_rect);
 
             let mut inventory_index = 0;
 
-            let mut at = unscaled::XY { x: inv_inner_rect.x, y: inv_inner_rect.y };
+            let mut at = inv_inner_rect.xy();
 
             let inv_x_max = inv_inner_rect.x + inv_inner_rect.w;
             let inv_y_max = inv_inner_rect.y + inv_inner_rect.h;
 
+            // TODO implement scrolling for the inventory, depending on the sprite spec's values
             while at.x < inv_x_max && at.y < inv_y_max {
                 // draw selectrum
                 if inventory_index == *current_index {
-                    commands.sspr(
-                        sprite::XY::<BaseUI> {
-                            x: sprite::x::<BaseUI>(24),
-                            y: sprite::y::<BaseUI>(8),
-                        }.apply(&specs.base_ui),
-                        command::Rect::from_unscaled(
-                            unscaled::Rect {
-                                x: at.x,
-                                y: at.y,
-                                w: CELL_W,
-                                h: CELL_H,
-                            }
-                        ),
+                    commands.nine_slice(
+                        nine_slice::SELECTRUM,
+                        unscaled::Rect {
+                            x: at.x,
+                            y: at.y,
+                            w: cell_wh.w,
+                            h: cell_wh.h,
+                        },
                     );
                 }
 
                 if let Some(item) = state.world.player.inventory.get(inventory_index) {
-                    draw_tile_sprite(commands, at + CELL_INSET, item.transformable.tile_sprite);
+                    draw_tile_sprite(commands, at + edge_wh, item.transformable.tile_sprite);
                 };
 
-                at.x += CELL_W;
+                at.x += cell_wh.w;
                 if at.x >= inv_x_max {
-                    at.y += CELL_H;
+                    at.y += cell_wh.h;
                     at.x = inv_inner_rect.x;
                 }
                 inventory_index += 1;

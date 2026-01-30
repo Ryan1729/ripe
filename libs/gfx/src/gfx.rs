@@ -213,6 +213,10 @@ impl Commands {
             offset_per_frame: unscaled::WH { w: unscaled::W::ZERO, h: unscaled::H::ONE },
         });
     }
+
+    pub fn ui_edge_wh(&self) -> unscaled::WH {
+        self.ui_spec.tile().halve()
+    }
 }
 
 mod print {
@@ -357,8 +361,8 @@ pub mod speech {
         h: unscaled::H(120),
     };
 
-    pub const INNER_RECT: unscaled::Rect = {
-        let mut inner_rect = nine_slice::inner_rect(OUTER_RECT);
+    pub(crate) fn render(commands: &mut Commands, speech: &models::Speech) {
+        let mut inner_rect = nine_slice::inner_rect(commands.ui_edge_wh(), OUTER_RECT);
 
         // TODO? Bother figuring out why these particular adjustments are needed to make it look right?
         const X_NUDGE: unscaled::W = unscaled::W(2);
@@ -370,13 +374,9 @@ pub mod speech {
         inner_rect.y = unscaled::y_const_add_h(inner_rect.y, Y_NUDGE);
         inner_rect.h = unscaled::h_const_sub(inner_rect.h, unscaled::h_const_mul(Y_NUDGE, 2));
 
-        inner_rect
-    };
-
-    pub(crate) fn render(commands: &mut Commands, speech: &models::Speech) {
         // This might get more complicated, with like text colouring or effects, etc.
         commands.print_lines(
-            INNER_RECT.xy(),
+            inner_rect.xy(),
             0,
             speech.text.as_bytes(),
             6,
@@ -466,6 +466,7 @@ pub mod nine_slice {
     pub type Sprite = u8;
     pub const TALKING: Sprite = 0;
     pub const INVENTORY: Sprite = 1;
+    pub const SELECTRUM: Sprite = 2;
 
     struct Slices {
         // Top left point on the rect that makes up the top left corner of the sprite.
@@ -488,131 +489,114 @@ pub mod nine_slice {
         bottom: sprite::XY<BaseUI>,
     }
 
-    // TODO? Should these be allowed to be moved elsewhere on the spreadsheet?
-    const TALKING_SLICES: Slices = {
-        let top_left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: sprite::x::<BaseUI>(0),
-            y: sprite::y::<BaseUI>(8),
-        };
-        let top_right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: sprite::x::<BaseUI>(20),
-            y: sprite::y::<BaseUI>(8),
-        };
-        let bottom_left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: sprite::x::<BaseUI>(0),
-            y: sprite::y::<BaseUI>(28),
-        };
-        let bottom_right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: sprite::x::<BaseUI>(20),
-            y: sprite::y::<BaseUI>(28),
-        };
-        let middle: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: sprite::x_const_add_w(top_left.x, EDGE_W),
-            y: sprite::y_const_add_h(top_left.y, EDGE_H),
-        };
-        let top: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: middle.x,
-            y: top_left.y,
-        };
-        let left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: top_left.x,
-            y: middle.y,
-        };
-        let right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: top_right.x,
-            y: middle.y,
-        };
-        let bottom: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: top.x,
-            y: bottom_left.y,
-        };
-
-        Slices {
-            top_left,
-            top_right,
-            bottom_left,
-            bottom_right,
-            middle,
-            top,
-            left,
-            right,
-            bottom,
-        }
-    };
-
-    const INVENTORY_SLICES: Slices = {
-        let top_left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: sprite::x::<BaseUI>(0),
-            y: sprite::y::<BaseUI>(32),
-        };
-        let top_right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: sprite::x::<BaseUI>(20),
-            y: sprite::y::<BaseUI>(32),
-        };
-        let bottom_left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: sprite::x::<BaseUI>(0),
-            y: sprite::y::<BaseUI>(52),
-        };
-        let bottom_right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: sprite::x::<BaseUI>(20),
-            y: sprite::y::<BaseUI>(52),
-        };
-        let middle: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: sprite::x_const_add_w(top_left.x, EDGE_W),
-            y: sprite::y_const_add_h(top_left.y, EDGE_H),
-        };
-        let top: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: middle.x,
-            y: top_left.y,
-        };
-        let left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: top_left.x,
-            y: middle.y,
-        };
-        let right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: top_right.x,
-            y: middle.y,
-        };
-        let bottom: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
-            x: top.x,
-            y: bottom_left.y,
-        };
-
-        Slices {
-            top_left,
-            top_right,
-            bottom_left,
-            bottom_right,
-            middle,
-            top,
-            left,
-            right,
-            bottom,
-        }
-    };
-
-    const CENTER_W: unscaled::W = unscaled::W(16);
-    const CENTER_H: unscaled::H = unscaled::H(16);
-
-    const EDGE_W: unscaled::W = unscaled::W(4);
-    const EDGE_H: unscaled::H = unscaled::H(4);
-
     pub(crate) fn render(
         commands: &mut Commands,
         nine_slice_sprite: Sprite,
         unscaled::Rect{ x, y, w, h }: unscaled::Rect
     ) {
-        // TODO? Is it worth caching the spec application?
-        let slices = match nine_slice_sprite & 1 {
-            1 => INVENTORY_SLICES,
-            _ => TALKING_SLICES,
+        let spec = &commands.ui_spec;
+
+        let edge_wh = commands.ui_edge_wh();
+        debug_assert_eq!(edge_wh.w, spec.tile().halve().w);
+        debug_assert_eq!(edge_wh.h, spec.tile().halve().h);
+        // 3 for 3 by 3 cells, minus the edges on both ends, (thus 2).
+        // So `spec.tile() * 3 - (edge_wh * 2)`. Since `edge_wh = spec.tile() / 2`
+        // this simplifes to spec.tile() + spec.tile().
+        let center_wh = spec.tile() + spec.tile();
+
+        // We need the height of one of those 3 by 3 cells too.
+        // Given `center_wh = spec.tile() + spec.tile()`, that is:
+        let supertile_wh = center_wh + spec.tile();
+
+        // Could also use a pair of opposite corners, though that makes things slightly less clear
+        macro_rules! slices_from_corners {
+            (
+                $top_left: expr,
+                $top_right: expr,
+                $bottom_left: expr,
+                $bottom_right: expr,
+            ) => ({
+                let top_left: sprite::XY<BaseUI> = $top_left;
+                let top_right: sprite::XY<BaseUI> = $top_right;
+                let bottom_left: sprite::XY<BaseUI> = $bottom_left;
+                let bottom_right: sprite::XY<BaseUI> = $bottom_right;
+
+                let middle: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+                    x: top_left.x + edge_wh.w,
+                    y: top_left.y + edge_wh.h,
+                };
+                let top: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+                    x: middle.x,
+                    y: top_left.y,
+                };
+                let left: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+                    x: top_left.x,
+                    y: middle.y,
+                };
+                let right: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+                    x: top_right.x,
+                    y: middle.y,
+                };
+                let bottom: sprite::XY<BaseUI> = sprite::XY::<BaseUI> {
+                    x: top.x,
+                    y: bottom_left.y,
+                };
+        
+                Slices {
+                    top_left,
+                    top_right,
+                    bottom_left,
+                    bottom_right,
+                    middle,
+                    top,
+                    left,
+                    right,
+                    bottom,
+                }
+            })
+        }
+
+        // TODO? Is it worth caching this spec math across frames?
+        let talking_slices = slices_from_corners!(
+            sprite::XY::<BaseUI> {
+                x: sprite::x::<BaseUI>(0),
+                y: sprite::y::<BaseUI>(0) + spec.tile().h,
+            },
+            sprite::XY::<BaseUI> {
+                x: sprite::x::<BaseUI>(0) + edge_wh.w + center_wh.w,
+                y: sprite::y::<BaseUI>(0) + spec.tile().h,
+            },
+            sprite::XY::<BaseUI> {
+                x: sprite::x::<BaseUI>(0),
+                y: sprite::y::<BaseUI>(0) + spec.tile().h + edge_wh.h + center_wh.h,
+            },
+            sprite::XY::<BaseUI> {
+                x: sprite::x::<BaseUI>(0) + edge_wh.w + center_wh.w,
+                y: sprite::y::<BaseUI>(0) + spec.tile().h + edge_wh.h + center_wh.h,
+            },
+        );
+
+        let slices = match nine_slice_sprite & 0b11 {
+            INVENTORY => slices_from_corners!(
+                talking_slices.top_left + supertile_wh.h,
+                talking_slices.top_right + supertile_wh.h,
+                talking_slices.bottom_left + supertile_wh.h,
+                talking_slices.bottom_right + supertile_wh.h,
+            ),
+            SELECTRUM => slices_from_corners!(
+                talking_slices.top_left + supertile_wh.w,
+                talking_slices.top_right + supertile_wh.w,
+                talking_slices.bottom_left + supertile_wh.w,
+                talking_slices.bottom_right + supertile_wh.w,
+            ),
+            _ => talking_slices,
         };
 
-        let after_left_corner = x.saturating_add_w(EDGE_W);
-        let before_right_corner = x.saturating_add_w(w).saturating_sub_w(EDGE_W);
+        let after_left_corner = x.saturating_add_w(edge_wh.w);
+        let before_right_corner = x.saturating_add_w(w).saturating_sub_w(edge_wh.w);
 
-        let below_top_corner = y.saturating_add_h(EDGE_H);
-        let above_bottom_corner = y.saturating_add_h(h).saturating_sub_h(EDGE_H);
+        let below_top_corner = y.saturating_add_h(edge_wh.h);
+        let above_bottom_corner = y.saturating_add_h(h).saturating_sub_h(edge_wh.h);
 
         // ABBBC
         // DEEEF
@@ -620,31 +604,31 @@ pub mod nine_slice {
         // GHHHI
 
         // Draw E
-        for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(CENTER_H.get() as _).map(unscaled::Y) {
-            for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(CENTER_W.get() as _).map(unscaled::X) {
+        for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(center_wh.h.get() as _).map(unscaled::Y) {
+            for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(center_wh.w.get() as _).map(unscaled::X) {
                 commands.sspr(
                     slices.middle.apply(&commands.ui_spec),
                     Rect::from_unscaled(unscaled::Rect {
                         x: fill_x,
                         y: fill_y,
                         // Clamp these values so we don't draw past the edge.
-                        w: core::cmp::min(CENTER_W, before_right_corner - fill_x),
-                        h: core::cmp::min(CENTER_H, above_bottom_corner - fill_y),
+                        w: core::cmp::min(center_wh.w, before_right_corner - fill_x),
+                        h: core::cmp::min(center_wh.h, above_bottom_corner - fill_y),
                     })
                 );
             }
         }
 
         // Draw B and H
-        for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(CENTER_W.get() as _).map(unscaled::X) {
+        for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(center_wh.w.get() as _).map(unscaled::X) {
             commands.sspr(
                 slices.top.apply(&commands.ui_spec),
                 Rect::from_unscaled(unscaled::Rect {
                     x: fill_x,
                     y,
                     // Clamp this value so we don't draw past the edge.
-                    w: core::cmp::min(CENTER_W, before_right_corner - fill_x),
-                    h: EDGE_H,
+                    w: core::cmp::min(center_wh.w, before_right_corner - fill_x),
+                    h: edge_wh.h,
                 })
             );
 
@@ -654,22 +638,22 @@ pub mod nine_slice {
                     x: fill_x,
                     y: above_bottom_corner,
                     // Clamp this value so we don't draw past the edge.
-                    w: core::cmp::min(CENTER_W, before_right_corner - fill_x),
-                    h: EDGE_H,
+                    w: core::cmp::min(center_wh.w, before_right_corner - fill_x),
+                    h: edge_wh.h,
                 })
             );
         }
 
         // Draw D and F
-        for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(CENTER_H.get() as _).map(unscaled::Y) {
+        for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(center_wh.h.get() as _).map(unscaled::Y) {
             commands.sspr(
                 slices.left.apply(&commands.ui_spec),
                 Rect::from_unscaled(unscaled::Rect {
                     x,
                     y: fill_y,
                     // Clamp this value so we don't draw past the edge.
-                    w: EDGE_W,
-                    h: core::cmp::min(CENTER_H, above_bottom_corner - fill_y),
+                    w: edge_wh.w,
+                    h: core::cmp::min(center_wh.h, above_bottom_corner - fill_y),
                 })
             );
 
@@ -679,8 +663,8 @@ pub mod nine_slice {
                     x: before_right_corner,
                     y: fill_y,
                     // Clamp this value so we don't draw past the edge.
-                    w: EDGE_W,
-                    h: core::cmp::min(CENTER_H, above_bottom_corner - fill_y),
+                    w: edge_wh.w,
+                    h: core::cmp::min(center_wh.h, above_bottom_corner - fill_y),
                 })
             );
         }
@@ -691,8 +675,8 @@ pub mod nine_slice {
             Rect::from_unscaled(unscaled::Rect {
                 x,
                 y,
-                w: EDGE_W,
-                h: EDGE_H,
+                w: edge_wh.w,
+                h: edge_wh.h,
             })
         );
 
@@ -702,8 +686,8 @@ pub mod nine_slice {
             Rect::from_unscaled(unscaled::Rect {
                 x: before_right_corner,
                 y,
-                w: EDGE_W,
-                h: EDGE_H,
+                w: edge_wh.w,
+                h: edge_wh.h,
             })
         );
 
@@ -713,8 +697,8 @@ pub mod nine_slice {
             Rect::from_unscaled(unscaled::Rect {
                 x,
                 y: above_bottom_corner,
-                w: EDGE_W,
-                h: EDGE_H,
+                w: edge_wh.w,
+                h: edge_wh.h,
             })
         );
 
@@ -724,18 +708,18 @@ pub mod nine_slice {
             Rect::from_unscaled(unscaled::Rect {
                 x: before_right_corner,
                 y: above_bottom_corner,
-                w: EDGE_W,
-                h: EDGE_H,
+                w: edge_wh.w,
+                h: edge_wh.h,
             })
         );
     }
 
-    pub const fn inner_rect(outer_rect: unscaled::Rect) -> unscaled::Rect {
+    pub fn inner_rect(edge_wh: unscaled::WH, outer_rect: unscaled::Rect) -> unscaled::Rect {
         unscaled::Rect {
-            x: unscaled::x_const_add_w(outer_rect.x, EDGE_W),
-            y: unscaled::y_const_add_h(outer_rect.y, EDGE_H),
-            w: unscaled::w_const_sub(outer_rect.w, unscaled::w_const_mul(EDGE_W, 2)),
-            h: unscaled::h_const_sub(outer_rect.h, unscaled::h_const_mul(EDGE_H, 2)),
+            x: unscaled::x_const_add_w(outer_rect.x, edge_wh.w),
+            y: unscaled::y_const_add_h(outer_rect.y, edge_wh.h),
+            w: unscaled::w_const_sub(outer_rect.w, unscaled::w_const_mul(edge_wh.w, 2)),
+            h: unscaled::h_const_sub(outer_rect.h, unscaled::h_const_mul(edge_wh.h, 2)),
         }
     }
 }
