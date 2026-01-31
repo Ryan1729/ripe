@@ -4,7 +4,7 @@ use models::{ShakeAmount, Speech};
 pub mod to_tile;
 
 use pak_types::{sprite::{self, Renderable, BaseFont, BaseUI},};
-use platform_types::{Command, PALETTE, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex, FONT_WIDTH};
+use platform_types::{Command, PALETTE, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex};
 use text::byte_slice as text;
 
 /// 64k fade frames ought to be enough for anybody!
@@ -232,23 +232,19 @@ mod print {
         y: unscaled::Y,
         colour: PaletteIndex
     ) {
-        fn get_char_xy(sprite_number: u8) -> sprite::XY<BaseFont> {
+        fn get_char_xy(spec: &sprite::Spec<BaseFont>, sprite_number: u8) -> sprite::XY<BaseFont> {
             type Inner = sprite::Inner;
             let sprite_number = Inner::from(sprite_number);
-            const CH_SIZE: Inner = CHAR_SIZE as Inner;
-            const SPRITES_PER_ROW: Inner = FONT_WIDTH as Inner / CH_SIZE;
+
+            const SPRITES_PER_ROW: Inner = 16;
         
             sprite::XY::<BaseFont> {
-                x: sprite::x::<BaseFont>(
-                    (sprite_number % SPRITES_PER_ROW) * CH_SIZE
-                ),
-                y: sprite::y::<BaseFont>(
-                    (sprite_number / SPRITES_PER_ROW) * CH_SIZE
-                ),
+                x: sprite::x::<BaseFont>(0) + (sprite_number % SPRITES_PER_ROW) * spec.tile().w,
+                y: sprite::y::<BaseFont>(0) + (sprite_number / SPRITES_PER_ROW) * spec.tile().h,
             }
         }
-    
-        let sprite_xy = get_char_xy(character).apply(spec);
+
+        let sprite_xy = get_char_xy(spec, character).apply(spec);
         push_with_screenshake(
             command_vec,
             shake_xd,
@@ -258,8 +254,8 @@ mod print {
                 rect: Rect::from_unscaled(unscaled::Rect {
                     x,
                     y,
-                    w: CHAR_W,
-                    h: CHAR_H,
+                    w: spec.tile().w,
+                    h: spec.tile().h,
                 }),
                 colour_override: PALETTE[colour as usize],
             }
@@ -268,7 +264,7 @@ mod print {
     
     pub fn line(
         command_vec: &mut Vec<Command>,
-        font_spec: &sprite::Spec<BaseFont>,
+        spec: &sprite::Spec<BaseFont>,
         shake_xd: unscaled::XD,
         shake_yd: unscaled::YD,
         bytes: &[u8],
@@ -278,7 +274,7 @@ mod print {
         for &c in bytes.iter() {
             char(
                 command_vec,
-                font_spec,
+                spec,
                 shake_xd,
                 shake_yd,
                 c,
@@ -286,13 +282,13 @@ mod print {
                 xy.y,
                 colour
             );
-            xy.x += CHAR_W;
+            xy.x += spec.tile().w;
         }
     }
     
     pub fn lines(
         command_vec: &mut Vec<Command>,
-        font_spec: &sprite::Spec<BaseFont>,
+        spec: &sprite::Spec<BaseFont>,
         shake_xd: unscaled::XD,
         shake_yd: unscaled::YD,
         base_xy: unscaled::XY,
@@ -301,17 +297,17 @@ mod print {
         colour: PaletteIndex,
     ) {
         for (y, text_line) in text::lines(to_print)
-            .skip((top_index_with_offset as u16 / CHAR_H.get()) as usize)
-            .take(usize::from(command::HEIGHT * CHAR_H))
+            .skip((top_index_with_offset as u16 / spec.tile().h.get()) as usize)
+            .take(usize::from(command::HEIGHT * spec.tile().h))
             .enumerate()
         {
             let y = y as unscaled::Inner;
     
-            let offset = top_index_with_offset as u16 % CHAR_H.get();
+            let offset = top_index_with_offset as u16 % spec.tile().h.get();
     
             line(
                 command_vec,
-                font_spec,
+                spec,
                 shake_xd,
                 shake_yd,
                 text_line,
@@ -322,7 +318,7 @@ mod print {
                 // calculation just wrong? Maybe it won't look right unless
                 // we add more in-between frames?
                 + unscaled::H(
-                    (y * CHAR_H.get())
+                    (y * spec.tile().h.get())
                     - offset
                 ),
                 colour
@@ -730,8 +726,4 @@ pub const CLUB_CHAR: u8 = 31;
 pub const DIAMOND_CHAR: u8 = 29;
 pub const HEART_CHAR: u8 = 30;
 pub const SPADE_CHAR: u8 = 28;
-
-pub const CHAR_SIZE: u8 = 8;
-pub const CHAR_W: unscaled::W = unscaled::W(CHAR_SIZE as _);
-pub const CHAR_H: unscaled::H = unscaled::H(CHAR_SIZE as _);
 

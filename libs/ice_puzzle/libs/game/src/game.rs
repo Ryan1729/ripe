@@ -1,6 +1,6 @@
 use common::*;
 use gfx::{Commands};
-use platform_types::{command, sprite::{self, IcePuzzles}, unscaled, Button, Input, Speaker};
+use platform_types::{command, sprite::{self, IcePuzzles}, unscaled::{self, H, W}, Button, Input, Speaker};
 use xs::{Seed};
 
 #[derive(Clone, Debug)]
@@ -10,51 +10,52 @@ pub struct State {
     events: Vec<Event>,
 }
 
-const TILE_SIZE: unscaled::Inner = 20;
-
-fn str_to_sprite_xy(s: &str) -> sprite::XY<IcePuzzles> {
-    let (sx, sy) = match s {
-        "☐" => (0, 0),
-        "☒" => (1 * TILE_SIZE, 0),
-        "\u{E010}" => (2 * TILE_SIZE, 0),
-        "\u{E011}" => (3 * TILE_SIZE, 0),
-        "\u{E012}" => (4 * TILE_SIZE, 0),
-        "\u{E013}" => (5 * TILE_SIZE, 0),
-        "\u{E014}" => (6 * TILE_SIZE, 0),
-        "\u{E015}" => (7 * TILE_SIZE, 0),
-        "\u{E016}" => (8 * TILE_SIZE, 0),
-        "\u{E017}" => (9 * TILE_SIZE, 0),
-        "\u{E018}" => (10 * TILE_SIZE, 0),
-        "@" => (0 * TILE_SIZE, 1 * TILE_SIZE),
-        "#" => (1 * TILE_SIZE, 1 * TILE_SIZE),
-        "$" => (2 * TILE_SIZE, 1 * TILE_SIZE),
-        "%" => (3 * TILE_SIZE, 1 * TILE_SIZE),
-        "R" => (4 * TILE_SIZE, 1 * TILE_SIZE),
-        "↑" => (0 * TILE_SIZE, 2 * TILE_SIZE),
-        "←" => (1 * TILE_SIZE, 2 * TILE_SIZE),
-        "↓" => (2 * TILE_SIZE, 2 * TILE_SIZE),
-        "→" => (3 * TILE_SIZE, 2 * TILE_SIZE),
-        "┌" => (0 * TILE_SIZE, 3 * TILE_SIZE),
-        "─" => (1 * TILE_SIZE, 3 * TILE_SIZE),
-        "╖" => (2 * TILE_SIZE, 3 * TILE_SIZE),
-        "│" => (3 * TILE_SIZE, 3 * TILE_SIZE),
-        "╘" => (4 * TILE_SIZE, 3 * TILE_SIZE),
-        "┘" => (5 * TILE_SIZE, 3 * TILE_SIZE),
-        "╔" => (0 * TILE_SIZE, 4 * TILE_SIZE),
-        "═" => (1 * TILE_SIZE, 4 * TILE_SIZE),
-        "╕" => (2 * TILE_SIZE, 4 * TILE_SIZE),
-        "║" => (3 * TILE_SIZE, 4 * TILE_SIZE),
-        "╙" => (4 * TILE_SIZE, 4 * TILE_SIZE),
-        "╝" => (5 * TILE_SIZE, 4 * TILE_SIZE),
+fn str_to_sprite_xy(spec: &sprite::Spec::<IcePuzzles>, s: &str) -> sprite::XY<IcePuzzles> {
+    let tile = spec.tile();
+    let tile_w = tile.w;
+    let tile_h = tile.h;
+    let (w, h) = match s {
+        "☐" => (W(0), H(0)),
+        "☒" => (1 * tile_w, H(0)),
+        "\u{E010}" => (2 * tile_w, H(0)),
+        "\u{E011}" => (3 * tile_w, H(0)),
+        "\u{E012}" => (4 * tile_w, H(0)),
+        "\u{E013}" => (5 * tile_w, H(0)),
+        "\u{E014}" => (6 * tile_w, H(0)),
+        "\u{E015}" => (7 * tile_w, H(0)),
+        "\u{E016}" => (8 * tile_w, H(0)),
+        "\u{E017}" => (9 * tile_w, H(0)),
+        "\u{E018}" => (10 * tile_w, H(0)),
+        "@" => (0 * tile_w, 1 * tile_h),
+        "#" => (1 * tile_w, 1 * tile_h),
+        "$" => (2 * tile_w, 1 * tile_h),
+        "%" => (3 * tile_w, 1 * tile_h),
+        "R" => (4 * tile_w, 1 * tile_h),
+        "↑" => (0 * tile_w, 2 * tile_h),
+        "←" => (1 * tile_w, 2 * tile_h),
+        "↓" => (2 * tile_w, 2 * tile_h),
+        "→" => (3 * tile_w, 2 * tile_h),
+        "┌" => (0 * tile_w, 3 * tile_h),
+        "─" => (1 * tile_w, 3 * tile_h),
+        "╖" => (2 * tile_w, 3 * tile_h),
+        "│" => (3 * tile_w, 3 * tile_h),
+        "╘" => (4 * tile_w, 3 * tile_h),
+        "┘" => (5 * tile_w, 3 * tile_h),
+        "╔" => (0 * tile_w, 4 * tile_h),
+        "═" => (1 * tile_w, 4 * tile_h),
+        "╕" => (2 * tile_w, 4 * tile_h),
+        "║" => (3 * tile_w, 4 * tile_h),
+        "╙" => (4 * tile_w, 4 * tile_h),
+        "╝" => (5 * tile_w, 4 * tile_h),
         _ => {
             debug_assert!(false, "unknown tile str: \"{s}\"");
-            (0, 0)
+            (W(0), H(0))
         }
     };
 
     sprite::XY {
-        x: sprite::x::<IcePuzzles>(sx),
-        y: sprite::y::<IcePuzzles>(sy),
+        x: sprite::x::<IcePuzzles>(0) + w,
+        y: sprite::y::<IcePuzzles>(0) + h,
     }
 }
 
@@ -66,13 +67,17 @@ fn p_xy(commands: &mut Commands, spec: &sprite::Spec::<IcePuzzles>, x_in: i32, y
 
     match (X::try_from(x_in), Y::try_from(y_in)) {
         (Ok(x), Ok(y)) => {
+            let tile = spec.tile();
+            let w = tile.w;
+            let h = tile.h;
+
             commands.sspr(
-                str_to_sprite_xy(s).apply(spec),
+                str_to_sprite_xy(spec, s).apply(spec),
                 command::Rect::from_unscaled(unscaled::Rect {
-                    x: unscaled::X((x * TILE_SIZE) as _),
-                    y: unscaled::Y((y * TILE_SIZE) as _),
-                    w: unscaled::W(TILE_SIZE),
-                    h: unscaled::H(TILE_SIZE),
+                    x: unscaled::X(x * w.get()),
+                    y: unscaled::Y(y * h.get()),
+                    w,
+                    h,
                 })
             );
         },
@@ -83,10 +88,13 @@ fn p_xy(commands: &mut Commands, spec: &sprite::Spec::<IcePuzzles>, x_in: i32, y
 }
 
 impl State {
-    pub fn new(seed: Seed) -> State {
+    pub fn new(
+        seed: Seed,
+        spec: &sprite::Spec<IcePuzzles>,
+    ) -> State {
         State {
             state: state_manipulation::new_state(
-                platform::size(),
+                platform::size(spec),
                 seed,
             ),
             platform: Platform {
@@ -180,20 +188,30 @@ mod platform {
     }
 
     /// `Platform` function pointers
-    pub fn size() -> Size {
-        Size::new(24, 16)
+    pub fn size(spec: &sprite::Spec::<IcePuzzles>) -> Size {
+        let tile = spec.tile();
+        let tile_w = tile.w;
+        let tile_h = tile.h;
+        
+        Size::new(
+            (command::WIDTH / tile_w.get()).into(),
+            (command::HEIGHT / tile_h.get()).into(),
+        )
     }
 
     /// `platform` state management
     pub fn push_commands(commands: &mut Commands, spec: &sprite::Spec::<IcePuzzles>) {
+        let tile = spec.tile();
+        let tile_w = tile.w;
+        let tile_h = tile.h;
         for ((x, y), s) in state!().chars.iter() {
             commands.sspr(
-                str_to_sprite_xy(s).apply(spec),
+                str_to_sprite_xy(spec, s).apply(spec),
                 command::Rect::from_unscaled(unscaled::Rect {
-                    x: unscaled::X((x * TILE_SIZE) as _),
-                    y: unscaled::Y((y * TILE_SIZE) as _),
-                    w: unscaled::W(TILE_SIZE),
-                    h: unscaled::H(TILE_SIZE),
+                    x: unscaled::X(*x * tile_w.get()),
+                    y: unscaled::Y(*y * tile_h.get()),
+                    w: tile_w,
+                    h: tile_h,
                 })
             );
         }

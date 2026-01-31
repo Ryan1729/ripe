@@ -1,5 +1,4 @@
 use gfx_sizes::ARGB;
-pub use gfx_sizes::{FONT_WIDTH};
 pub use pak_types::*;
 
 pub type PaletteIndex = u8;

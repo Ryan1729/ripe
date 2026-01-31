@@ -2,6 +2,7 @@ use features::invariant_assert;
 use models::{
     config::{Config},
     offset,
+    sprite,
     speeches,
     CollectAction,
     DefId,
@@ -391,7 +392,7 @@ impl State {
 pub type Error = world::Error;
 
 impl State {
-    pub fn new(seed: Seed, config: Config) -> Result<State, Error> {
+    pub fn new(specs: &sprite::Specs, seed: Seed, config: Config) -> Result<State, Error> {
         let mut rng = xs::from_seed(seed);
 
         let world::Generated {
@@ -401,7 +402,7 @@ impl State {
             entity_defs,
             goal_door_tile_sprite,
             hallway_states,
-        } = world::generate(&mut rng, &config)?;
+        } = world::generate(&mut rng, &config, specs)?;
 
         Ok(State {
             rng,

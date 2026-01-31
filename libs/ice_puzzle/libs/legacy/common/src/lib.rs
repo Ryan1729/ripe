@@ -8,7 +8,7 @@ use xs::Xs;
 #[derive(Clone, Debug)]
 pub struct Platform {
     pub p_xy: fn(&mut Commands, &sprite::Spec::<IcePuzzles>, i32, i32, &'static str),
-    pub size: fn() -> Size,
+    pub size: fn(&sprite::Spec::<IcePuzzles>) -> Size,
 }
 
 #[derive(Clone, Debug)]

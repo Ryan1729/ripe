@@ -2,7 +2,7 @@ use features::invariant_assert;
 use gfx::{Commands, nine_slice, next_arrow, speech, to_tile};
 use gfx_sizes::{ARGB, GFX_WIDTH};
 use pak_types::{Specs};
-use platform_types::{command, sprite::{self, BaseUI}, unscaled, Button, Dir, Input, PakReader, Speaker, SFX};
+use platform_types::{command, unscaled, Button, Dir, Input, PakReader, Speaker, SFX};
 pub use platform_types::StateParams;
 use game::{FadeMessageSpec, HallwayState, Mode, TalkingState, PostTalkingAction};
 use models::{Entity, i_to_xy, Pak, Speech, Speeches, Spritesheet, TileSprite, XY};
@@ -95,7 +95,7 @@ impl State {
 
         let (game_state, spritesheet, specs) = match pak_result {
             Ok(pak) => (
-                game::State::new(seed, pak.config)
+                game::State::new(&pak.specs, seed, pak.config)
                     .map_err(Error::Game)
                     .map_err(ErrorState::from),
                 pak.spritesheet,

@@ -2,7 +2,9 @@ use features::{invariant_assert};
 use models::{
     config::{Config},
     consts::{ITEM_START, NPC_START, PLAYER_START, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START, DOOR, FLOOR, DOOR_START},
-    speeches, CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Specs, Speeches, Tile, TileSprite, Transform, WorldSegment, X, Y, SegmentId
+    speeches,
+    sprite,
+    CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Specs, Speeches, Tile, TileSprite, Transform, WorldSegment, X, Y, SegmentId
 };
 use vec1::Vec1;
 use xs::{Xs};
@@ -542,7 +544,7 @@ pub struct Generated {
     pub hallway_states: HallwayStates,
 }
 
-pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
+pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<Generated, Error> {
     #[cfg(feature = "invariant-checking")]
     let mut door_target_set = std::collections::HashSet::<DefId>::with_capacity(16);
 
@@ -960,7 +962,7 @@ pub fn generate(rng: &mut Xs, config: &Config) -> Result<Generated, Error> {
                         hallway_states.insert(
                             key_i,
                             key_j,
-                            hallway::State::IcePuzzle(ice_puzzle::State::new(rng)),
+                            hallway::State::IcePuzzle(ice_puzzle::State::new(rng, &specs.ice_puzzles)),
                         );
                     },
                     HallwaySpec::SWORD => {

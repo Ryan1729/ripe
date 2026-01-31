@@ -8,9 +8,9 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(rng: &mut Xs) -> Self {
+    pub fn new(rng: &mut Xs, spec: &sprite::Spec<sprite::IcePuzzles>) -> Self {
         Self {
-            state: game::State::new(xs::new_seed(rng)),
+            state: game::State::new(xs::new_seed(rng), spec),
         }
     }
 

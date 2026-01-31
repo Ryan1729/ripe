@@ -4,7 +4,7 @@ use gfx::Commands;
 use common::*;
 use common::Cell::*;
 use common::Motion::*;
-use pak_types::sprite;
+use pak_types::sprite::{self, IcePuzzles};
 
 use std::collections::HashMap;
 
@@ -23,7 +23,7 @@ pub fn new_state(
 
 pub fn update_and_render(
     commands: &mut Commands,
-    spec: &sprite::Spec::<sprite::IcePuzzles>,
+    spec: &sprite::Spec::<IcePuzzles>,
     platform: &Platform,
     state: &mut State,
     events: &mut Vec<Event>
@@ -41,14 +41,14 @@ pub fn game_update_and_render(
     events: &mut Vec<Event>
 ) {
     for event in events {
-        cross_mode_event_handling(platform, state, event);
+        cross_mode_event_handling(platform, state, spec, event);
     }
 
-    move_player((platform.size)(), state);
+    move_player((platform.size)(spec), state);
 
     if let Some(&Goal) = state.cells.get(&state.player_pos) {
         state.max_steps += 1;
-        *state = next_level((platform.size)(), state.rng, state.max_steps);
+        *state = next_level((platform.size)(spec), state.rng, state.max_steps);
     }
 
     draw(commands, spec, platform, state);
@@ -68,7 +68,12 @@ fn move_player(size: Size, state: &mut State) {
     }
 }
 
-fn cross_mode_event_handling(platform: &Platform, state: &mut State, event: &Event) {
+fn cross_mode_event_handling(
+    platform: &Platform,
+    state: &mut State,
+    spec: &sprite::Spec::<IcePuzzles>,
+    event: &Event
+) {
     match *event {
         Event::KeyPressed { key: KeyCode::W, ctrl: _, shift: _ } |
         Event::KeyPressed { key: KeyCode::Up, ctrl: _, shift: _ } => {
@@ -103,7 +108,7 @@ fn cross_mode_event_handling(platform: &Platform, state: &mut State, event: &Eve
             state.player_facing_direction = Dir::default();
         }
         Event::KeyPressed { key: KeyCode::R, ctrl: true, shift: _ } => {
-            *state = new_state((platform.size)(), xs::new_seed(&mut state.rng));
+            *state = new_state((platform.size)(spec), xs::new_seed(&mut state.rng));
         }
         _ => (),
     }

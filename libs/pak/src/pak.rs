@@ -1,4 +1,4 @@
-use pak_types::{Pak, Spritesheet, Specs};
+use pak_types::{Pak, Spritesheet};
 use gfx_sizes::ARGB;
 use platform_types::{PakReader};
 

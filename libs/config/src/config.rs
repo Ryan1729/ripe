@@ -671,8 +671,6 @@ mod rune_based {
                         rune::from_value(v)
                             .map_err(|got| Error::TypeMismatch{ key: key.into(), expected: "map", got })?;
 
-                    let parent_key: IndexableKey = key.into();
-
                     let mut pieces = specs.$spec_key.pieces();
 
                     {
