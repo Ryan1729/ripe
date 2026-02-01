@@ -430,25 +430,27 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
     let draw_tile_sprite = |commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite| {
         commands.sspr(
             to_tile::sprite_xy(&specs.base_tiles, sprite),
-            command::Rect::from_unscaled(to_tile::rect(xy)),
+            command::Rect::from_unscaled(to_tile::rect(&specs.base_tiles, xy)),
         );
     };
 
     let draw_tile = |commands: &mut Commands, xy: XY, sprite: TileSprite| {
-        draw_tile_sprite(commands, to_tile::min_corner(xy), sprite);
+        draw_tile_sprite(commands, to_tile::min_corner(&specs.base_tiles, xy), sprite);
     };
 
     let draw_tile_sprite_centered_at = |commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite| {
         commands.sspr(
             to_tile::sprite_xy(&specs.base_tiles, sprite),
-            command::Rect::from_unscaled(to_tile::rect(to_tile::center_to_min_corner(xy))),
+            command::Rect::from_unscaled(
+                to_tile::rect(&specs.base_tiles, to_tile::center_to_min_corner(&specs.base_tiles, xy))
+            ),
         );
     };
 
     let draw_entity = |commands: &mut Commands, entity: &Entity| {
         commands.sspr(
             to_tile::sprite_xy(&specs.base_tiles, entity.transformable.tile_sprite),
-            command::Rect::from_unscaled(to_tile::entity_rect(entity)),
+            command::Rect::from_unscaled(to_tile::entity_rect(&specs.base_tiles, entity)),
         );
     };
 
@@ -698,7 +700,10 @@ fn update_and_render(
             game_update(commands, specs, state, input, speaker);
             // Empty message queue
             for FadeMessageSpec { message, xy } in state.fade_message_specs.drain(..) {
-                commands.push_fade_message(message.into(), xy);
+                commands.push_fade_message(
+                    message.into(),
+                    to_tile::center(&specs.base_tiles, xy)
+                );
             }
             game_render(commands, specs, state);
 

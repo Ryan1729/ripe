@@ -821,6 +821,10 @@ pub mod sprite {
             self.tile
         }
 
+        pub fn tile_center_offset(&self) -> WH {
+            self.tile.halve()
+        }
+
         /// Not advised for general use, but only when initally constructing the specs
         /// while retaining the default values from Specs.
         // TODO? Is there a clean way to allow that to work, and avoid exposing this?

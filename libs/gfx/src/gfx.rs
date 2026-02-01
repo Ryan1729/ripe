@@ -203,12 +203,12 @@ impl Commands {
         speech::render(self, speech);
     }
 
-    pub fn push_fade_message(&mut self, message: Vec<u8>, xy: models::XY) {
+    pub fn push_fade_message(&mut self, message: Vec<u8>, xy: unscaled::XY) {
         self.fade_messages.push(FadeMessage {
             message,
             // TODO? Scale this based on text length?
             fade_timer: 100,
-            xy: to_tile::center(xy),
+            xy,
             // TODO? Scale this based on text length?
             offset_per_frame: unscaled::WH { w: unscaled::W::ZERO, h: unscaled::H::ONE },
         });
