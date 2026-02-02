@@ -407,8 +407,6 @@ fn game_update(commands: &mut Commands, specs: &Specs, state: &mut game::State, 
     }
 }
 
-
-
 #[inline]
 fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
     //

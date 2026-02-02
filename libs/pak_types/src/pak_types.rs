@@ -955,7 +955,6 @@ pub mod config {
     use vec1::{Vec1};
     use crate::{
         consts::{EntityDefFlags, TileFlags},
-        sprite,
         DefId, OnCollect, SegmentWidth, Specs, Speech, TileSprite
     };
     use std::path::PathBuf;
