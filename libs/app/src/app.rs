@@ -583,7 +583,6 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
             );
 
             let image_xy = unscaled::XY {
-                // TODO center this once we have the tile dimensions moved into the right spot
                 x: goal_inner_rect.x + goal_inner_rect.w.halve(),
                 y: goal_inner_rect.y + goal_inner_rect.h.halve(),
             };
