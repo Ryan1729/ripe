@@ -246,8 +246,10 @@ fn can_walk_onto(world: &World, key @ EntityKey { segment_id, xy: XY{ x, y } }: 
     };
 
     if let Some(tile) = segment.tiles.get(i) {
-        if let Some(_) = world.mobs.get(key) {
-            return false;
+        if let Some(mob) = world.mobs.get(key) {
+            if !mob.is_steppable() {
+                return false;
+            }
         }
 
         if is_passable(tile) {
@@ -452,10 +454,9 @@ impl State {
         let new_key = self.world.local_key(new_x, new_y);
 
         if can_walk_onto(&self.world, new_key) {
-            if let Some(steppable) = self.world.steppables.get(new_key) {
-                if !steppable.is_steppable() {
+            if let Some(mob) = self.world.mobs.get(new_key) {
+                if !mob.is_steppable() {
                     // Doors or other things which may become steppable, but aren't now.
-                    // TODO: Is the world.steppables/world.mobs distinction worth it?
                     return
                 }
             }
@@ -469,22 +470,22 @@ impl State {
 
             let key = self.world.player_key();
 
-            if let Some(steppable) = self.world.steppables.get(key) {
-                if steppable.is_collectable() {
+            if let Some(mob) = self.world.mobs.get(key) {
+                if mob.is_collectable() {
                     self.shake_amount = 5;
 
-                    let steppable = self.world.steppables.remove(key)
+                    let steppable = self.world.mobs.remove(key)
                         // Yes, this relies on game updates being on a single thread,
                         // but we'd presumbably need to change a bunch of other things
                         // too, to make multiple threads work.
                         .expect("We just checked for it a moment ago!");
                     self.push_inventory(key, steppable);
-                } else if steppable.is_victory() {
+                } else if mob.is_victory() {
                     let mut animation = DoorAnimation::default();
                     animation.is_dramatic = true;
                     self.mode = Mode::Victory(animation);
-                } else if steppable.is_door() {
-                    self.mode = Mode::DoorTo(steppable.door_target, <_>::default());
+                } else if mob.is_door() {
+                    self.mode = Mode::DoorTo(mob.door_target, <_>::default());
                 } else {
                     // Effectively just scenery.
                 }
@@ -505,7 +506,7 @@ impl State {
 
         let entity = &mut self.world.player;
 
-        let Some(interactable) = self.world.mobs.get_mut(key).or_else(|| self.world.steppables.get_mut(key)) else {
+        let Some(interactable) = self.world.mobs.get_mut(key) else {
             self.fade_message_specs.push(
                 FadeMessageSpec::new(format!("there's nobody there."), entity.xy())
             );

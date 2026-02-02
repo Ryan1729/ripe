@@ -466,10 +466,6 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
             );
         }
 
-        for (_, steppable) in state.world.steppables.for_id(state.world.segment_id) {
-            draw_entity(commands, steppable);
-        }
-
         for (_, mob) in state.world.mobs.for_id(state.world.segment_id) {
             draw_entity(commands, mob);
         }

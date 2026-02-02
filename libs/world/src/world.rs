@@ -191,13 +191,12 @@ pub struct World {
     /// The ID of the current segment we are in.
     pub segment_id: SegmentId,
     pub player: Entity,
-    pub steppables: Entities,
     pub mobs: Entities,
 }
 
 impl World {
     pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
-        std::iter::once(&mut self.player).chain(self.steppables.all_entities_mut().chain(self.mobs.all_entities_mut()))
+        std::iter::once(&mut self.player).chain(self.mobs.all_entities_mut())
     }
 
     pub fn player_key(&self) -> EntityKey {
@@ -221,7 +220,7 @@ impl World {
             return Some(&self.player)
         }
 
-        self.mobs.get(key).or_else(|| self.steppables.get(key))
+        self.mobs.get(key)
     }
 
     pub fn get_entity_mut(&mut self, key: EntityKey) -> Option<&mut Entity> {
@@ -229,7 +228,7 @@ impl World {
             return Some(&mut self.player)
         }
 
-        self.mobs.get_mut(key).or_else(|| self.steppables.get_mut(key))
+        self.mobs.get_mut(key)
     }
 }
 
@@ -688,10 +687,9 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
     };
 
     let mut world = World {
-        player,
         segment_id: <_>::default(),
         segments,
-        steppables: <_>::default(),
+        player,
         mobs: <_>::default(),
     };
 
@@ -821,7 +819,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                     );
                     // We don't need to set targets for victory doors.
 
-                    world.steppables.insert(
+                    world.mobs.insert(
                         last_segment_id,
                         door,
                     );
@@ -945,8 +943,8 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                 let key_i = key_for_entity(segment_id_i, &door_i);
                 let key_j = key_for_entity(segment_id_j, &door_j);
     
-                world.steppables.insert(segment_id_i, door_i);
-                world.steppables.insert(segment_id_j, door_j);
+                world.mobs.insert(segment_id_i, door_i);
+                world.mobs.insert(segment_id_j, door_j);
 
                 assert_door_targets_seem_right!();
     
@@ -1041,8 +1039,8 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
         let mut checklist = vec![0 ;segments_count.into()];
 
         for segment_id in 0..segments_count {
-            for (_, steppable) in world.steppables.for_id(segment_id) {
-                if steppable.is_door() {
+            for (_, mob) in world.mobs.for_id(segment_id) {
+                if mob.is_door() {
                     checklist[usize::from(segment_id)] += 1;
                 }
             }
@@ -1183,7 +1181,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                         ITEM_START,
                         &placed_already,
                     ) {
-                        world.steppables.insert(
+                        world.mobs.insert(
                             item_loc.segment_id,
                             to_entity(
                                 item_spec.item_def,
