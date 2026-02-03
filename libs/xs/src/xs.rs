@@ -25,6 +25,20 @@ pub fn range(xs: &mut Xs, range: Range<u32>) -> u32 {
     (xorshift(xs) % (one_past_max - min)) + min
 }
 
+/// A convenience function for the common case of picking a random index based on
+/// the length of a std::Vec or other collection with a usize length.
+pub fn index(xs: &mut Xs, range_in: Range<usize>) -> usize {
+    debug_assert!(range_in.start as u128 <= u32::MAX as u128);
+    debug_assert!(range_in.end as u128 <= u32::MAX as u128);
+    let min = range_in.start as u32;
+    let one_past_max = range_in.end as u32;
+
+    // The input being constrained to u32 should prevent this from failing
+    // except in platforms with small usizes.
+    usize::try_from(range(xs, min..one_past_max))
+        .expect("Not expected to be run on less than 32 bit platforms!")
+}
+
 const SCALE: u32 = 1 << f32::MANTISSA_DIGITS;
 
 pub fn zero_to_one(xs: &mut Xs) -> f32 {
@@ -37,10 +51,9 @@ fn minus_one_to_one(xs: &mut Xs) -> f32 {
 }
 
 pub fn shuffle<A>(xs: &mut Xs, slice: &mut [A]) {
-    for i in 1..slice.len() as u32 {
+    for i in 1..slice.len() {
         // This only shuffles the first u32::MAX_VALUE - 1 elements.
-        let r = range(xs, 0..i + 1) as usize;
-        let i = i as usize;
+        let r = index(xs, 0..i + 1);
         slice.swap(i, r);
     }
 }

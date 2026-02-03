@@ -523,6 +523,7 @@ pub fn i_to_xy(segment_width: SegmentWidth, index: Index) -> XY {
 }
 
 pub mod speeches {
+    use vec1::Vec1;
     use pak_types::{DefId, Speech};
     use std::collections::BTreeMap;
 
@@ -558,16 +559,17 @@ pub mod speeches {
         }
     }
 
-    type SparseSpeeches = BTreeMap<SparseKey, Vec<Speech>>;
+    type SparseSpeeches = BTreeMap<SparseKey, Vec1<Speech>>;
 
     #[derive(Clone, Debug, Default)]
     pub struct Speeches {
         // We expect that many entities will have a first speech of each category, so dense seems appropriate.
         // For now, it seems reasonable to assume we can force Def IDs to be dense, and start at 0.
+        // The outur Vec here is a mapping from defIDs to speeches. Not every entity has a speech, so 
+        // we do have a need for the inner Vecs to possibly be empty.
         first_speeches: Vec<Vec<Speech>>,
         // We expect that many entities will only have a first speech though, so for the rest of them, 
         // sparse makes sense.
-        // TODO? Use non-empty Vec here?
         sparse_speeches: SparseSpeeches,
     }
     
@@ -575,6 +577,27 @@ pub mod speeches {
     pub enum PushError {
         TooManySpeechStates,
         TooManyDefs,
+        EmptyVec,
+    }
+
+    impl From<vec1::EmptyError> for PushError {
+        fn from(_: vec1::EmptyError) -> Self {
+            Self::EmptyVec
+        }
+    }
+
+    impl TryFrom<Vec<crate::SpeechesList>> for Speeches {
+        type Error = PushError;
+
+        fn try_from(list: Vec<crate::SpeechesList>) -> Result<Self, Self::Error> {
+            let mut speeches = Speeches::with_capacity(list.len());
+
+            for list in list {
+                speeches.push(list)?;
+            }
+
+            Ok(speeches)
+        }
     }
 
     impl Speeches {
@@ -587,7 +610,7 @@ pub mod speeches {
         }
 
         #[must_use]
-        pub fn push(&mut self, speeches: &mut [Vec<Speech>]) -> Result<(), PushError> {
+        pub fn push(&mut self, speeches: Vec<Vec1<Speech>>) -> Result<(), PushError> {
             if speeches.is_empty() {
                 self.first_speeches.push(Vec::new());
                 return Ok(())
@@ -598,18 +621,21 @@ pub mod speeches {
                 .map_err(|_| PushError::TooManySpeechStates)?;
             let def_id = DefId::try_from(self.first_speeches.len()).map_err(|_| PushError::TooManyDefs)?;
 
-            let first_speech = std::mem::replace(&mut speeches[0], Vec::new());
-
-            self.first_speeches.push(first_speech);
-
             let mut state = SparseState::MIN;
-            while state < state_len {
+
+            for (i, speech) in speeches.into_iter().enumerate() {
+                if i == 0 {
+                    self.first_speeches.push(speech.into());
+
+                    continue
+                }
+
                 self.sparse_speeches.insert(
                     SparseKey{
                         state,
                         def_id,
                     },
-                    std::mem::replace(&mut speeches[state.get() as usize], Vec::new()),
+                    speech,
                 );
 
                 state = state.saturating_add(1);

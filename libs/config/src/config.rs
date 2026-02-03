@@ -18,7 +18,9 @@ mod rune_based {
         DefId,
         DefIdDelta,
         Specs,
+        SpeechesList,
     };
+    use vec1::Vec1;
 
     use std::path::PathBuf;
     use rune::{alloc::{Error as AllocError}, BuildError, Context, ContextError, Diagnostics, Source, Sources, Value, Vm};
@@ -137,6 +139,10 @@ mod rune_based {
             key: &'static str,
             parent_key: IndexableKey,
             kind: models::consts::HallwayKind,
+        },
+        EmptyList{
+            key: &'static str,
+            parent_key: IndexableKey,
         },
     }
 
@@ -350,7 +356,7 @@ mod rune_based {
 
             let width: SegmentWidth = get_int!(segment, "width", parent_key);
 
-            let tiles = {
+            let tiles: Vec1<TileFlags> = {
                 let key = "tiles";
                 let raw_tiles = get_array!(segment, key, parent_key);
 
@@ -367,7 +373,8 @@ mod rune_based {
                     tiles.push(tile_flags);
                 }
 
-                tiles
+                tiles.try_into()
+                    .map_err(|_| Error::EmptyList{ key, parent_key })?
             };
 
             segments_vec.push(WorldSegment {
@@ -425,7 +432,7 @@ mod rune_based {
 
             let tile_sprite = get_int!(entity, "tile_sprite", parent_key);
 
-            let speeches: Vec<Vec<Speech>> = 'speeches: {
+            let speeches: SpeechesList = 'speeches: {
                 let key = "speeches";
 
                 let raw_speeches_list = match entity.get(key) {
@@ -450,13 +457,17 @@ mod rune_based {
                         individual_speeches.push(Speech::from(raw_text.as_str()));
                     }
 
-                    speeches.push(individual_speeches);
+                    speeches.push(
+                        individual_speeches
+                            .try_into()
+                            .map_err(|_| Error::EmptyList{ key, parent_key })?
+                    );
                 }
 
                 speeches
             };
 
-            let inventory_description: Vec<Vec<Speech>> = 'inventory_description: {
+            let inventory_description: SpeechesList = 'inventory_description: {
                 let key = "inventory_description";
 
                 let raw_inventory_description_list = match entity.get(key) {
@@ -481,7 +492,11 @@ mod rune_based {
                         individual_inventory_description.push(Speech::from(raw_text.as_str()));
                     }
 
-                    inventory_description.push(individual_inventory_description);
+                    inventory_description.push(
+                        individual_inventory_description
+                            .try_into()
+                            .map_err(|_| Error::EmptyList{ key, parent_key })?
+                    );
                 }
 
                 inventory_description

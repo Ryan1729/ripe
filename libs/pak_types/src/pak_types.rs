@@ -963,11 +963,10 @@ pub mod config {
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct WorldSegment {
         pub width: SegmentWidth,
-        // TODO? Nonempty Vec?
-        // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that rsstriction clear, so we
+        // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that restriction clear, so we
         // can't have like PC only worlds that break in weird ways online. Probably no one will ever need that
         // many tiles per segment. Plus, then xs conversions go away.
-        pub tiles: Vec<TileFlags>,
+        pub tiles: Vec1<TileFlags>,
     }
 
     #[derive(Clone, Debug)]
@@ -994,10 +993,12 @@ pub mod config {
         }
     }
 
+    pub type SpeechesList = Vec<Vec1<Speech>>;
+
     #[derive(Clone, Debug)]
     pub struct EntityDef {
-        pub speeches: Vec<Vec<Speech>>,
-        pub inventory_description: Vec<Vec<Speech>>,
+        pub speeches: SpeechesList,
+        pub inventory_description: SpeechesList,
         pub id: DefId,
         pub flags: EntityDefFlags,
         pub tile_sprite: TileSprite,
@@ -1013,7 +1014,7 @@ pub mod config {
         SWORD,
     }
 }
-pub use config::{Config, EntityDef};
+pub use config::{Config, EntityDef, SpeechesList};
 
 pub mod consts {
     macro_rules! consts_def {

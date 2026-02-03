@@ -4,7 +4,7 @@ use models::{
     consts::{ITEM_START, NPC_START, PLAYER_START, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START, DOOR, FLOOR, DOOR_START},
     speeches,
     sprite,
-    CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Specs, Speeches, Tile, TileSprite, Transform, WorldSegment, X, Y, SegmentId
+    CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Specs, Speech, Speeches, Tile, TileSprite, Transform, WorldSegment, X, Y, SegmentId
 };
 use vec1::Vec1;
 use xs::{Xs};
@@ -274,7 +274,7 @@ mod random {
     pub fn passable_tile(rng: &mut Xs, segment: &WorldSegment) -> Option<XY> {
         // TODO? Cap tiles length or accept this giving a messed up probabilty for large segments?
         let len = segment.tiles.len();
-        let offset = xs::range(rng, 0..len as u32) as usize;
+        let offset = xs::index(rng, 0..len);
         for index in 0..len {
             let i = (index + offset) % len;
 
@@ -297,7 +297,7 @@ mod random {
     ) -> Option<Location> {
         // TODO? Cap tiles length or accept this giving a messed up probabilty for large segments?
         let len = segment.tiles.len();
-        let offset = xs::range(rng, 0..len as u32) as usize;
+        let offset = xs::index(rng, 0..len);
         for index in 0..len {
             let i = (index + offset) % len;
 
@@ -565,7 +565,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
 
     for _ in 0..target_segment_count {
         // TODO? Cap the number of segments, or just be okay with the first room never being in the 5 billions, etc?
-        let index = xs::range(rng, 0..config.segments.len() as u32) as usize;
+        let index = xs::index(rng, 0..config.segments.len());
 
         let config_segment = &config.segments[index];
 
@@ -607,8 +607,8 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
     let mut mob_defs = Vec::with_capacity(16);
     let mut item_defs = Vec::with_capacity(16);
     let mut door_defs = Vec::with_capacity(16);
-    let mut speeches_lists = Vec::with_capacity(16);
-    let mut inventory_descriptions_lists = Vec::with_capacity(16);
+    let mut speeches_lists: Vec<models::SpeechesList> = Vec::with_capacity(16);
+    let mut inventory_descriptions_lists: Vec<models::SpeechesList> = Vec::with_capacity(16);
 
     for def in &config.entities {
         // PERF: Is it worth it to avoid this clone?
@@ -616,14 +616,8 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
         inventory_descriptions_lists.push(def.inventory_description.clone());
     }
 
-    let mut speeches = Speeches::with_capacity(speeches_lists.len());
-    for list in &mut speeches_lists {
-        speeches.push(list).map_err(Error::InvalidSpeeches)?;
-    }
-    let mut inventory_descriptions = Speeches::with_capacity(inventory_descriptions_lists.len());
-    for list in &mut inventory_descriptions_lists {
-        inventory_descriptions.push(list).map_err(Error::InvalidInventoryDescriptions)?;
-    }
+    let speeches = Speeches::try_from(speeches_lists).map_err(Error::InvalidSpeeches)?;
+    let inventory_descriptions = Speeches::try_from(inventory_descriptions_lists).map_err(Error::InvalidSpeeches)?;
 
     let mut all_desires = Vec::with_capacity(
         core::cmp::min(
@@ -789,7 +783,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
 
     // TODO? mark up the goal items in the config?
     // TODO? Helper for this pattern of "find a random place to start iterating?"
-    let index_offset = xs::range(rng, 0..item_defs.len() as u32) as usize;
+    let index_offset = xs::index(rng, 0..item_defs.len());
     'find_goal: for iteration_index in 0..item_defs.len() {
         let index = (iteration_index + index_offset) % item_defs.len();
 
@@ -863,7 +857,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
     let mut spheres = Vec::with_capacity(16);
 
     {
-        let initial_lak_index = xs::range(rng, 0..non_final_lock_and_keys.len() as u32) as usize;
+        let initial_lak_index = xs::index(rng, 0..non_final_lock_and_keys.len());
         let mut lak_index = initial_lak_index;
 
         const MIN_PER_SPHERE: u8 = 2;
@@ -949,7 +943,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                 assert_door_targets_seem_right!();
     
                 invariant_assert!(config.hallways.len() as u128 <= u128::from(u32::MAX));
-                let hallway_index = xs::range(rng, 0..config.hallways.len() as u32) as usize;
+                let hallway_index = xs::index(rng, 0..config.hallways.len());
                 let hallway = &config.hallways[hallway_index];
 
                 use models::config::HallwaySpec;
@@ -1008,11 +1002,11 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
 
             let segment_id = {
                 let chunk = &chunks[chunk_index];
-                chunk[xs::range(rng, 0..chunk.len() as u32) as usize]
+                chunk[xs::index(rng, 0..chunk.len())]
             };
             let next_chunk_segment_id = {
                 let chunk = &chunks[next_chunk_index];
-                chunk[xs::range(rng, 0..chunk.len() as u32) as usize]
+                chunk[xs::index(rng, 0..chunk.len())]
             };
 
             place_door_pair!(edge_lak.lock, (segment_id, next_chunk_segment_id));
@@ -1076,7 +1070,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
     ) -> Constraints<'defs> {
         invariant_assert!(_world.segments.len() <= SegmentId::MAX as usize);
 
-        let desire_count_to_use = xs::range(rng, 1..all_desires.len() as u32 + 1) as usize;
+        let desire_count_to_use = xs::index(rng, 1..all_desires.len() + 1);
         // We end up with 1 more spec than the desires we use, becauase we start with one that doesn't use any.
         let overall_target_len = desire_count_to_use + 1;
 
@@ -1084,7 +1078,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
         let max_sub_target_len = average_target_len * 2;
         invariant_assert!(max_sub_target_len <= u32::MAX as usize); // For random selection later
 
-        let initial_index = xs::range(rng, 0..all_desires.len() as u32) as usize;
+        let initial_index = xs::index(rng, 0..all_desires.len());
 
         let mut item_specs: Vec<_> = Vec::with_capacity(overall_target_len);
 
@@ -1105,7 +1099,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                 macro_rules! random_segment_id {
                     () => {
                         // TODO: We can randomly push some things back into previous spheres, for variety.
-                        segment_ids[xs::range(rng, 0..segment_ids.len() as u32) as usize]
+                        segment_ids[xs::index(rng, 0..segment_ids.len())]
                     }
                 }
 
@@ -1115,15 +1109,15 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                     location: AbstractLocation::Floor(random_segment_id!()),
                 });
 
-                let sub_target_len = xs::range(rng, 1..max_sub_target_len as u32) as usize;
+                let sub_target_len = xs::index(rng, 1..max_sub_target_len);
 
-                let mut index = xs::range(rng, 0..all_desires.len() as u32) as usize;
+                let mut index = xs::index(rng, 0..all_desires.len());
 
                 let initial_spec_len = item_specs.len();
 
                 while item_specs.len() - initial_spec_len < sub_target_len {
                     // Select the index or not, at a rate proportional to how many we need.
-                    if (xs::range(rng, 0..all_desires.len() as u32 + 1) as usize) < sub_target_len {
+                    if (xs::index(rng, 0..all_desires.len() + 1)) < sub_target_len {
                         let Some(last) = item_specs.pop() else {
                             invariant_assert!(false, "item_specs.pop() == None");
                             continue

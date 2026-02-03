@@ -267,7 +267,7 @@ fn next_level(size: Size, mut rng: Xs, max_steps: u8) -> State {
     if len > 0 {
         loop {
             let possible_goal = goal_locations.swap_remove(
-                xs::range(&mut rng, 0..len as u32) as usize
+                xs::index(&mut rng, 0..len)
             );
 
             len = goal_locations.len();

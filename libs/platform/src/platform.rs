@@ -376,7 +376,7 @@ mod not_wasm {
                 };
 
                 let data: &[u8] = sounds[
-                    xs::range(&mut rng, 0..sounds.len() as u32) as usize
+                    xs::index(&mut rng, 0..sounds.len())
                 ];
 
                 // If one sound file is messed up, don't break all the sounds.

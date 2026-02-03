@@ -106,6 +106,12 @@ impl <T> TryFrom<Vec<T>> for Vec1<T> {
     }
 }
 
+impl <T> From<Vec1<T>> for Vec<T> {
+    fn from(value: Vec1<T>) -> Self {
+        value.0
+    }
+}
+
 #[macro_export]
 macro_rules! _vec1 {
     ($($element: expr),+ $(,)?) => {
