@@ -1,5 +1,7 @@
 pub use pak_types::*;
 
+use vec1::Vec1;
+
 pub const WALL_SPRITE: TileSprite = 32;
 pub const FLOOR_SPRITE: TileSprite = 33;
 pub const PLAYER_SPRITE: TileSprite = 34;
@@ -493,11 +495,10 @@ pub fn is_passable(tile: &Tile) -> bool {
 #[derive(Clone, Debug, Default)]
 pub struct WorldSegment {
     pub width: SegmentWidth,
-    // TODO? Nonempty Vec?
     // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that restriction clear, so we
     // can't have like PC only worlds that break in weird ways online. Probably no one will ever need that
     // many tiles per segment. Plus, then xs conversions go away.
-    pub tiles: Vec<Tile>,
+    pub tiles: Vec1<Tile>,
 }
 
 pub type Index = usize;

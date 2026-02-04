@@ -42,6 +42,16 @@ impl <T> Vec1<T> {
     pub fn last(&self) -> &T {
         self.0.last().expect("Invalid Vec1 was created!")
     }
+
+    pub fn map1<U>(vec: &Vec1<U>, mapper: impl Fn(&U) -> T) -> Self {
+        let mut output = Vec::with_capacity(vec.len());
+
+        for element in vec.iter() {
+            output.push(mapper(element));
+        }
+
+        Vec1::try_from(output).expect("The input being a Vec1 should prevent this case!")
+    }
 }
 
 impl<T, I: std::slice::SliceIndex<[T]>> Index<I> for Vec1<T> {

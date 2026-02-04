@@ -569,7 +569,8 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
 
         let config_segment = &config.segments[index];
 
-        let tiles: Vec<_> = config_segment.tiles.iter().map(
+        let tiles: Vec1<_> = Vec1::map1(
+            &config_segment.tiles,
             |tile_flags| {
                 Tile {
                     sprite: if tile_flags & FLOOR != 0 {
@@ -579,7 +580,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                     },
                 }
             }
-        ).collect();
+        );
 
         segments.push(
             WorldSegment {
