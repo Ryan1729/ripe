@@ -4,28 +4,27 @@ use models::{
     consts::{ITEM_START, NPC_START, PLAYER_START, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START, DOOR, FLOOR, DOOR_START},
     speeches,
     sprite,
-    CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Specs, Speech, Speeches, Tile, TileSprite, Transform, WorldSegment, X, Y, SegmentId
+    CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Specs, Speech, Speeches, Tile, TileSprite, Transform, WorldSegment, XY, SegmentId
 };
 use vec1::Vec1;
 use xs::{Xs};
 
 mod entities {
-    use models::{Entity, X, Y, XY, SegmentId};
+    use models::{Entity, XY, SegmentId};
 
     use std::collections::{BTreeMap};
 
     pub type Key = models::Location;
 
-    pub fn entity_key(segment_id: SegmentId, x: X, y: Y) -> Key {
+    pub fn entity_key(segment_id: SegmentId, xy: XY) -> Key {
         Key {
             segment_id,
-            xy: XY{x, y}
+            xy,
         }
     }
 
     pub fn key_for_entity(segment_id: SegmentId, entity: &Entity) -> Key {
-        let xy = entity.xy();
-        entity_key(segment_id, xy.x, xy.y)
+        entity_key(segment_id, entity.xy)
     }
 
     // Reminder, we're going with Fat Struct for Entities on this project. So, if you are here looking to
@@ -52,11 +51,11 @@ mod entities {
         }
 
         pub fn for_id(&self, id: SegmentId) -> impl Iterator<Item=(&Key, &Entity)> {
-            self.map.range(entity_key(id, X::MIN, Y::MIN)..=entity_key(id, X::MAX, Y::MAX))
+            self.map.range(entity_key(id, XY::MIN)..=entity_key(id, XY::MAX))
         }
 
         pub fn insert(&mut self, id: SegmentId, entity: Entity) {
-            self.map.insert(entity_key(id, entity.x, entity.y), entity);
+            self.map.insert(entity_key(id, entity.xy), entity);
         }
 
         pub fn remove(&mut self, key: Key) -> Option<Entity> {
@@ -202,16 +201,14 @@ impl World {
     pub fn player_key(&self) -> EntityKey {
         entity_key(
             self.segment_id,
-            self.player.x,
-            self.player.y,
+            self.player.xy,
         )
     }
 
-    pub fn local_key(&self, x: X, y: Y) -> EntityKey {
+    pub fn local_key(&self, xy: XY) -> EntityKey {
         entity_key(
             self.segment_id,
-            x,
-            y,
+            xy,
         )
     }
 
@@ -234,12 +231,10 @@ impl World {
 
 pub fn to_entity(
     def: &MiniEntityDef,
-    x: X,
-    y: Y
+    xy: XY,
 ) -> Entity {
     Entity::new(
-        x,
-        y,
+        xy,
         def.into(),
     )
 }
@@ -754,8 +749,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                 .map(|xy| Location { xy, segment_id: first_segment_id, })
         )
         .ok_or(Error::CannotPlacePlayer)?;
-    world.player.x = p_loc.xy.x;
-    world.player.y = p_loc.xy.y;
+    world.player.xy = p_loc.xy;
     placed_already.push(p_loc);
 
     let Some(open_door_def) = door_defs.iter().find(|d|
@@ -809,8 +803,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
 
                     let door = to_entity(
                         initial_door_def,
-                        d_loc.xy.x,
-                        d_loc.xy.y
+                        d_loc.xy,
                     );
                     // We don't need to set targets for victory doors.
 
@@ -921,16 +914,14 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
     
                 let mut door_i = to_entity(
                     door_def,
-                    d_i_loc.xy.x,
-                    d_i_loc.xy.y
+                    d_i_loc.xy,
                 );
                 door_i.door_target = d_j_loc;
                 track_door_target_set!(door_i);
 
                 let mut door_j = to_entity(
                     door_def,
-                    d_j_loc.xy.x,
-                    d_j_loc.xy.y
+                    d_j_loc.xy,
                 );
                 door_j.door_target = d_i_loc;
                 track_door_target_set!(door_j);
@@ -1180,8 +1171,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                             item_loc.segment_id,
                             to_entity(
                                 item_spec.item_def,
-                                item_loc.xy.x,
-                                item_loc.xy.y
+                                item_loc.xy,
                             ),
                         );
                         placed_already.push(item_loc);
@@ -1201,15 +1191,13 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
 
                         let mut mob = to_entity(
                             npc_def,
-                            npc_loc.xy.x,
-                            npc_loc.xy.y
+                            npc_loc.xy,
                         );
 
                         mob.inventory.push(
                             to_entity(
                                 item_spec.item_def,
-                                npc_loc.xy.x,
-                                npc_loc.xy.y
+                                npc_loc.xy,
                             )
                         );
 

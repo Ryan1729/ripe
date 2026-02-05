@@ -41,20 +41,28 @@ pub fn rect(spec: &sprite::Spec<BaseTiles>, unscaled::XY{ x, y }: unscaled::XY) 
 
 pub fn entity_rect(spec: &sprite::Spec<BaseTiles>, entity: &Entity) -> unscaled::Rect {
     let tile = spec.tile();
-    let mut output = rect(spec, min_corner(spec, entity.xy()));
+    let mut output = rect(spec, min_corner(spec, entity.xy));
 
-    if entity.offset_x > 0.0 {
-        output.x += unscaled::W::from(entity.offset_x * offset::X::from(tile.w));
-    } else if entity.offset_x < 0.0 {
-        output.x -= unscaled::W::from(entity.offset_x.abs() * offset::X::from(tile.w));
+    if entity.offset.x > offset::X::ZERO {
+        output.x += unscaled::W::from(
+            offset::Inner::from(entity.offset.x * offset::X::from(offset::Inner::from(tile.w)))
+        );
+    } else if entity.offset.x < offset::X::ZERO {
+        output.x -= unscaled::W::from(
+            offset::Inner::from(entity.offset.x.abs() * offset::X::from(offset::Inner::from(tile.w)))
+        );
     } else {
         // do nothing for zeroes or other weird values.
     }
 
-    if entity.offset_y > 0.0 {
-        output.y += unscaled::H::from(entity.offset_y * offset::Y::from(tile.h));
-    } else if entity.offset_y < 0.0 {
-        output.y -= unscaled::H::from(entity.offset_y.abs() * offset::Y::from(tile.h));
+    if entity.offset.y > offset::Y::ZERO {
+        output.y += unscaled::H::from(
+            offset::Inner::from(entity.offset.y * offset::Y::from(offset::Inner::from(tile.h)))
+        );
+    } else if entity.offset.y < offset::Y::ZERO {
+        output.y -= unscaled::H::from(
+            offset::Inner::from(entity.offset.y.abs() * offset::Y::from(offset::Inner::from(tile.h)))
+        );
     } else {
         // do nothing for zeroes or other weird values.
     }

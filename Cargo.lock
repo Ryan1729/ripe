@@ -1125,6 +1125,7 @@ name = "models"
 version = "0.1.0"
 dependencies = [
  "gfx_sizes",
+ "offset",
  "pak_types",
  "text",
  "vec1",
@@ -1467,6 +1468,10 @@ checksum = "3370abb7372ed744232c12954d920d1a40f1c4686de9e79e800021ef492294bd"
 dependencies = [
  "cc",
 ]
+
+[[package]]
+name = "offset"
+version = "0.1.0"
 
 [[package]]
 name = "ogg"

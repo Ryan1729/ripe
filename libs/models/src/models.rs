@@ -1,4 +1,5 @@
 pub use pak_types::*;
+pub use offset;
 
 use vec1::Vec1;
 
@@ -12,14 +13,6 @@ pub const DOOR_ANIMATION_FRAME_3: TileSprite = DOOR_ANIMATION_FRAME_2 + 8;
 
 /// An amount of screenshake to render with.
 pub type ShakeAmount = u8;
-
-/// Offsets from a tile, for visual purposes only.
-pub mod offset {
-    // TODO? Worth clamping these to the range [-1.0, 1.0], possibly removing subnormals too?
-    //     Would be able to make them Eq in that case
-    pub type X = f32;
-    pub type Y = f32;
-}
 
 /// Higher overrides lower.
 pub type Precedence = u8;
@@ -126,19 +119,11 @@ pub struct Location {
     pub xy: XY,
 }
 
-impl Location {
-    pub fn xy(&self) -> XY {
-        self.xy
-    }
-}
-
 // Fat-struct for entities! Fat-struct for entities!
 #[derive(Clone, Default, Debug)]
 pub struct Entity {
-    pub x: X,
-    pub y: Y,
-    pub offset_x: offset::X,
-    pub offset_y: offset::Y,
+    pub xy: XY,
+    pub offset: offset::XY,
     pub transformable: EntityTransformable,
     pub inventory: Inventory,
     // TODO? Have a goal where it's a journey to discover that the path was inside you all along?
@@ -147,20 +132,14 @@ pub struct Entity {
 
 impl Entity {
     pub fn new(
-        x: X,
-        y: Y,
+        xy: XY,
         transformable: EntityTransformable,
     ) -> Self {
         Self {
-            x,
-            y,
+            xy,
             transformable,
             ..<_>::default()
         }
-    }
-
-    pub fn xy(&self) -> XY {
-        XY { x: self.x, y: self.y }
     }
 
     pub fn def_id(&self) -> DefId {
@@ -421,6 +400,27 @@ pub mod xy {
     pub struct XY {
         pub x: X,
         pub y: Y,
+    }
+
+    impl XY {
+        pub const MIN: XY = XY {
+            x: X::MIN,
+            y: Y::MIN,
+        };
+
+        pub const MAX: XY = XY {
+            x: X::MAX,
+            y: Y::MAX,
+        };
+    }
+
+    impl From<XY> for offset::XY {
+        fn from(XY { x, y }: XY) -> Self {
+            Self {
+                x: offset::X::from(offset::Inner::from(x)),
+                y: offset::Y::from(offset::Inner::from(y)),
+            }
+        }
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]

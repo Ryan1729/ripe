@@ -12,8 +12,6 @@ use models::{
     Speech,
     Speeches,
     TileSprite,
-    X,
-    Y,
     XY,
     ShakeAmount,
     is_passable,
@@ -230,11 +228,9 @@ pub use world::hallway::State as HallwayState;
 
 fn warp_player_to(world: &mut World, target: &DoorTarget) {
     world.segment_id = target.segment_id;
-    world.player.x = target.xy.x;
-    world.player.y = target.xy.y;
+    world.player.xy = target.xy;
 
-    world.player.offset_x = 0.;
-    world.player.offset_y = 0.;
+    world.player.offset = offset::XY::ZERO;
 }
 
 fn can_walk_onto(world: &World, key @ EntityKey { segment_id, xy: XY{ x, y } }: EntityKey) -> bool {
@@ -421,7 +417,7 @@ impl State {
     }
 }
 
-fn xy_in_dir(x: X, y: Y, dir: Dir) -> Option<XY> {
+fn xy_in_dir(XY { x, y }: XY, dir: Dir) -> Option<XY> {
     use Dir::*;
 
     let (new_x, new_y) = match dir {
@@ -447,11 +443,11 @@ pub fn get_speech<'speeches>(speeches: &'speeches Speeches, key: speeches::Key, 
 
 impl State {
     pub fn walk(&mut self, dir: Dir) {
-        let Some(XY { x: new_x, y: new_y }) = xy_in_dir(self.world.player.x, self.world.player.y, dir) else {
+        let Some(new_xy) = xy_in_dir(self.world.player.xy, dir) else {
             return
         };
 
-        let new_key = self.world.local_key(new_x, new_y);
+        let new_key = self.world.local_key(new_xy);
 
         if can_walk_onto(&self.world, new_key) {
             if let Some(mob) = self.world.mobs.get(new_key) {
@@ -462,11 +458,9 @@ impl State {
             }
 
             // TODO? Worth making every update to any entities x/y update the offset?
-            self.world.player.offset_x = offset::X::from(self.world.player.x) - offset::X::from(new_x);
-            self.world.player.offset_y = offset::Y::from(self.world.player.y) - offset::Y::from(new_y);
+            self.world.player.offset = offset::XY::from(self.world.player.xy) - offset::XY::from(new_xy);
 
-            self.world.player.x = new_x;
-            self.world.player.y = new_y;
+            self.world.player.xy = new_xy;
 
             let key = self.world.player_key();
 
@@ -497,18 +491,18 @@ impl State {
     pub fn interact(&mut self, dir: Dir) {
         let entity = &self.world.player;
 
-        let Some(XY { x: target_x, y: target_y }) = xy_in_dir(entity.x, entity.y, dir) else {
-            self.fade_message_specs.push(FadeMessageSpec::new(format!("there's nothing there."), entity.xy()));
+        let Some(target_xy) = xy_in_dir(entity.xy, dir) else {
+            self.fade_message_specs.push(FadeMessageSpec::new(format!("there's nothing there."), entity.xy));
             return
         };
 
-        let key = self.world.local_key(target_x, target_y);
+        let key = self.world.local_key(target_xy);
 
         let entity = &mut self.world.player;
 
         let Some(interactable) = self.world.mobs.get_mut(key) else {
             self.fade_message_specs.push(
-                FadeMessageSpec::new(format!("there's nobody there."), entity.xy())
+                FadeMessageSpec::new(format!("there's nobody there."), entity.xy)
             );
             return
         };
@@ -539,7 +533,7 @@ impl State {
                     "what do you want me to do with {}?",
                     models::entity_article_phrase(interactable),
                 ),
-                entity.xy()
+                entity.xy
             )
         );
     }
@@ -550,7 +544,7 @@ impl State {
                 let player = &self.world.player;
 
                 // Wait until the player animating towrads a door has settled first.
-                if player.offset_x == 0. && player.offset_y == 0. {
+                if player.offset == offset::XY::ZERO {
                     $animation.advance_frame();
                 }
             })
@@ -609,21 +603,7 @@ impl State {
 
         // The offests are timers of a sort.
         for entity in self.all_entities_mut() {
-            /// Distinct from f32::signum in that it returns 0.0 for 0.0, -0.0, NaNs, etc.
-            fn sign(x: f32) -> f32 {
-                if x > 0.0{
-                    1.0
-                } else if x < 0.0 {
-                    -1.0
-                } else {
-                    0.0
-                }
-            }
-
-            const DECAY_RATE: f32 = 1./8.;
-
-            entity.offset_x -= sign(entity.offset_x) * DECAY_RATE;
-            entity.offset_y -= sign(entity.offset_y) * DECAY_RATE;
+            entity.offset.decay();
         }
     }
 

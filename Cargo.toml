@@ -1,5 +1,5 @@
 [workspace]
-members = ["libs/gfx_sizes","libs/ice_puzzle", "libs/pak", "libs/pak_types", "libs/sword","libs/text", "libs/vec1", "libs/world",
+members = ["libs/gfx_sizes","libs/ice_puzzle", "libs/offset", "libs/pak", "libs/pak_types", "libs/sword","libs/text", "libs/vec1", "libs/world",
     "ripe",
     "run-wasm"
 , "tooling/ripe-pack"]

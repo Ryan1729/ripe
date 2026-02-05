@@ -503,7 +503,7 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
             render_world(commands, state);
 
             if !animation.is_done() {
-                draw_tile(commands, state.world.player.xy(), animation.sprite());
+                draw_tile(commands, state.world.player.xy, animation.sprite());
             }
         },
         Mode::Victory(animation) => {
@@ -529,7 +529,7 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
                 );
             } else {
                 render_world(commands, state);
-                draw_tile(commands, state.world.player.xy(), animation.sprite());
+                draw_tile(commands, state.world.player.xy, animation.sprite());
             }
         },
         Mode::Walking => {
@@ -655,8 +655,8 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
                     format!(
                         "S:{} @:{},{}",
                         state.world.segment_id,
-                        state.world.player.x.get(),
-                        state.world.player.y.get(),
+                        state.world.player.xy.x.get(),
+                        state.world.player.xy.y.get(),
                     ).as_bytes(),
                     6,
                 );

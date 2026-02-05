@@ -5,19 +5,6 @@ use xs::Xs;
 
 use std::collections::BTreeMap;
 
-// Sketching this out, this is seeming a lot like the main game parts, which makes sense, 
-// because the intended game has te same grid based movement etc.
-// But I am reluctant to actually make them depend on too many of the same things, since
-// changing how one of them works shouldn't affect the other.
-// On the other hand, it doesn't seem liek a trivial amount of code to do a bunch of stuff
-// that I think both of them will both do for the forseeable future. (again, with a risk of
-// partial divergence down the line)
-// Thus, I am thinking it makes sense to copy some code into here from the main game parts.
-// But, before I do that, I think it's worthwhile to take some time try to simplify and 
-// reduce the amount of unneeded lines of that code in-situ, so there's less that there are
-// duplicate versions of. More generally, it's worth considering completing any TODOs in the
-// to-be-duplicated code before the copy, as well.
-
 pub mod xy {
     type Inner = u8;
 
