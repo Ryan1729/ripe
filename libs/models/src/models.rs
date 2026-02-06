@@ -414,12 +414,9 @@ pub mod xy {
         };
     }
 
-    impl From<XY> for offset::XY {
+    impl From<XY> for offset::Point {
         fn from(XY { x, y }: XY) -> Self {
-            Self {
-                x: offset::X::from(offset::Inner::from(x)),
-                y: offset::Y::from(offset::Inner::from(y)),
-            }
+            (offset::Inner::from(x), offset::Inner::from(y))
         }
     }
 

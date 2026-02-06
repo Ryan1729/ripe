@@ -1,5 +1,5 @@
 use gfx::{Commands};
-use platform_types::{command, sprite, unscaled, Dir, Input, Speaker};
+use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
 use vec1::{Vec1, vec1};
 use xs::Xs;
 
@@ -37,6 +37,12 @@ pub mod xy {
         pub x: X,
         pub y: Y,
     }
+
+    impl From<XY> for offset::Point {
+        fn from(XY { x, y }: XY) -> Self {
+            (offset::Inner::from(x.0), offset::Inner::from(y.0))
+        }
+    }
 }
 use xy::{X, Y, XY};
 
@@ -52,6 +58,7 @@ fn to_s_xy(spec: &sprite::Spec<sprite::SWORD>, tile_sprite: TileSprite) -> sprit
     }.apply(spec)
 }
 
+const STAFF_BASE: TileSprite = 0;
 const PLAYER_BASE: TileSprite = TILES_PER_ROW;
 const STAIRS_TOP_LEFT_EDGE: TileSprite = TILES_PER_ROW * 2;
 const STAIRS_TOP_EDGE: TileSprite = STAIRS_TOP_LEFT_EDGE + 1;
@@ -59,16 +66,55 @@ const STAIRS_TOP_RIGHT_EDGE: TileSprite = STAIRS_TOP_LEFT_EDGE + 2;
 
 type Tile = TileSprite;
 
+
+mod position {
+    use super::XY;
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Position {
+        xy: XY,
+        offset: offset::XY,
+    }
+
+    impl From<XY> for Position {
+        fn from(xy: XY) -> Self {
+            Self {
+                xy,
+                ..<_>::default()
+            }
+        }
+    }
+
+    impl Position {
+        pub fn xy(&self) -> XY {
+            self.xy
+        }
+
+        pub fn set_xy(&mut self, xy: XY) {
+            self.offset = offset::XY::from_old_and_new(
+                offset::Point::from(self.xy),
+                offset::Point::from(self.xy),
+            );
+            self.xy = xy;
+        }
+
+        pub fn offset(&self) -> offset::XY {
+            self.offset
+        }
+    }
+}
+use position::Position;
+
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
-    pub xy: XY,
+    pub position: Position,
     pub tile_sprite: TileSprite,
 }
 
 impl Entity {
     pub fn key(&self) -> Key {
         Key {
-            xy: self.xy,
+            xy: self.position.xy(),
         }
     }
 }
@@ -80,17 +126,94 @@ pub struct Key {
 
 pub type Entities = BTreeMap<Key, Entity>;
 
-fn xy_in_dir(xy: XY, dir: Dir) -> Option<XY> {
-    use Dir::*;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+enum Dir8 {
+    #[default]
+    UpLeft,
+    Up,
+    UpRight,
+    Right,
+    DownRight,
+    Down,
+    DownLeft,
+    Left,
+}
+
+impl Dir8 {
+    fn index(self) -> u8 {
+        use Dir8::*;
+
+        match self {
+            UpLeft => 0,
+            Up => 1,
+            UpRight => 2,
+            Right => 3,
+            DownRight => 4,
+            Down => 5,
+            DownLeft => 6,
+            Left => 7,
+        }
+    }
+
+    fn clockwise(self) -> Dir8 {
+        use Dir8::*;
+
+        match self {
+            UpLeft => Up,
+            Up => UpRight,
+            UpRight => Right,
+            Right => DownRight,
+            DownRight => Down,
+            Down => DownLeft,
+            DownLeft => Left,
+            Left => UpLeft,
+        }
+    }
+
+    fn counter_clockwise(self) -> Dir8 {
+        use Dir8::*;
+
+        match self {
+            UpLeft => Left,
+            Up => UpLeft,
+            UpRight => Up,
+            Right => UpRight,
+            DownRight => Right,
+            Down => DownRight,
+            DownLeft => Down,
+            Left => DownLeft,
+        }
+    }
+}
+
+impl From<Dir> for Dir8 {
+    fn from(dir: Dir) -> Self {
+        use Dir8::*;
+
+        match dir {
+            Dir::Up => Up,
+            Dir::Right => Right,
+            Dir::Down => Down,
+            Dir::Left => Left,
+        }
+    }
+}
+
+fn xy_in_dir(xy: XY, dir: Dir8) -> Option<XY> {
+    use Dir8::*;
 
     let x = xy.x;
     let y = xy.y;
 
     let (new_x, new_y) = match dir {
-        Left => (x.dec(), y),
-        Right => (x.inc(), y),
+        UpLeft => (x.dec(), y.dec()),
         Up => (x, y.dec()),
+        UpRight => (x.inc(), y.dec()),
+        Right => (x.inc(), y),
+        DownRight => (x.inc(), y.inc()),
         Down => (x, y.inc()),
+        DownLeft => (x.dec(), y.inc()),
+        Left => (x.dec(), y),
     };
 
     // This can happen due to saturation
@@ -106,6 +229,7 @@ fn xy_in_dir(xy: XY, dir: Dir) -> Option<XY> {
 pub struct State {
     pub rng: Xs,
     pub player: Entity,
+    pub facing: Dir8,
     pub mobs: Entities,
     pub tiles: Vec1<Tile>,
 }
@@ -138,7 +262,7 @@ impl State {
             mobs.insert(
                 key,
                 Entity {
-                    xy: key.xy,
+                    position: Position::from(key.xy),
                     tile_sprite: STAIRS_TOP_LEFT_EDGE + offset,
                 }
             );
@@ -154,6 +278,7 @@ impl State {
         Self {
             rng,
             player,
+            facing: <_>::default(),
             mobs,
             tiles,
         }
@@ -177,31 +302,50 @@ impl State {
         input: Input,
         speaker: &mut Speaker,
     ) {
+        //
+        // Update
+        //
+
         if let Some(dir) = input.dir_pressed_this_frame() {
-            if let Some(XY { x: new_x, y: new_y }) = xy_in_dir(self.player.xy, dir) {
-                // TODO? Worth making every update to any entities x/y update the offset?
-                //self.player.offset_x = offset::X::from(self.player.xy.x) - offset::X::from(new_x);
-                //self.player.offset_y = offset::Y::from(self.player.xy.y) - offset::Y::from(new_y);
-    //
-                self.player.xy.x = new_x;
-                self.player.xy.y = new_y;
+            if let Some(new_xy) = xy_in_dir(self.player.position.xy(), dir.into()) {
+                self.player.position.set_xy(new_xy);
             }
+        } else if input.pressed_this_frame(Button::A) {
+            self.facing = self.facing.counter_clockwise();
+        } else if input.pressed_this_frame(Button::B) {
+            self.facing = self.facing.clockwise();
         }
+
+        //
+        // Render
+        //
 
         let tile = spec.tile();
         let tile_w = tile.w;
         let tile_h = tile.h;
 
-        for entity in self.all_entities() {
+        let mut draw_tile_sprite = |xy: XY, tile_sprite| {
             commands.sspr(
-                to_s_xy(spec, entity.tile_sprite),
+                to_s_xy(spec, tile_sprite),
                 command::Rect::from_unscaled(unscaled::Rect {
-                    x: unscaled::X(unscaled::Inner::from(entity.xy.x.0) * tile_w.get()),
-                    y: unscaled::Y(unscaled::Inner::from(entity.xy.y.0) * tile_h.get()),
+                    x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
+                    y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get()),
                     w: tile_w,
                     h: tile_h,
                 }),
             );
+        };
+
+        for entity in self.mobs.values() {
+            draw_tile_sprite(entity.position.xy(), entity.tile_sprite);
+        }
+
+        let facing_index = self.facing.index();
+
+        draw_tile_sprite(self.player.position.xy(), self.player.tile_sprite + facing_index);
+
+        if let Some(staff_xy) = xy_in_dir(self.player.position.xy(), self.facing) {
+            draw_tile_sprite(staff_xy, STAFF_BASE + facing_index);
         }
     }
 }

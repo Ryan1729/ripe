@@ -2133,6 +2133,7 @@ name = "sword"
 version = "0.1.0"
 dependencies = [
  "gfx",
+ "offset",
  "platform_types",
  "vec1",
  "xs",

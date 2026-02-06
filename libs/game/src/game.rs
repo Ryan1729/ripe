@@ -458,7 +458,10 @@ impl State {
             }
 
             // TODO? Worth making every update to any entities x/y update the offset?
-            self.world.player.offset = offset::XY::from(self.world.player.xy) - offset::XY::from(new_xy);
+            self.world.player.offset = offset::XY::from_old_and_new(
+                self.world.player.xy.into(),
+                new_xy.into(),
+            );
 
             self.world.player.xy = new_xy;
 
@@ -543,7 +546,7 @@ impl State {
             ($animation: expr) => ({
                 let player = &self.world.player;
 
-                // Wait until the player animating towrads a door has settled first.
+                // Wait until the player animating towards a door has settled first.
                 if player.offset == offset::XY::ZERO {
                     $animation.advance_frame();
                 }

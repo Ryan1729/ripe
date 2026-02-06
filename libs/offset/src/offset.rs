@@ -97,7 +97,13 @@ macro_rules! shared_impl {
                 pub fn decay(&mut self) {
                     const DECAY_RATE: f32 = 1./8.;
 
-                    *self -= self.sign() * DECAY_RATE;
+                    let old_sign = self.sign();
+                    *self -= old_sign * DECAY_RATE;
+                    if old_sign == self.sign() {
+                        self.0 = normalize(self.0);
+                    } else {
+                        self.0 = 0.;
+                    }
                 }
             }
 
@@ -219,9 +225,15 @@ pub fn xy(x: X, y: Y) -> XY {
     XY { x, y }
 }
 
+pub type Point = (Inner, Inner);
+
 impl XY {
     pub const ZERO: Self = Self { x: X::ZERO, y: Y::ZERO };
     pub const ONE: Self = Self { x: X::ONE, y: Y::ONE };
+
+    pub fn from_old_and_new((old_x, old_y): (Inner, Inner), (new_x, new_y): (Inner, Inner)) -> XY {
+        xy(X::from(old_x - new_x), Y::from(old_y - new_y))
+    }
 
     pub fn decay(&mut self) {
         self.x.decay();
@@ -260,4 +272,3 @@ impl core::ops::Sub for XY {
         self
     }
 }
-

@@ -45,23 +45,31 @@ pub fn entity_rect(spec: &sprite::Spec<BaseTiles>, entity: &Entity) -> unscaled:
 
     if entity.offset.x > offset::X::ZERO {
         output.x += unscaled::W::from(
-            offset::Inner::from(entity.offset.x * offset::X::from(offset::Inner::from(tile.w)))
+            offset::Inner::from(entity.offset.x) * offset::Inner::from(tile.w)
         );
     } else if entity.offset.x < offset::X::ZERO {
         output.x -= unscaled::W::from(
-            offset::Inner::from(entity.offset.x.abs() * offset::X::from(offset::Inner::from(tile.w)))
+            offset::Inner::from(entity.offset.x).abs() * offset::Inner::from(tile.w)
         );
     } else {
         // do nothing for zeroes or other weird values.
     }
 
     if entity.offset.y > offset::Y::ZERO {
-        output.y += unscaled::H::from(
-            offset::Inner::from(entity.offset.y * offset::Y::from(offset::Inner::from(tile.h)))
+        dbg!(
+            "pre",
+            output.y,
+            entity.offset.y,
+            offset::Inner::from(entity.offset.y * offset::Inner::from(tile.h)),
+            unscaled::H::from(offset::Inner::from(entity.offset.y * offset::Y::from(offset::Inner::from(tile.h)))),
         );
+        output.y += unscaled::H::from(
+            offset::Inner::from(entity.offset.y) * offset::Inner::from(tile.h)
+        );
+        dbg!("post", output.y);
     } else if entity.offset.y < offset::Y::ZERO {
         output.y -= unscaled::H::from(
-            offset::Inner::from(entity.offset.y.abs() * offset::Y::from(offset::Inner::from(tile.h)))
+            offset::Inner::from(entity.offset.y).abs() * offset::Inner::from(tile.h)
         );
     } else {
         // do nothing for zeroes or other weird values.

@@ -11,6 +11,9 @@ path = "src/sword.rs"
 [dependencies.gfx]
 path = "../gfx"
 
+[dependencies.offset]
+path = "../offset"
+
 [dependencies.platform_types]
 path = "../platform_types"
 
