@@ -579,8 +579,6 @@ impl State {
             }
             Mode::Hallway{ source, target } => {
                 let do_warp = if let Some(hallway) = self.hallway_states.get_mut(*source, *target) {
-                    hallway.tick();
-        
                     hallway.is_complete()
                 } else {
                     true

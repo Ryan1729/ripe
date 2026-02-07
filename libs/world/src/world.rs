@@ -120,14 +120,6 @@ pub mod hallway {
     }
 
     impl State {
-        pub fn tick(&mut self) {
-            use State::*;
-            match self {
-                IcePuzzle(_inner) => {},
-                SWORD(_inner) => {},
-            }
-        }
-
         pub fn is_complete(&self) -> bool {
             use State::*;
             match self {

@@ -11,6 +11,9 @@ path = "src/pak_types.rs"
 [dependencies.gfx_sizes]
 path = "../gfx_sizes"
 
+[dependencies.offset]
+path = "../offset"
+
 [dependencies.text]
 path = "../text"
 

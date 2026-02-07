@@ -1,3 +1,5 @@
+///! S.W.O.R.D.: Staff Whacking Ordeal Required, Duh
+
 use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
 use vec1::{Vec1, vec1};
@@ -70,7 +72,7 @@ type Tile = TileSprite;
 mod position {
     use super::XY;
 
-    #[derive(Clone, Debug, Default)]
+    #[derive(Clone, Copy, Debug, Default)]
     pub struct Position {
         xy: XY,
         offset: offset::XY,
@@ -93,13 +95,17 @@ mod position {
         pub fn set_xy(&mut self, xy: XY) {
             self.offset = offset::XY::from_old_and_new(
                 offset::Point::from(self.xy),
-                offset::Point::from(self.xy),
+                offset::Point::from(xy),
             );
             self.xy = xy;
         }
 
         pub fn offset(&self) -> offset::XY {
             self.offset
+        }
+
+        pub fn decay(&mut self) {
+            self.offset.decay();
         }
     }
 }
@@ -184,6 +190,24 @@ impl Dir8 {
             Left => DownLeft,
         }
     }
+
+    fn moves_in_x(self) -> bool {
+        use Dir8::*;
+
+        match self {
+            UpLeft | UpRight | Right | DownRight | DownLeft | Left => true,
+            Up | Down => false,
+        }
+    }
+
+    fn moves_in_y(self) -> bool {
+        use Dir8::*;
+
+        match self {
+            UpLeft | Up | UpRight | DownRight | Down | DownLeft => true,
+            Right | Left => false,
+        }
+    }
 }
 
 impl From<Dir> for Dir8 {
@@ -199,7 +223,15 @@ impl From<Dir> for Dir8 {
     }
 }
 
-fn xy_in_dir(xy: XY, dir: Dir8) -> Option<XY> {
+#[derive(Debug)]
+enum EdgeHitKind {
+    Neither,
+    X,
+    Y,
+    Both
+}
+
+fn xy_in_dir(xy: XY, dir: Dir8) -> (XY, EdgeHitKind) {
     use Dir8::*;
 
     let x = xy.x;
@@ -216,13 +248,20 @@ fn xy_in_dir(xy: XY, dir: Dir8) -> Option<XY> {
         Left => (x.dec(), y),
     };
 
-    // This can happen due to saturation
-    if new_x == x
-    && new_y == y {
-        return None
-    }
-
-    Some(XY { x: new_x, y: new_y })
+    (
+        XY { x: new_x, y: new_y },
+        // This can happen due to saturation
+        if new_x == x
+        && new_y == y {
+            EdgeHitKind::Both
+        } else if new_x == x && dir.moves_in_x() {
+            EdgeHitKind::X
+        } else if new_y == y && dir.moves_in_y() {
+            EdgeHitKind::Y
+        } else {
+            EdgeHitKind::Neither
+        }
+    )
 }
 
 #[derive(Clone, Debug)]
@@ -295,6 +334,20 @@ impl State {
         std::iter::once(&self.player).chain(self.mobs.values())
     }
 
+    pub fn all_entities_mut(&mut self) -> impl Iterator<Item=&mut Entity> {
+        std::iter::once(&mut self.player).chain(self.mobs.values_mut())
+    }
+
+    fn tick(&mut self) {
+        //
+        // Advance timers
+        // 
+
+        for entity in self.all_entities_mut() {
+            entity.position.decay();
+        }
+    }
+
     pub fn update_and_render(
         &mut self,
         commands: &mut Commands,
@@ -306,10 +359,11 @@ impl State {
         // Update
         //
 
+        self.tick();
+
         if let Some(dir) = input.dir_pressed_this_frame() {
-            if let Some(new_xy) = xy_in_dir(self.player.position.xy(), dir.into()) {
-                self.player.position.set_xy(new_xy);
-            }
+            let (new_xy, _) = xy_in_dir(self.player.position.xy(), dir.into());
+            self.player.position.set_xy(new_xy);
         } else if input.pressed_this_frame(Button::A) {
             self.facing = self.facing.counter_clockwise();
         } else if input.pressed_this_frame(Button::B) {
@@ -324,28 +378,32 @@ impl State {
         let tile_w = tile.w;
         let tile_h = tile.h;
 
-        let mut draw_tile_sprite = |xy: XY, tile_sprite| {
+        let mut draw_at_position_pieces = |xy: XY, offset_xy, tile_sprite| {
+            let base_xy = unscaled::XY {                
+                x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
+                y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
+            };
+
             commands.sspr(
                 to_s_xy(spec, tile_sprite),
-                command::Rect::from_unscaled(unscaled::Rect {
-                    x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
-                    y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get()),
-                    w: tile_w,
-                    h: tile_h,
-                }),
+                command::Rect::from_unscaled(spec.offset_rect(offset_xy, base_xy)),
             );
         };
 
+        let mut draw_at_position = |position: Position, tile_sprite| {
+            draw_at_position_pieces(position.xy(), position.offset(), tile_sprite)
+        };
+
         for entity in self.mobs.values() {
-            draw_tile_sprite(entity.position.xy(), entity.tile_sprite);
+            draw_at_position(entity.position, entity.tile_sprite);
         }
 
         let facing_index = self.facing.index();
 
-        draw_tile_sprite(self.player.position.xy(), self.player.tile_sprite + facing_index);
+        draw_at_position(self.player.position, self.player.tile_sprite + facing_index);
 
-        if let Some(staff_xy) = xy_in_dir(self.player.position.xy(), self.facing) {
-            draw_tile_sprite(staff_xy, STAFF_BASE + facing_index);
+        if let (staff_xy, EdgeHitKind::Neither) = xy_in_dir(self.player.position.xy(), self.facing) {
+            draw_at_position_pieces(staff_xy, self.player.position.offset(), STAFF_BASE + facing_index);
         }
     }
 }

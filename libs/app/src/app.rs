@@ -428,7 +428,7 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
     let draw_tile_sprite = |commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite| {
         commands.sspr(
             to_tile::sprite_xy(&specs.base_tiles, sprite),
-            command::Rect::from_unscaled(to_tile::rect(&specs.base_tiles, xy)),
+            command::Rect::from_unscaled(specs.base_tiles.rect(xy)),
         );
     };
 
@@ -437,12 +437,7 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
     };
 
     let draw_tile_sprite_centered_at = |commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite| {
-        commands.sspr(
-            to_tile::sprite_xy(&specs.base_tiles, sprite),
-            command::Rect::from_unscaled(
-                to_tile::rect(&specs.base_tiles, to_tile::center_to_min_corner(&specs.base_tiles, xy))
-            ),
-        );
+        draw_tile_sprite(commands, specs.base_tiles.center_to_min_corner(xy), sprite)
     };
 
     let draw_entity = |commands: &mut Commands, entity: &Entity| {

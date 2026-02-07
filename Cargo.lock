@@ -1510,6 +1510,7 @@ name = "pak_types"
 version = "0.1.0"
 dependencies = [
  "gfx_sizes",
+ "offset",
  "text",
  "vec1",
 ]

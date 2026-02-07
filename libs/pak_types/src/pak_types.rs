@@ -632,7 +632,7 @@ pub mod unscaled {
 }
 
 pub mod sprite {
-    pub use super::unscaled::{W, H, WH};
+    pub use super::unscaled::{self, W, H, WH};
     use std::marker::PhantomData;
 
     /// Marker
@@ -823,6 +823,57 @@ pub mod sprite {
 
         pub fn tile_center_offset(&self) -> WH {
             self.tile.halve()
+        }
+
+        /// Return a tile sized rect
+        pub fn rect(&self, unscaled::XY{ x, y }: unscaled::XY) -> unscaled::Rect {
+            unscaled::Rect {
+                x,
+                y,
+                w: self.tile.w,
+                h: self.tile.h,
+            }
+        }
+
+        /// Take an unscaled::XY representing the center of a tile, and return the min corner of the tile.
+        pub fn center_to_min_corner(&self, xy: unscaled::XY) -> unscaled::XY {
+            xy - self.tile_center_offset()
+        }
+
+        /// Take an unscaled::XY and return a tile sized rect, with the offset applied to it.
+        pub fn offset_rect(
+            &self,
+            offset: offset::XY,
+            base_corner: unscaled::XY
+        ) -> unscaled::Rect {
+            let tile = self.tile;
+            let mut output = self.rect(base_corner);
+        
+            if offset.x > offset::X::ZERO {
+                output.x += unscaled::W::from(
+                    offset::Inner::from(offset.x) * offset::Inner::from(tile.w)
+                );
+            } else if offset.x < offset::X::ZERO {
+                output.x -= unscaled::W::from(
+                    offset::Inner::from(offset.x).abs() * offset::Inner::from(tile.w)
+                );
+            } else {
+                // do nothing for zeroes or other weird values.
+            }
+        
+            if offset.y > offset::Y::ZERO {
+                output.y += unscaled::H::from(
+                    offset::Inner::from(offset.y) * offset::Inner::from(tile.h)
+                );
+            } else if offset.y < offset::Y::ZERO {
+                output.y -= unscaled::H::from(
+                    offset::Inner::from(offset.y).abs() * offset::Inner::from(tile.h)
+                );
+            } else {
+                // do nothing for zeroes or other weird values.
+            }
+        
+            output
         }
 
         /// Not advised for general use, but only when initally constructing the specs
