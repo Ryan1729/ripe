@@ -7,6 +7,58 @@ use xs::Xs;
 
 use std::collections::BTreeMap;
 
+/*
+    Notes on wall/floor tiles and their various edge types:
+
+    There are tiles that cannot be walked on, called wall tiles,
+    and there are ones that can be walked on, called floor tiles.
+
+    We want to have interesting looking edges between wall tiles
+    and floor tiles, including visible corners, while ultimately
+    rendering things in tiles that abut each other exactly.
+
+    Another property we want is to not have any disconnected edges
+    of the patterns on the tiles. Said another way, for any two
+    possible tiles at positions (X, Y) and (X + 2, Y), a tile must
+    exist to place at position (X + 1, Y) that lines up with the
+    relevant edges of the first two tiles. This applies not just
+    for (X, Y) and (X + 2, Y), but for any pair of tile that are
+    two orthogonal steps away from each other, and all the tiles
+    one can cross using those two steps. For example, there must
+    be tiles placeable to connect (X, Y) and (X - 1, Y + 1), at
+    both (X - 1, Y) and (X, Y + 1).
+
+    We have thus far declined to implement rotation in the
+    renderer, so we need distinct tiles for each possible rotation.
+    (Possibly this aspect will cause us to decide to actually
+    implement rotation.)
+
+    There are two types of tile, as mentioend before: wall and floor.
+    The edges of a tile are determined by the type of its eight
+    neighbors, and the type of the tile itself. This is nine bits of
+    possible variance and thus 512 distinct tiles!
+
+    It seems plausible that some kind of pattern would emerge that
+    makes a smaller number of tiles work, even without rotation, but
+    it's not clear at this time.
+
+    A data structure for an index into these tiles seems clear though:
+    ```
+    type NeighborMask = u8;
+
+    enum TileSpriteIndex {
+        Wall(NeighborMask),
+        Floor(NeighborMask),
+    }
+    ```
+
+    So one path to investigate this, without actually making 512
+    separate tiles, would be to make the space for them, then write the
+    indexing code, and then attempt to render the 512 apparently separate
+    tiles in a test, filling them in as needed, and see if any turn out
+    to be the same.
+*/
+
 pub mod xy {
     type Inner = u8;
 
@@ -23,7 +75,7 @@ pub mod xy {
                     pub fn dec(&self) -> Self {
                         Self(self.0.saturating_sub(1))
                     }
-    
+
                     pub fn inc(&self) -> Self {
                         Self(self.0.saturating_add(1))
                     }
@@ -307,7 +359,7 @@ impl State {
             );
             offset += 1;
         }
-        
+
 
         let mut tiles = vec1![
             // Placeholder for once we have the various corner and edge tiles set up
@@ -341,7 +393,7 @@ impl State {
     fn tick(&mut self) {
         //
         // Advance timers
-        // 
+        //
 
         for entity in self.all_entities_mut() {
             entity.position.decay();
@@ -379,7 +431,7 @@ impl State {
         let tile_h = tile.h;
 
         let mut draw_at_position_pieces = |xy: XY, offset_xy, tile_sprite| {
-            let base_xy = unscaled::XY {                
+            let base_xy = unscaled::XY {
                 x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
                 y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
             };
