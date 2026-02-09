@@ -1,0 +1,30 @@
+[package]
+name = "tile-viewer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+softbuffer = "0.1.1"
+spin_sleep = "1.1.1"
+winit = "0.26.1"
+
+[dependencies.gfx]
+path = "../../libs/gfx"
+
+[dependencies.gfx_sizes]
+path = "../../libs/gfx_sizes"
+
+[dependencies.models]
+path = "../../libs/models"
+
+[dependencies.pak]
+path = "../../libs/pak"
+
+[dependencies.platform_types]
+path = "../../libs/platform_types"
+
+[dependencies.render]
+path = "../../libs/render"
+
+[dependencies.xs]
+path = "../../libs/xs"

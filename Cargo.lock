@@ -2245,6 +2245,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tile-viewer"
+version = "0.1.0"
+dependencies = [
+ "gfx",
+ "gfx_sizes",
+ "models",
+ "pak",
+ "platform_types",
+ "render",
+ "softbuffer",
+ "spin_sleep",
+ "winit",
+ "xs",
+]
+
+[[package]]
 name = "tinyvec"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

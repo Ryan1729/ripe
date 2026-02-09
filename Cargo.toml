@@ -2,7 +2,7 @@
 members = ["libs/gfx_sizes","libs/ice_puzzle", "libs/offset", "libs/pak", "libs/pak_types", "libs/sword","libs/text", "libs/vec1", "libs/world",
     "ripe",
     "run-wasm"
-, "tooling/ripe-pack"]
+, "tooling/ripe-pack", "tooling/tile-viewer"]
 
 
 # We aim for fast to compile, with the dev profile. At this time, `opt-level = 2`
