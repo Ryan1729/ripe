@@ -2256,6 +2256,7 @@ dependencies = [
  "render",
  "softbuffer",
  "spin_sleep",
+ "sword",
  "winit",
  "xs",
 ]

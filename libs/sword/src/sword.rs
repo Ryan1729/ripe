@@ -43,16 +43,58 @@ use std::collections::BTreeMap;
     it's not clear at this time.
 
     A data structure for an index into these tiles seems clear though:
-    ```
-    type NeighborMask = u8;
+*/
+pub type NeighborMask = u8;
 
-    enum TileSpriteIndex {
-        Wall(NeighborMask),
-        Floor(NeighborMask),
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TileIndex {
+    Wall(NeighborMask),
+    Floor(NeighborMask),
+}
+
+impl Default for TileIndex {
+    fn default() -> Self {
+        Self::Wall(<_>::default())
     }
-    ```
+}
 
-    So one path to investigate this, without actually making 512
+impl TileIndex {
+    pub fn neighbor_mask(self) -> NeighborMask {
+        match self {
+            TileIndex::Wall(mask)
+            | TileIndex::Floor(mask) => mask,
+        }
+    }
+
+    pub fn neighbor_mask_mut(&mut self) -> &mut NeighborMask {
+        match self {
+            TileIndex::Wall(mask)
+            | TileIndex::Floor(mask) => mask,
+        }
+    }
+}
+
+pub type NeighborFlag = std::num::NonZeroU8;
+
+// SAFETY: The value is not 0.
+pub const UPPER_LEFT: NeighborFlag = unsafe { NeighborFlag::new_unchecked(1 << 0) };
+// SAFETY: The value is not 0.
+pub const UPPER_MIDDLE: NeighborFlag = unsafe { NeighborFlag::new_unchecked(1 << 1) };
+// SAFETY: The value is not 0.
+pub const UPPER_RIGHT: NeighborFlag = unsafe { NeighborFlag::new_unchecked(1 << 2) };
+// SAFETY: The value is not 0.
+pub const LEFT_MIDDLE: NeighborFlag = unsafe { NeighborFlag::new_unchecked(1 << 3) };
+// SAFETY: The value is not 0.
+pub const RIGHT_MIDDLE: NeighborFlag = unsafe { NeighborFlag::new_unchecked(1 << 4) };
+// SAFETY: The value is not 0.
+pub const LOWER_LEFT: NeighborFlag = unsafe { NeighborFlag::new_unchecked(1 << 5) };
+// SAFETY: The value is not 0.
+pub const LOWER_MIDDLE: NeighborFlag = unsafe { NeighborFlag::new_unchecked(1 << 6) };
+// SAFETY: The value is not 0.
+pub const LOWER_RIGHT: NeighborFlag = unsafe { NeighborFlag::new_unchecked(1 << 7) };
+
+/*
+    ... So one path to investigate this, without actually making 512
     separate tiles, would be to make the space for them, then write the
     indexing code, and then attempt to render the 512 apparently separate
     tiles in a test, filling them in as needed, and see if any turn out

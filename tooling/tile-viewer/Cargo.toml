@@ -26,5 +26,8 @@ path = "../../libs/platform_types"
 [dependencies.render]
 path = "../../libs/render"
 
+[dependencies.sword]
+path = "../../libs/sword"
+
 [dependencies.xs]
 path = "../../libs/xs"
