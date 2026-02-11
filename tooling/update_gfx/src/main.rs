@@ -10,7 +10,9 @@ use std::io::{BufReader, BufWriter};
 mod filenames {
     pub const IMAGE_FILENAME: &'static str = "../../assets/gfx.png";
     pub const INLINE_OUTPUT_FILENAME: &'static str = "../../libs/assets/src/gfx.in";
-    pub const TRANSFORMED_OUTPUT_FILENAME: &'static str = "../../examples/gfx2h.png";
+    pub const IDENTITY_FILENAME: &'static str = "../../examples/default/default.png";
+    pub const DOUBLE_HEIGHT_OUTPUT_FILENAME: &'static str = "../../examples/gfx2h/gfx2h.png";
+    pub const SHIFTED_OUTPUT_FILENAME: &'static str = "../../examples/shifted/shifted.png";
 }
 
 // for testing
@@ -18,13 +20,15 @@ mod filenames {
 mod filenames {
     pub const IMAGE_FILENAME: &'static str = "assets/pallete.png";
     pub const INLINE_OUTPUT_FILENAME: &'static str = "out.txt";
-    pub const TRANSFORMED_OUTPUT_FILENAME: &'static str = "gfx2h.png";
+    pub const IDENTITY_FILENAME: &'static str = "default.png";
+    pub const DOUBLE_HEIGHT_OUTPUT_FILENAME: &'static str = "gfx2h.png";
+    pub const SHIFTED_OUTPUT_FILENAME: &'static str = "shifted.png";
 }
 
 use filenames::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let frame = pak::read_png_frame(BufReader::new(File::open(IMAGE_FILENAME)?));
+    let frame = pak::read_png_frame(BufReader::new(File::open(IMAGE_FILENAME)?))?;
     
     println!(
         "{} : {:?}",
@@ -45,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
         let mut file = File::create(inline_output_filename)?;
 
-        let spritesheet = pak::spritesheet_from_png_frame(&png_frame);
+        let spritesheet = pak::spritesheet_from_png_frame(&frame);
     
         assert_eq!(spritesheet.width, gfx_sizes::GFX_WIDTH, "Input PNG was not the right width");
         assert_eq!(spritesheet.pixels.len(), gfx_sizes::GFX_LENGTH, "Input PNG was not the right length");
@@ -71,10 +75,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("overwrote {}", inline_output_filename);
     }
     //
+    // Copy input as-is to new location
+    //
+    {
+        let output_filename = IDENTITY_FILENAME;
+    
+        let file = File::create(output_filename)?;
+
+        let ref mut writer = BufWriter::new(file);
+
+        let encoder = png::Encoder::with_info(writer, frame.info.clone())?;
+
+        let mut writer = encoder.write_header()?;
+
+        writer.write_image_data(&frame.buffer)?;
+    
+        println!("overwrote {}", output_filename);
+    }
+    //
     // Copy input at double height to new location
     //
     {
-        let transformed_output_filename = TRANSFORMED_OUTPUT_FILENAME;
+        let transformed_output_filename = DOUBLE_HEIGHT_OUTPUT_FILENAME;
     
         let file = File::create(transformed_output_filename)?;
 
@@ -89,8 +111,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let new_height = to_usize(new_info.height);
         let new_width = to_usize(new_info.width);
 
-        let old_height = to_usize(info.height);
-        let old_width = to_usize(info.width);
+        let old_height = to_usize(frame.info.height);
+        let old_width = to_usize(frame.info.width);
 
         assert_eq!(new_width, old_width);
 
@@ -112,6 +134,63 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Add extra row
+            for x_index in 0..old_width {
+                for i in 0..bpp {
+                    data.push(frame.buffer[y_index * old_width * bpp + x_index * bpp + i])
+                }
+            }
+        }
+        
+        assert_eq!(data.len(), expected_length);
+
+        writer.write_image_data(&data)?;
+    
+        println!("overwrote {}", transformed_output_filename);
+    }
+    //
+    // Copy input shifted right to a new location
+    //
+    {
+        let transformed_output_filename = SHIFTED_OUTPUT_FILENAME;
+    
+        let file = File::create(transformed_output_filename)?;
+
+        let ref mut writer = BufWriter::new(file);
+        
+        let mut new_info = frame.info.clone();
+
+        const SHIFT: u32 = 256;
+
+        new_info.width += SHIFT;
+
+        fn to_usize(n: u32) -> usize { usize::try_from(n).expect("Not expected to be run on less than 32 bit platforms") }
+
+        let new_height = to_usize(new_info.height);
+        let new_width = to_usize(new_info.width);
+
+        let old_height = to_usize(frame.info.height);
+        let old_width = to_usize(frame.info.width);
+
+        assert_eq!(new_height, old_height);
+
+        let bpp = new_info.bytes_per_pixel();
+
+        let encoder = png::Encoder::with_info(writer, new_info)?;
+
+        let mut writer = encoder.write_header()?;
+
+        let expected_length = new_height * new_width * bpp;
+
+        let mut data = Vec::with_capacity(expected_length);
+
+        for y_index in 0..old_height {
+            // Add extra columns
+            for _ in 0..SHIFT {
+                for _ in 0..bpp {
+                    data.push(0)
+                }
+            }
+
             for x_index in 0..old_width {
                 for i in 0..bpp {
                     data.push(frame.buffer[y_index * old_width * bpp + x_index * bpp + i])

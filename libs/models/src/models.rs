@@ -3,14 +3,6 @@ pub use offset;
 
 use vec1::Vec1;
 
-pub const WALL_SPRITE: TileSprite = 32;
-pub const FLOOR_SPRITE: TileSprite = 33;
-pub const PLAYER_SPRITE: TileSprite = 34;
-pub const DOOR_ANIMATION_FRAME_1: TileSprite = 42;
-pub const DOOR_ANIMATION_FRAME_2: TileSprite = DOOR_ANIMATION_FRAME_1 + 8;
-pub const DOOR_ANIMATION_FRAME_3: TileSprite = DOOR_ANIMATION_FRAME_2 + 8;
-
-
 /// An amount of screenshake to render with.
 pub type ShakeAmount = u8;
 
@@ -179,16 +171,6 @@ impl Entity {
 
     pub fn is_door(&self) -> bool {
         self.transformable.flags & DOOR == DOOR
-    }
-}
-
-/// Returns a phrase like "a thing" or "an entity".
-pub fn entity_article_phrase(entity: &Entity) -> &str {
-    match entity.transformable.tile_sprite {
-        WALL_SPRITE => "a wall",
-        FLOOR_SPRITE => "a floor",
-        PLAYER_SPRITE => "a me(?!)",
-        _ => "a whatever-this-is",
     }
 }
 
@@ -483,10 +465,6 @@ pub use xy::{X, Y, W, H, Rect, XY};
 #[derive(Clone, Debug, Default)]
 pub struct Tile {
     pub sprite: TileSprite,
-}
-
-pub fn is_passable(tile: &Tile) -> bool {
-    tile.sprite == FLOOR_SPRITE
 }
 
 #[derive(Clone, Debug, Default)]

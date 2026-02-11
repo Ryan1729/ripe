@@ -142,21 +142,20 @@ pub mod xy {
 }
 use xy::{X, Y, XY};
 
-type TileSprite = u8;
-
-const TILES_PER_ROW: TileSprite = 8;
+type TileSprite = u16;
 
 fn to_s_xy(spec: &sprite::Spec<sprite::SWORD>, tile_sprite: TileSprite) -> sprite::XY<sprite::Renderable> {
     let tile = spec.tile();
+    let tiles_per_row = spec.tiles_per_row();
     sprite::XY::<sprite::SWORD> {
-        x: sprite::x(0) + sprite::W(tile_sprite as sprite::Inner % sprite::Inner::from(TILES_PER_ROW)) * tile.w.get(),
-        y: sprite::y(0) + sprite::H(tile_sprite as sprite::Inner / sprite::Inner::from(TILES_PER_ROW)) * tile.h.get(),
+        x: sprite::x(0) + sprite::W(tile_sprite as sprite::Inner % sprite::Inner::from(tiles_per_row)) * tile.w.get(),
+        y: sprite::y(0) + sprite::H(tile_sprite as sprite::Inner / sprite::Inner::from(tiles_per_row)) * tile.h.get(),
     }.apply(spec)
 }
 
-const STAFF_BASE: TileSprite = 0;
-const PLAYER_BASE: TileSprite = TILES_PER_ROW;
-const STAIRS_TOP_LEFT_EDGE: TileSprite = TILES_PER_ROW * 2;
+const PLAYER_BASE: TileSprite = 0;
+const STAFF_BASE: TileSprite = 1;
+const STAIRS_TOP_LEFT_EDGE: TileSprite = 2;
 const STAIRS_TOP_EDGE: TileSprite = STAIRS_TOP_LEFT_EDGE + 1;
 const STAIRS_TOP_RIGHT_EDGE: TileSprite = STAIRS_TOP_LEFT_EDGE + 2;
 
@@ -405,7 +404,7 @@ impl State {
 
         let mut tiles = vec1![
             // Placeholder for once we have the various corner and edge tiles set up
-            TILES_PER_ROW * 3
+            5
         ];
 
         Self {
@@ -468,6 +467,8 @@ impl State {
         // Render
         //
 
+        let tiles_per_row = spec.tiles_per_row();
+
         let tile = spec.tile();
         let tile_w = tile.w;
         let tile_h = tile.h;
@@ -494,10 +495,10 @@ impl State {
 
         let facing_index = self.facing.index();
 
-        draw_at_position(self.player.position, self.player.tile_sprite + facing_index);
+        draw_at_position(self.player.position, dbg!(self.player.tile_sprite + tiles_per_row as TileSprite * facing_index as TileSprite));
 
         if let (staff_xy, EdgeHitKind::Neither) = xy_in_dir(self.player.position.xy(), self.facing) {
-            draw_at_position_pieces(staff_xy, self.player.position.offset(), STAFF_BASE + facing_index);
+            draw_at_position_pieces(staff_xy, self.player.position.offset(), STAFF_BASE + tiles_per_row as TileSprite * facing_index as TileSprite);
         }
     }
 }

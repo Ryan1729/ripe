@@ -809,10 +809,13 @@ pub mod sprite {
         }
     }
 
+    pub type TileCount = u8;
+
     #[derive(Clone, Debug)]
     pub struct Spec<Marker> {
         offset: WH,
         tile: WH,
+        tiles_per_row: TileCount,
         marker: PhantomData<Marker>,
     }
 
@@ -876,6 +879,10 @@ pub mod sprite {
             output
         }
 
+        pub fn tiles_per_row(&self) -> TileCount {
+            self.tiles_per_row
+        }
+
         /// Not advised for general use, but only when initally constructing the specs
         /// while retaining the default values from Specs.
         // TODO? Is there a clean way to allow that to work, and avoid exposing this?
@@ -886,6 +893,7 @@ pub mod sprite {
             SpecPieces {
                 offset: self.offset,
                 tile: self.tile,
+                tiles_per_row: self.tiles_per_row,
             }
         }
     }
@@ -893,12 +901,14 @@ pub mod sprite {
     pub struct SpecPieces {
         pub offset: WH,
         pub tile: WH,
+        pub tiles_per_row: TileCount,
     }
 
-    pub fn spec<Marker>(SpecPieces { offset, tile }: SpecPieces) -> Spec<Marker> {
+    pub fn spec<Marker>(SpecPieces { offset, tile, tiles_per_row }: SpecPieces) -> Spec<Marker> {
         Spec::<Marker> {
             offset,
             tile,
+            tiles_per_row,
             marker: PhantomData,
         }
     }
@@ -937,24 +947,30 @@ pub mod sprite {
         fn default() -> Self {
             Self {
                 base_font: spec::<BaseFont>(SpecPieces{
-                    offset: WH{ w: W(0), h: H(128) },
-                    tile: WH{ w: W(8), h: H(8) }
+                    offset: WH{ w: W(0), h: H(0) },
+                    tile: WH{ w: W(8), h: H(8) },
+                    tiles_per_row: 16,
                 }),
                 base_tiles: spec::<BaseTiles>(SpecPieces{
-                    offset: WH{ w: W(0), h: H(0) },
-                    tile: WH{ w: W(16), h: H(16) }
+                    offset: WH{ w: W(32), h: H(128) },
+                    tile: WH{ w: W(16), h: H(16) },
+                    tiles_per_row: 6,
                 }),
                 base_ui: spec::<BaseUI>(SpecPieces{
-                    offset: WH{ w: W(0), h: H(0) },
-                    tile: WH{ w: W(8), h: H(8) }
+                    offset: WH{ w: W(0), h: H(128) },
+                    tile: WH{ w: W(8), h: H(8) },
+                    tiles_per_row: 3,
                 }),
                 ice_puzzles: spec::<IcePuzzles>(SpecPieces{
                     offset: WH{ w: W(128), h: H(0) },
-                    tile: WH{ w: W(20), h: H(20) }
+                    tile: WH{ w: W(20), h: H(20) },
+                    tiles_per_row: 2,
                 }),
                 sword: spec::<SWORD>(SpecPieces{
-                    offset: WH{ w: W(128), h: H(48) },
-                    tile: WH{ w: W(16), h: H(16) }
+                    offset: WH{ w: W(176), h: H(0) },
+                    tile: WH{ w: W(16), h: H(16) },
+                    // TODO? Should the wall/floor tiles get their own spec?
+                    tiles_per_row: 5 + 32,
                 }),
             }
         }

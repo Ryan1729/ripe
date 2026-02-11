@@ -8,7 +8,7 @@ pub fn main() {
         base_font: #{
             offset: #{
                 w: 0,
-                h: 128 * y_scale,
+                h: 0,
             },
             tile: #{
                 w: 8,
@@ -17,8 +17,8 @@ pub fn main() {
         },
         base_tiles: #{
             offset: #{
-                w: 0,
-                h: 0,
+                w: 32,
+                h: 128 * y_scale,
             },
             tile: #{
                 w: 16,
@@ -28,7 +28,7 @@ pub fn main() {
         base_ui: #{
             offset: #{
                 w: 0,
-                h: 0,
+                h: 128 * y_scale,
             },
             tile: #{
                 w: 8,
@@ -47,8 +47,8 @@ pub fn main() {
         },
         sword: #{
             offset: #{
-                w: 128,
-                h: 48 * y_scale,
+                w: 176,
+                h: 0,
             },
             tile: #{
                 w: 16,

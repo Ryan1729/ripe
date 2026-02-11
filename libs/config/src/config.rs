@@ -6,7 +6,6 @@ use rune_based as used_mod;
 pub use used_mod::{parse, parse_manifest, Error};
 
 mod rune_based {
-    use platform_types::TILES_PER_ROW;
     use models::{
         config::{
             Config,
@@ -817,24 +816,28 @@ mod rune_based {
 
         add_module!(entity_flags = entity_flags_string);
 
+        let default_specs = Specs::default();
+
+        let tiles_per_row = default_specs.base_tiles.tiles_per_row();
+
         let default_spritesheet_string = format!(r#"
-            const TILES_PER_ROW = {TILES_PER_ROW};
+            const TILES_PER_ROW = {tiles_per_row};
 
             pub fn tile_sprite_xy(x, y) {{
                 y * TILES_PER_ROW + x
             }}
 
             pub fn mob(n) {{
-                tile_sprite_xy(3, n)
+                tile_sprite_xy(0, n + 1)
             }}
 
             pub fn item(n) {{
-                tile_sprite_xy(4, n)
+                tile_sprite_xy(1, n + 1)
             }}
             // TODO: Define walls, floor, door animation, and player here too
 
-            pub const OPEN_DOOR = 5 * TILES_PER_ROW + 0;//tile_sprite_xy(0, 5);
-            pub const OPEN_END_DOOR = 5 * TILES_PER_ROW + 1;//tile_sprite_xy(1, 5);
+            pub const OPEN_DOOR = 4 * TILES_PER_ROW + 2;//tile_sprite_xy(2, 4);
+            pub const OPEN_END_DOOR = 4 * TILES_PER_ROW + 3;//tile_sprite_xy(3, 4);
 
             pub const DOOR_MATERIALS = ["gold", "iron", "carbon-steel"];
             pub const DOOR_COLOURS = ["red", "green", "blue"];
@@ -851,15 +854,15 @@ mod rune_based {
             pub fn door_and_key_by_material_and_colour(material, colour) {{
                 Ok(
                     match [material, colour] {{
-                        ["gold", "red"] => dak_xy(0, 6),
-                        ["gold", "green"] => dak_xy(0, 7),
-                        ["gold", "blue"] => dak_xy(6, 0),
-                        ["iron", "red"] => dak_xy(6, 1),
-                        ["iron", "green"] => dak_xy(6, 2),
-                        ["iron", "blue"] => dak_xy(6, 3),
-                        ["carbon-steel", "red"] => dak_xy(6, 4),
-                        ["carbon-steel", "green"] => dak_xy(6, 5),
-                        ["carbon-steel", "blue"] => dak_xy(6, 6),
+                        ["gold", "red"] => dak_xy(2, 5),
+                        ["gold", "green"] => dak_xy(2, 6),
+                        ["gold", "blue"] => dak_xy(4, 0),
+                        ["iron", "red"] => dak_xy(4, 1),
+                        ["iron", "green"] => dak_xy(4, 2),
+                        ["iron", "blue"] => dak_xy(4, 3),
+                        ["carbon-steel", "red"] => dak_xy(4, 4),
+                        ["carbon-steel", "green"] => dak_xy(4, 5),
+                        ["carbon-steel", "blue"] => dak_xy(4, 6),
                         _ => return Err("No door and key found for \"" + material + "\"" + "and \"" + colour + "\""),
                     }}
                 )

@@ -1,4 +1,4 @@
-use platform_types::{sprite, sprite::{Renderable, BaseTiles}, unscaled, TILES_PER_ROW};
+use platform_types::{sprite, sprite::{Renderable, BaseTiles}, unscaled};
 use models::{Entity, xy::{XY}, TileSprite, offset};
 /// Take a models::XY to the unscaled::XY representing the corner of the tile, with the mininum x/y values.
 /// Suitable for drawing the tile at that point
@@ -20,9 +20,10 @@ pub fn center(spec: &sprite::Spec<BaseTiles>, xy: XY) -> unscaled::XY {
 
 pub fn sprite_xy(spec: &sprite::Spec<BaseTiles>, tile_sprite: TileSprite) -> sprite::XY<Renderable> {
     let tile = spec.tile();
+    let tiles_per_row = spec.tiles_per_row();
     sprite::XY::<BaseTiles> {
-        x: sprite::x(0) + sprite::W(tile_sprite as sprite::Inner % sprite::Inner::from(TILES_PER_ROW)) * tile.w.get(),
-        y: sprite::y(0) + sprite::H(tile_sprite as sprite::Inner / sprite::Inner::from(TILES_PER_ROW)) * tile.h.get(),
+        x: sprite::x(0) + sprite::W(tile_sprite as sprite::Inner % sprite::Inner::from(tiles_per_row)) * tile.w.get(),
+        y: sprite::y(0) + sprite::H(tile_sprite as sprite::Inner / sprite::Inner::from(tiles_per_row)) * tile.h.get(),
     }.apply(spec)
 }
 

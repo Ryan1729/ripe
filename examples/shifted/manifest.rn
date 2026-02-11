@@ -8,19 +8,19 @@ pub fn main() {
         base_font: #{
             offset: #{
                 w: x_shift,
-                h: 128,
+                h: 0,
             },
         },
         base_tiles: #{
             offset: #{
-                w: x_shift,
-                h: 0,
+                w: 32 + x_shift,
+                h: 128,
             },
         },
         base_ui: #{
             offset: #{
                 w: x_shift,
-                h: 0,
+                h: 128,
             },
         },
         ice_puzzles: #{
@@ -31,8 +31,8 @@ pub fn main() {
         },
         sword: #{
             offset: #{
-                w: 128 + x_shift,
-                h: 48,
+                w: 176 + x_shift,
+                h: 0,
             },
         },
     })

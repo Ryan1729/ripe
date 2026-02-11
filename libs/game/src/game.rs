@@ -14,7 +14,6 @@ use models::{
     TileSprite,
     XY,
     ShakeAmount,
-    is_passable,
     xy_to_i,
 };
 type DoorTarget = Location;
@@ -24,7 +23,7 @@ use xs::{Xs, Seed};
 use platform_types::{arrow_timer::{ArrowTimer}, Dir};
 use vec1::Vec1;
 use world::{World, HallwayStates};
-pub use world::{EntityKey};
+pub use world::{EntityKey, is_passable};
 pub use world::hallway::State as HallwayState;
 
 // Proposed Steps
@@ -352,9 +351,9 @@ impl DoorAnimation {
         let multiple = self.multiple();
 
         match self.frame {
-            x if x < multiple => models::DOOR_ANIMATION_FRAME_1,
-            x if x < multiple * 2 => models::DOOR_ANIMATION_FRAME_2,
-            _ => models::DOOR_ANIMATION_FRAME_3,
+            x if x < multiple => world::DOOR_ANIMATION_FRAME_1,
+            x if x < multiple * 2 => world::DOOR_ANIMATION_FRAME_2,
+            _ => world::DOOR_ANIMATION_FRAME_3,
         }
     }
 
@@ -534,7 +533,7 @@ impl State {
             FadeMessageSpec::new(
                 format!(
                     "what do you want me to do with {}?",
-                    models::entity_article_phrase(interactable),
+                    world::entity_article_phrase(interactable),
                 ),
                 entity.xy
             )

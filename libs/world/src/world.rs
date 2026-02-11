@@ -9,6 +9,28 @@ use models::{
 use vec1::Vec1;
 use xs::{Xs};
 
+pub const TILES_PER_ROW: TileSprite = 6;
+pub const WALL_SPRITE: TileSprite = 0;
+pub const FLOOR_SPRITE: TileSprite = 1;
+pub const PLAYER_SPRITE: TileSprite = 2;
+pub const DOOR_ANIMATION_FRAME_1: TileSprite = 9;
+pub const DOOR_ANIMATION_FRAME_2: TileSprite = DOOR_ANIMATION_FRAME_1 + TILES_PER_ROW;
+pub const DOOR_ANIMATION_FRAME_3: TileSprite = DOOR_ANIMATION_FRAME_2 + TILES_PER_ROW;
+
+pub fn is_passable(tile: &Tile) -> bool {
+    tile.sprite == FLOOR_SPRITE
+}
+
+/// Returns a phrase like "a thing" or "an entity".
+pub fn entity_article_phrase(entity: &Entity) -> &str {
+    match entity.transformable.tile_sprite {
+        WALL_SPRITE => "a wall",
+        FLOOR_SPRITE => "a floor",
+        PLAYER_SPRITE => "a me(?!)",
+        _ => "a whatever-this-is",
+    }
+}
+
 mod entities {
     use models::{Entity, XY, SegmentId};
 
@@ -253,7 +275,6 @@ mod random {
         config, consts::{TileFlags}, Location,
         XY,
         i_to_xy,
-        is_passable,
         WorldSegment,
     };
     use xs::{Xs};
@@ -267,7 +288,7 @@ mod random {
 
             let tile = &segment.tiles[i];
 
-            if is_passable(tile) {
+            if crate::is_passable(tile) {
                 return Some(i_to_xy(segment.width, i));
             }
         }
@@ -561,9 +582,9 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
             |tile_flags| {
                 Tile {
                     sprite: if tile_flags & FLOOR != 0 {
-                        models::FLOOR_SPRITE
+                        FLOOR_SPRITE
                     } else {
-                        models::WALL_SPRITE
+                        WALL_SPRITE
                     },
                 }
             }
@@ -592,7 +613,6 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
         return Err(Error::TooManySegments);
     };
 
-    let mut mob_defs = Vec::with_capacity(16);
     let mut item_defs = Vec::with_capacity(16);
     let mut door_defs = Vec::with_capacity(16);
     let mut speeches_lists: Vec<models::SpeechesList> = Vec::with_capacity(16);
@@ -632,8 +652,6 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
         } else if def.flags & DOOR == DOOR {
             door_defs.push(def.clone());
         } else {
-            mob_defs.push(def.clone());
-
             for &wanted_id in &def.wants {
                 if let Some(desired_def) = entity_defs.get(wanted_id.into()) {
                     if desired_def.flags & COLLECTABLE == COLLECTABLE {
@@ -651,18 +669,15 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
         }
     }
 
-    let mut mob_defs: Vec1<_> = mob_defs.try_into().map_err(|_| Error::NoMobsFound)?;
     let mut item_defs: Vec1<_> = item_defs.try_into().map_err(|_| Error::NoItemsFound)?;
     let mut door_defs: Vec1<_> = door_defs.try_into().map_err(|_| Error::NoDoorsFound)?;
 
-    xs::shuffle(rng, &mut mob_defs);
-    drop(mob_defs); // Wait, do we need this?
     xs::shuffle(rng, &mut item_defs);
     xs::shuffle(rng, &mut door_defs);
 
     let player = Entity {
         transformable: EntityTransformable {
-            tile_sprite: models::PLAYER_SPRITE,
+            tile_sprite: PLAYER_SPRITE,
             ..<_>::default()
         },
         ..<_>::default()

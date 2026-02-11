@@ -7,6 +7,7 @@ authors = ["Ryan1729 <Ryan1729@gmail.com>"]
 [workspace]
 
 [dependencies]
+png = "0.18.0"
 
 [dependencies.gfx_sizes]
 path = "../../libs/gfx_sizes"
