@@ -47,15 +47,33 @@ fn frame(state: &mut State) -> (&[platform_types::Command], (&[gfx_sizes::ARGB],
     //
     state.commands.begin_frame(&mut 0);
 
-    let label = format!("{:?}", state.tile_index).to_lowercase();
+    let commands = &mut state.commands;
 
-    state.commands.print_line(label.as_bytes(), <_>::default(), 6);
+    let draw_tile_index = |commands: &mut Commands, xy, tile_index| {
+        let label = format!("{tile_index:?}").to_lowercase();
+        commands.print_line(label.as_bytes(), xy, 6);
+    };
 
-    let mut draw_tile_sprite = |xy: unscaled::XY, tile_index: TileIndex| {
-        state.commands.sspr(
-            sprite::XY::default().apply(&state.specs.sword), // <- placeholder
-            //todo!("Rearrange spritesheet to make this part simpler"),
-            command::Rect::from_unscaled(state.specs.sword.rect(xy)),
+    draw_tile_index(commands, <_>::default(), state.tile_index);
+
+    let wall_spec = &state.specs.wall;
+    let floor_spec = &state.specs.floor;
+
+    let draw_tile_sprite = |commands: &mut Commands, xy: unscaled::XY, tile_index: TileIndex| {
+        let (rect, s_xy) = match tile_index {
+            TileIndex::Wall(index) => (
+                wall_spec.rect(xy),
+                wall_spec.xy_from_tile_sprite(index),
+            ),
+            TileIndex::Floor(index) => (
+                floor_spec.rect(xy),
+                floor_spec.xy_from_tile_sprite(index),
+            ),
+        };
+
+        commands.sspr(
+            s_xy,
+            command::Rect::from_unscaled(rect),
         );
     };
 
@@ -156,7 +174,25 @@ fn frame(state: &mut State) -> (&[platform_types::Command], (&[gfx_sizes::ARGB],
     assert_eq!(xys.len(), tile_indexes.len());
 
     for i in 0..xys.len() {
-        draw_tile_sprite(xys[i], tile_indexes[i]);
+        draw_tile_sprite(commands, xys[i], tile_indexes[i]);
+    }
+    
+    {
+        use unscaled::{XY, X, Y};
+        let (x1, x2, x3) = (X(200), X(300), X(400));
+        let (y1, y2, y3) = (Y(100), Y(120), Y(140));
+
+        draw_tile_index(commands, XY { x: x1, y: y1 }, tile_indexes[0]);
+        draw_tile_index(commands, XY { x: x2, y: y1 }, tile_indexes[1]);
+        draw_tile_index(commands, XY { x: x3, y: y1 }, tile_indexes[2]);
+
+        draw_tile_index(commands, XY { x: x1, y: y2 }, tile_indexes[3]);
+        draw_tile_index(commands, XY { x: x2, y: y2 }, tile_indexes[4]);
+        draw_tile_index(commands, XY { x: x3, y: y2 }, tile_indexes[5]);
+
+        draw_tile_index(commands, XY { x: x1, y: y3 }, tile_indexes[6]);
+        draw_tile_index(commands, XY { x: x2, y: y3 }, tile_indexes[7]);
+        draw_tile_index(commands, XY { x: x3, y: y3 }, tile_indexes[8]);
     }
 
     state.commands.end_frame();

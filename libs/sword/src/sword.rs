@@ -144,15 +144,6 @@ use xy::{X, Y, XY};
 
 type TileSprite = u16;
 
-fn to_s_xy(spec: &sprite::Spec<sprite::SWORD>, tile_sprite: TileSprite) -> sprite::XY<sprite::Renderable> {
-    let tile = spec.tile();
-    let tiles_per_row = spec.tiles_per_row();
-    sprite::XY::<sprite::SWORD> {
-        x: sprite::x(0) + sprite::W(tile_sprite as sprite::Inner % sprite::Inner::from(tiles_per_row)) * tile.w.get(),
-        y: sprite::y(0) + sprite::H(tile_sprite as sprite::Inner / sprite::Inner::from(tiles_per_row)) * tile.h.get(),
-    }.apply(spec)
-}
-
 const PLAYER_BASE: TileSprite = 0;
 const STAFF_BASE: TileSprite = 1;
 const STAIRS_TOP_LEFT_EDGE: TileSprite = 2;
@@ -480,7 +471,7 @@ impl State {
             };
 
             commands.sspr(
-                to_s_xy(spec, tile_sprite),
+                spec.xy_from_tile_sprite(tile_sprite),
                 command::Rect::from_unscaled(spec.offset_rect(offset_xy, base_xy)),
             );
         };

@@ -427,7 +427,7 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
 
     let draw_tile_sprite = |commands: &mut Commands, xy: unscaled::XY, sprite: TileSprite| {
         commands.sspr(
-            to_tile::sprite_xy(&specs.base_tiles, sprite),
+            specs.base_tiles.xy_from_tile_sprite(sprite),
             command::Rect::from_unscaled(specs.base_tiles.rect(xy)),
         );
     };
@@ -442,7 +442,7 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
 
     let draw_entity = |commands: &mut Commands, entity: &Entity| {
         commands.sspr(
-            to_tile::sprite_xy(&specs.base_tiles, entity.transformable.tile_sprite),
+            specs.base_tiles.xy_from_tile_sprite(entity.transformable.tile_sprite),
             command::Rect::from_unscaled(to_tile::entity_rect(&specs.base_tiles, entity)),
         );
     };

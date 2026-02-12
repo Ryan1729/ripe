@@ -662,6 +662,14 @@ pub mod sprite {
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct SWORD;
 
+    /// Marker
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct Wall;
+
+    /// Marker
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct Floor;
+
     pub type Inner = u16;
     #[derive(Debug, PartialEq, Eq)]
     pub struct X<Marker>(Inner, PhantomData<Marker>);
@@ -896,6 +904,17 @@ pub mod sprite {
                 tiles_per_row: self.tiles_per_row,
             }
         }
+
+        pub fn xy_from_tile_sprite<TileSprite: Into<Inner>>(&self, tile_sprite: TileSprite) -> XY<Renderable> {
+            let tile = self.tile();
+            let tiles_per_row = Inner::from(self.tiles_per_row());
+            let tile_sprite = tile_sprite.into();
+
+            XY::<Marker> {
+                x: x(0) + W(tile_sprite % tiles_per_row) * tile.w.get(),
+                y: y(0) + H(tile_sprite / tiles_per_row) * tile.h.get(),
+            }.apply(self)
+        }
     }
 
     pub struct SpecPieces {
@@ -941,6 +960,8 @@ pub mod sprite {
         pub base_ui: Spec<BaseUI>,
         pub ice_puzzles: Spec<IcePuzzles>,
         pub sword: Spec<SWORD>,
+        pub wall: Spec<Wall>,
+        pub floor: Spec<Floor>,
     }
     
     impl Default for Specs {
@@ -969,8 +990,17 @@ pub mod sprite {
                 sword: spec::<SWORD>(SpecPieces{
                     offset: WH{ w: W(176), h: H(0) },
                     tile: WH{ w: W(16), h: H(16) },
-                    // TODO? Should the wall/floor tiles get their own spec?
-                    tiles_per_row: 5 + 32,
+                    tiles_per_row: 5,
+                }),
+                wall: spec::<Wall>(SpecPieces{
+                    offset: WH{ w: W(176 + 5 * 16), h: H(0) },
+                    tile: WH{ w: W(16), h: H(16) },
+                    tiles_per_row: 16,
+                }),
+                floor: spec::<Floor>(SpecPieces{
+                    offset: WH{ w: W(176 + 5 * 16 + 16 * 16), h: H(0) },
+                    tile: WH{ w: W(16), h: H(16) },
+                    tiles_per_row: 16,
                 }),
             }
         }
