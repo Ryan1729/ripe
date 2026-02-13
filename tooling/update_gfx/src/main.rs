@@ -28,6 +28,34 @@ mod filenames {
 use filenames::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let flags = xflags::parse_or_exit! {
+        /// A set of flags to skip some steps, as a single number.
+        /// If left out, or set to 0, all steps are performed.
+        optional --skip-flags skip_flags: String
+    };
+
+    type SkipFlags = u8;
+
+    let mut skip_flags = if let Some(skip_flags_str) = flags.skip_flags.as_ref() {
+        SkipFlags::from_str_radix(skip_flags_str, 10)
+        .or_else(|e| {
+            if skip_flags_str.starts_with("0b") {
+                SkipFlags::from_str_radix(&skip_flags_str[2..], 2)
+                    .or_else(|e| {
+                        if skip_flags_str.starts_with("0x") {
+                            SkipFlags::from_str_radix(&skip_flags_str[2..], 16)
+                        } else {
+                            Err(e)
+                        }            
+                    })
+            } else {
+                Err(e)
+            }            
+        })?
+    } else {
+        0
+    };
+
     let frame = pak::read_png_frame(BufReader::new(File::open(IMAGE_FILENAME)?))?;
     
     println!(
@@ -44,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // Write into the inline output
     //
-    {
+    if skip_flags & 1 == 0 {
         let inline_output_filename = INLINE_OUTPUT_FILENAME;
     
         let mut file = File::create(inline_output_filename)?;
@@ -74,10 +102,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
         println!("overwrote {}", inline_output_filename);
     }
+    skip_flags >>= 1;
     //
     // Copy input as-is to new location
     //
-    {
+    if skip_flags & 1 == 0 {
         let output_filename = IDENTITY_FILENAME;
     
         let file = File::create(output_filename)?;
@@ -92,10 +121,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
         println!("overwrote {}", output_filename);
     }
+    skip_flags >>= 1;
     //
     // Copy input at double height to new location
     //
-    {
+    if skip_flags & 1 == 0 {
         let transformed_output_filename = DOUBLE_HEIGHT_OUTPUT_FILENAME;
     
         let file = File::create(transformed_output_filename)?;
@@ -147,10 +177,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
         println!("overwrote {}", transformed_output_filename);
     }
+    skip_flags >>= 1;
     //
     // Copy input shifted right to a new location
     //
-    {
+    if skip_flags & 1 == 0 {
         let transformed_output_filename = SHIFTED_OUTPUT_FILENAME;
     
         let file = File::create(transformed_output_filename)?;
@@ -204,6 +235,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
         println!("overwrote {}", transformed_output_filename);
     }
+    //skip_flags >>= 1;
 
     Ok(())
 }

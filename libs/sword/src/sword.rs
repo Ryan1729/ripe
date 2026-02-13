@@ -217,7 +217,7 @@ pub struct Key {
 pub type Entities = BTreeMap<Key, Entity>;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-enum Dir8 {
+pub enum Dir8 {
     #[default]
     UpLeft,
     Up,
@@ -393,7 +393,7 @@ impl State {
         }
 
 
-        let mut tiles = vec1![
+        let tiles = vec1![
             // Placeholder for once we have the various corner and edge tiles set up
             5
         ];
@@ -437,7 +437,7 @@ impl State {
         commands: &mut Commands,
         spec: &sprite::Spec::<sprite::SWORD>,
         input: Input,
-        speaker: &mut Speaker,
+        _speaker: &mut Speaker,
     ) {
         //
         // Update

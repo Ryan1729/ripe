@@ -1,4 +1,4 @@
-///! This crate is essentially the one suggested by rargo-run-wam, but inlined, and
+///! This crate is essentially the one suggested by cargo-run-wasm, but inlined, and
 ///! with some small changes, like using our own custom html etc. from the static
 ///! folder.
 ///! So, we include the licenses from that repo as they were there.

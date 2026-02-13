@@ -1,0 +1,1 @@
+cargo r --profile release -- ../../examples/gfx2h/ -o ../../examples/gfx2h/ && cargo r --profile release -- ../../examples/shifted/ -o ../../examples/shifted/ && cargo r --profile release -- ../../examples/default/ -o ../../examples/default/

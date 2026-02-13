@@ -93,83 +93,8 @@ fn frame(state: &mut State) -> (&[platform_types::Command], (&[gfx_sizes::ARGB],
         upper_left + tile + tile,
     ];
 
-    let tile_indexes = {
-        use TileIndex::{Wall, Floor};
-        use sword::{LOWER_RIGHT, LOWER_MIDDLE, LOWER_LEFT, RIGHT_MIDDLE, LEFT_MIDDLE, UPPER_RIGHT, UPPER_MIDDLE, UPPER_LEFT};
-
-        let neighbor_mask = state.tile_index.neighbor_mask();
-
-        let is_floor_mask = match state.tile_index {
-            Wall(..) => 0,
-            Floor(..) => 1,
-        };
-
-        let neighboring_demo_index = |
-            // "me" refers to the to-be-constructed index, and "base" refers to `state.tile_index`
-            (from_base_to_me_mask, from_me_to_base_mask): (NeighborFlag, NeighborFlag),
-            adjacent_assignment_masks: &[(NeighborFlag, NeighborFlag)],
-        | {
-            let variant_fn = if (neighbor_mask & from_base_to_me_mask.get()) != 0 {
-                Floor
-            } else {
-                Wall
-            };
-
-            let mut output_mask = 0;
-
-            for (base_mask, me_mask) in adjacent_assignment_masks {
-                // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                // we can use highest_one instead
-                let base_shift = NeighborMask::BITS - 1 - base_mask.leading_zeros();
-
-                output_mask |= ((neighbor_mask & base_mask.get()) >> base_shift) << me_mask.get();
-            }
-
-            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-            // we can use highest_one instead
-            let from_me_to_base_shift = NeighborMask::BITS - 1 - from_me_to_base_mask.leading_zeros();
-
-            output_mask |= is_floor_mask << from_me_to_base_shift;
-
-            variant_fn(output_mask)
-        };
-
-        [
-            neighboring_demo_index(
-                (UPPER_LEFT, LOWER_RIGHT),
-                &[(UPPER_MIDDLE, RIGHT_MIDDLE), (LEFT_MIDDLE, LOWER_MIDDLE)]
-            ),
-            neighboring_demo_index(
-                (UPPER_MIDDLE, LOWER_MIDDLE),
-                &[(UPPER_LEFT, LEFT_MIDDLE), (LEFT_MIDDLE, LOWER_LEFT), (UPPER_RIGHT, RIGHT_MIDDLE), (RIGHT_MIDDLE, LOWER_RIGHT)],
-            ),
-            neighboring_demo_index(
-                (UPPER_RIGHT, LOWER_LEFT),
-                &[(UPPER_MIDDLE, LEFT_MIDDLE), (RIGHT_MIDDLE, LOWER_MIDDLE)]
-            ),
-            neighboring_demo_index(
-                (LEFT_MIDDLE, RIGHT_MIDDLE),
-                &[(UPPER_LEFT, UPPER_MIDDLE), (UPPER_MIDDLE, RIGHT_MIDDLE), (LOWER_LEFT, LOWER_MIDDLE), (LOWER_MIDDLE, LOWER_RIGHT)]
-            ),
-            state.tile_index,
-            neighboring_demo_index(
-                (RIGHT_MIDDLE, LEFT_MIDDLE),
-                &[(UPPER_MIDDLE, UPPER_LEFT), (UPPER_RIGHT, UPPER_MIDDLE), (LOWER_MIDDLE, LOWER_LEFT), (LOWER_RIGHT, LOWER_MIDDLE)]
-            ),
-            neighboring_demo_index(
-                (LOWER_LEFT, UPPER_RIGHT),
-                &[(LEFT_MIDDLE, UPPER_MIDDLE), (LOWER_MIDDLE, RIGHT_MIDDLE)]
-            ),
-            neighboring_demo_index(
-                (LOWER_MIDDLE, UPPER_MIDDLE),
-                &[(LEFT_MIDDLE, UPPER_LEFT), (RIGHT_MIDDLE, UPPER_RIGHT), (LOWER_LEFT, LEFT_MIDDLE), (LOWER_RIGHT, RIGHT_MIDDLE)]
-            ),
-            neighboring_demo_index(
-                (LOWER_RIGHT, UPPER_LEFT),
-                &[(RIGHT_MIDDLE, UPPER_MIDDLE), (LOWER_MIDDLE, LEFT_MIDDLE)]
-            ),
-        ]
-    };
+    // TODO this seems wrong in some cases. probably worth pulling out into a function and writing a few unit tests
+    let tile_indexes = neighboring_demo_indexes(state.tile_index);
 
     assert_eq!(xys.len(), tile_indexes.len());
 
@@ -200,6 +125,114 @@ fn frame(state: &mut State) -> (&[platform_types::Command], (&[gfx_sizes::ARGB],
     state.input.previous_gamepad = state.input.gamepad;
 
     (state.commands.slice(), state.spritesheet.slice())
+}
+
+fn neighboring_demo_indexes(tile_index: TileIndex) -> [TileIndex; 9] {
+    use TileIndex::{Wall, Floor};
+    use sword::{LOWER_RIGHT, LOWER_MIDDLE, LOWER_LEFT, RIGHT_MIDDLE, LEFT_MIDDLE, UPPER_RIGHT, UPPER_MIDDLE, UPPER_LEFT};
+
+    let neighbor_mask = tile_index.neighbor_mask();
+
+    let is_floor_mask = match tile_index {
+        Wall(..) => 0,
+        Floor(..) => 1,
+    };
+
+    let neighboring_demo_index = |
+        // "me" refers to the to-be-constructed index, and "base" refers to `state.tile_index`
+        (from_base_to_me_mask, from_me_to_base_mask): (NeighborFlag, NeighborFlag),
+        adjacent_assignment_masks: &[(NeighborFlag, NeighborFlag)],
+    | {
+        let variant_fn = if (neighbor_mask & from_base_to_me_mask.get()) != 0 {
+            Floor
+        } else {
+            Wall
+        };
+
+        let mut output_mask = 0;
+
+        for (base_mask, me_mask) in adjacent_assignment_masks {
+            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+            // we can use highest_one instead
+            let base_shift = NeighborMask::BITS - 1 - base_mask.leading_zeros();
+            let me_shift = NeighborMask::BITS - 1 - me_mask.leading_zeros();
+
+            output_mask |= ((neighbor_mask & base_mask.get()) >> base_shift) << me_shift;
+        }
+
+        // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+        // we can use highest_one instead
+        let from_me_to_base_shift = NeighborMask::BITS - 1 - from_me_to_base_mask.leading_zeros();
+
+        output_mask |= is_floor_mask << from_me_to_base_shift;
+
+        variant_fn(output_mask)
+    };
+
+    [
+        neighboring_demo_index(
+            (UPPER_LEFT, LOWER_RIGHT),
+            &[(UPPER_MIDDLE, RIGHT_MIDDLE), (LEFT_MIDDLE, LOWER_MIDDLE)]
+        ),
+        neighboring_demo_index(
+            (UPPER_MIDDLE, LOWER_MIDDLE),
+            &[(UPPER_LEFT, LEFT_MIDDLE), (LEFT_MIDDLE, LOWER_LEFT), (UPPER_RIGHT, RIGHT_MIDDLE), (RIGHT_MIDDLE, LOWER_RIGHT)],
+        ),
+        neighboring_demo_index(
+            (UPPER_RIGHT, LOWER_LEFT),
+            &[(UPPER_MIDDLE, LEFT_MIDDLE), (RIGHT_MIDDLE, LOWER_MIDDLE)]
+        ),
+        neighboring_demo_index(
+            (LEFT_MIDDLE, RIGHT_MIDDLE),
+            &[(UPPER_LEFT, UPPER_MIDDLE), (UPPER_MIDDLE, RIGHT_MIDDLE), (LOWER_LEFT, LOWER_MIDDLE), (LOWER_MIDDLE, LOWER_RIGHT)]
+        ),
+        tile_index,
+        neighboring_demo_index(
+            (RIGHT_MIDDLE, LEFT_MIDDLE),
+            &[(UPPER_MIDDLE, UPPER_LEFT), (UPPER_RIGHT, UPPER_MIDDLE), (LOWER_MIDDLE, LOWER_LEFT), (LOWER_RIGHT, LOWER_MIDDLE)]
+        ),
+        neighboring_demo_index(
+            (LOWER_LEFT, UPPER_RIGHT),
+            &[(LEFT_MIDDLE, UPPER_MIDDLE), (LOWER_MIDDLE, RIGHT_MIDDLE)]
+        ),
+        neighboring_demo_index(
+            (LOWER_MIDDLE, UPPER_MIDDLE),
+            &[(LEFT_MIDDLE, UPPER_LEFT), (RIGHT_MIDDLE, UPPER_RIGHT), (LOWER_LEFT, LEFT_MIDDLE), (LOWER_RIGHT, RIGHT_MIDDLE)]
+        ),
+        neighboring_demo_index(
+            (LOWER_RIGHT, UPPER_LEFT),
+            &[(RIGHT_MIDDLE, UPPER_MIDDLE), (LOWER_MIDDLE, LEFT_MIDDLE)]
+        ),
+    ]
+}
+
+#[cfg(test)]
+mod neighboring_demo_indexes_works_on {
+    use super::*;
+    use TileIndex::{Wall, Floor};
+    #[allow(unused_imports)]
+    use sword::{LOWER_RIGHT, LOWER_MIDDLE, LOWER_LEFT, RIGHT_MIDDLE, LEFT_MIDDLE, UPPER_RIGHT, UPPER_MIDDLE, UPPER_LEFT};
+
+    #[test]
+    fn wall_0() {
+        let w0 = neighboring_demo_indexes(Wall(0b0000_0000));
+
+        assert_eq!(w0, [Wall(0); 9]);
+    }
+
+    #[test]
+    fn wall_254() {
+        let w254 = neighboring_demo_indexes(Wall(0b1111_1110));
+
+        assert_ne!(
+            w254[0],
+            Wall(0b0000_0001)
+        );
+        assert!(matches!(w254[0], Wall(_)));
+
+        assert!((w254[0].neighbor_mask() & RIGHT_MIDDLE.get()) != 0);
+        assert!((w254[0].neighbor_mask() & LOWER_MIDDLE.get()) != 0);
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
