@@ -184,7 +184,7 @@ fn neighboring_demo_indexes(tile_index: TileIndex) -> [TileIndex; 9] {
         ),
         neighboring_demo_index(
             (LEFT_MIDDLE, RIGHT_MIDDLE),
-            &[(UPPER_LEFT, UPPER_MIDDLE), (UPPER_MIDDLE, RIGHT_MIDDLE), (LOWER_LEFT, LOWER_MIDDLE), (LOWER_MIDDLE, LOWER_RIGHT)]
+            &[(UPPER_LEFT, UPPER_MIDDLE), (UPPER_MIDDLE, UPPER_RIGHT), (LOWER_LEFT, LOWER_MIDDLE), (LOWER_MIDDLE, LOWER_RIGHT)]
         ),
         tile_index,
         neighboring_demo_index(
@@ -221,6 +221,25 @@ mod neighboring_demo_indexes_works_on {
     }
 
     #[test]
+    fn wall_1() {
+        let w1 = neighboring_demo_indexes(Wall(0b0000_0001));
+
+        let expected = [
+            Floor(0),
+            Wall(LEFT_MIDDLE.get()),
+            Wall(0),
+            Wall(UPPER_MIDDLE.get()),
+            Wall(0b0000_0001),
+            Wall(0),
+            Wall(0),
+            Wall(0),
+            Wall(0),
+        ];
+
+        assert_eq!(w1, expected);
+    }
+
+    #[test]
     fn wall_254() {
         let w254 = neighboring_demo_indexes(Wall(0b1111_1110));
 
@@ -232,6 +251,25 @@ mod neighboring_demo_indexes_works_on {
 
         assert!((w254[0].neighbor_mask() & RIGHT_MIDDLE.get()) != 0);
         assert!((w254[0].neighbor_mask() & LOWER_MIDDLE.get()) != 0);
+    }
+
+    #[test]
+    fn wall_255() {
+        let w255 = neighboring_demo_indexes(Wall(0b1111_1111));
+
+        let expected = [
+            Floor((RIGHT_MIDDLE | LOWER_MIDDLE).get()),
+            Floor((LEFT_MIDDLE | RIGHT_MIDDLE | LOWER_LEFT | LOWER_RIGHT).get()),
+            Floor((LEFT_MIDDLE | LOWER_MIDDLE).get()),
+            Floor((UPPER_MIDDLE | UPPER_RIGHT | LOWER_MIDDLE | LOWER_RIGHT).get()),
+            Wall(0b1111_1111),
+            Floor((UPPER_LEFT | UPPER_MIDDLE | LOWER_LEFT | LOWER_MIDDLE).get()),
+            Floor((UPPER_MIDDLE | RIGHT_MIDDLE).get()),
+            Floor((UPPER_LEFT| UPPER_RIGHT | LEFT_MIDDLE | RIGHT_MIDDLE).get()),
+            Floor((UPPER_MIDDLE | LEFT_MIDDLE).get()),
+        ];
+
+        assert_eq!(w255, expected);
     }
 }
 
