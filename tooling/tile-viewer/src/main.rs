@@ -133,10 +133,7 @@ fn neighboring_demo_indexes(tile_index: TileIndex) -> [TileIndex; 9] {
 
     let neighbor_mask = tile_index.neighbor_mask();
 
-    let is_floor_mask = match tile_index {
-        Wall(..) => 0,
-        Floor(..) => 1,
-    };
+    let is_floor_mask = tile_index.is_floor_mask();
 
     let neighboring_demo_index = |
         // "me" refers to the to-be-constructed index, and "base" refers to `state.tile_index`

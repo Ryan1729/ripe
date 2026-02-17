@@ -221,6 +221,8 @@ fn game_update(commands: &mut Commands, specs: &Specs, state: &mut game::State, 
                     sword.update_and_render(
                         commands,
                         &specs.sword,
+                        &specs.wall,
+                        &specs.floor,
                         input,
                         speaker,
                     );
