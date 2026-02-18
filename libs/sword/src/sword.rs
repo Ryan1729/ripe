@@ -136,6 +136,10 @@ pub mod xy {
                     pub fn inc(&self) -> Self {
                         Self(self.0.saturating_add(1))
                     }
+
+                    pub fn usize(self) -> usize {
+                        usize::from(self.0)
+                    }
                 }
             )+
         }
@@ -162,6 +166,7 @@ type TileSprite = u16;
 const PLAYER_BASE: TileSprite = 0;
 const STAFF_BASE: TileSprite = 1;
 const STAIRS_TOP_LEFT_EDGE: TileSprite = 2;
+#[allow(unused)]
 const STAIRS_TOP_EDGE: TileSprite = STAIRS_TOP_LEFT_EDGE + 1;
 const STAIRS_TOP_RIGHT_EDGE: TileSprite = STAIRS_TOP_LEFT_EDGE + 2;
 
@@ -370,12 +375,37 @@ pub fn i_to_xy(width: TilesWidth, index: usize) -> XY {
     }
 }
 
+pub enum XYToIError {
+    XPastWidth
+}
+
+pub fn xy_to_i(width: TilesWidth, xy: XY) -> Result<usize, XYToIError> {
+    let width_usize = usize::from(width.get());
+
+    let x_usize = xy.x.usize();
+    if x_usize >= width_usize {
+        return Err(XYToIError::XPastWidth);
+    }
+
+    Ok(xy.y.usize() * width_usize + x_usize)
+}
+
 pub type TilesWidth = std::num::NonZeroU8;
 
 #[derive(Clone, Debug)]
 pub struct Tiles {
     pub width: TilesWidth,
     pub tiles: Vec1<Tile>
+}
+
+fn can_walk_onto(tiles: &Tiles, xy: XY) -> bool {
+    let Ok(i) = xy_to_i(tiles.width, xy) else {
+        return false
+    };
+
+    tiles.tiles.get(i)
+        .map(|t| t.is_floor_mask() == 1)
+        .unwrap_or(false)
 }
 
 #[derive(Clone, Debug)]
@@ -534,8 +564,12 @@ impl State {
         self.tick();
 
         if let Some(dir) = input.dir_pressed_this_frame() {
+            // Walk
             let (new_xy, _) = xy_in_dir(self.player.position.xy(), dir.into());
-            self.player.position.set_xy(new_xy);
+
+            if can_walk_onto(&self.tiles, new_xy) {
+                self.player.position.set_xy(new_xy);
+            }
         } else if input.pressed_this_frame(Button::A) {
             self.facing = self.facing.counter_clockwise();
         } else if input.pressed_this_frame(Button::B) {
