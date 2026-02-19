@@ -169,6 +169,8 @@ const STAIRS_TOP_LEFT_EDGE: TileSprite = 2;
 #[allow(unused)]
 const STAIRS_TOP_EDGE: TileSprite = STAIRS_TOP_LEFT_EDGE + 1;
 const STAIRS_TOP_RIGHT_EDGE: TileSprite = STAIRS_TOP_LEFT_EDGE + 2;
+const SWITCH_BASE: TileSprite = 40;
+const SWITCH_HIT: TileSprite = SWITCH_BASE + 1;
 
 type Tile = TileIndex;
 
@@ -398,7 +400,7 @@ pub struct Tiles {
     pub tiles: Vec1<Tile>
 }
 
-fn can_walk_onto(tiles: &Tiles, xy: XY) -> bool {
+fn can_walk_onto_tile(tiles: &Tiles, xy: XY) -> bool {
     let Ok(i) = xy_to_i(tiles.width, xy) else {
         return false
     };
@@ -406,6 +408,12 @@ fn can_walk_onto(tiles: &Tiles, xy: XY) -> bool {
     tiles.tiles.get(i)
         .map(|t| t.is_floor_mask() == 1)
         .unwrap_or(false)
+}
+
+fn can_walk_onto(mobs: &Entities, tiles: &Tiles, key: Key) -> bool {
+    can_walk_onto_tile(tiles, key.xy) && {
+        mobs.get(&key).is_none()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -430,6 +438,18 @@ impl State {
 
         let y = xy::Y::default();
 
+        macro_rules! insert_entity {
+            ($entity: expr) => ({
+                let entity = $entity;
+                mobs.insert(
+                    Key {
+                        xy: entity.position.xy(),
+                    },
+                    entity
+                );
+            })
+        }
+
         let mut offset = 0;
         for key in [
             Key {
@@ -442,13 +462,10 @@ impl State {
                 xy: XY { x: xy::X(8), y },
             },
         ] {
-            mobs.insert(
-                key,
-                Entity {
-                    position: Position::from(key.xy),
-                    tile_sprite: STAIRS_TOP_LEFT_EDGE + offset,
-                }
-            );
+            insert_entity!(Entity {
+                position: Position::from(key.xy),
+                tile_sprite: STAIRS_TOP_LEFT_EDGE + offset,
+            });
             offset += 1;
         }
 
@@ -465,6 +482,28 @@ impl State {
             F, F, F, F, F, F, F, F, F, F,
             W, F, W, F, F, F, F, F, F, F,
             W, W, W, F, F, F, F, F, F, F,
+            W, W, W, F, F, F, F, F, F, F,
+        ];
+
+        let switch_key = Key {
+            xy: XY { x: xy::x(1), y: xy::y(4) },
+        };
+
+        // TODO Define a paralell set of distinct wall tiles with the same curving as the main ones
+        // TODO place a wall at these spots
+        let wall_keys = [
+            Key {
+                xy: XY { x: xy::x(5), y: xy::y(3) },
+            },
+            Key {
+                xy: XY { x: xy::x(5), y: xy::y(4) },
+            },
+            Key {
+                xy: XY { x: xy::x(5), y: xy::y(5) },
+            },
+            Key {
+                xy: XY { x: xy::x(5), y: xy::y(6) },
+            },
         ];
 
         // Set the indexes from the surrounding tiles.
@@ -510,6 +549,12 @@ impl State {
 
             tiles[index].set_mask(output_mask);
         }
+
+        // Add switch
+        insert_entity!(Entity {
+            position: Position::from(switch_key.xy),
+            tile_sprite: SWITCH_BASE,
+        });
 
         Self {
             rng,
@@ -567,7 +612,7 @@ impl State {
             // Walk
             let (new_xy, _) = xy_in_dir(self.player.position.xy(), dir.into());
 
-            if can_walk_onto(&self.tiles, new_xy) {
+            if can_walk_onto(&self.mobs, &self.tiles, Key { xy: new_xy }) {
                 self.player.position.set_xy(new_xy);
             }
         } else if input.pressed_this_frame(Button::A) {
