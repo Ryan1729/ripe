@@ -147,25 +147,25 @@ pub mod xy {
                     self.0 += other.0;
                 }
             }
-        
+
             impl core::ops::Add<$b_name> for $a_name {
                 type Output = Self;
-        
+
                 fn add(mut self, other: $b_name) -> Self::Output {
                     self += other;
                     self
                 }
             }
-        
+
             impl core::ops::SubAssign<$b_name> for $a_name {
                 fn sub_assign(&mut self, other: $b_name) {
                     self.0 -= other.0;
                 }
             }
-        
+
             impl core::ops::Sub<$b_name> for $a_name {
                 type Output = Self;
-        
+
                 fn sub(mut self, other: $b_name) -> Self::Output {
                     self -= other;
                     self
@@ -579,16 +579,19 @@ impl State {
             base_wh: WH,
         }
 
+        // TODO automatically add floor to the tiles,
+        // so we don't need to add it in the config file.
+        // (Is a column along the right edge always enough?)
         let wall_spec: ToggleWallSpec = ToggleWallSpec {
-            width: ToggleWallSpecWidth::new(1).expect("Don't set a 0 width!"),
+            width: ToggleWallSpecWidth::new(2).expect("Don't set a 0 width!"),
             tiles: {
                 const W: IsFloorFlag = IS_WALL;
                 const F: IsFloorFlag = IS_FLOOR;
                 vec1![
-                    W,
-                    W,
-                    W,
-                    W,
+                    W, F,
+                    W, F,
+                    W, F,
+                    W, F,
                 ]
             },
             base_wh: WH { w: xy::w(5), h: xy::h(3) },
@@ -598,45 +601,45 @@ impl State {
         for index in 0..tiles.len() {
             if tiles[index].is_floor_mask() == 0 {
                 let width = usize::from(width.get());
-    
+
                 // Assume everything not set is a wall, for maximum merging.
                 let mut output_mask = 0;
-    
+
                 macro_rules! set {
                     (-, $subtrahend: expr, $mask: ident) => {
                         if let Some(tile) = index.checked_sub($subtrahend)
                             .and_then(|i| tiles.get(i)) {
-            
+
                             // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
                             // we can use highest_one instead.
                             let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-    
+
                             output_mask |= tile.is_floor_mask() << shift;
                         }
                     };
                     (+, $addend: expr, $mask: ident) => {
                         if let Some(tile) = index.checked_add($addend)
                             .and_then(|i| tiles.get(i)) {
-            
+
                             // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
                             // we can use highest_one instead.
                             let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-    
+
                             output_mask |= tile.is_floor_mask() << shift;
                         }
                     };
                 }
-    
+
                 set!(-, width + 1, UPPER_LEFT);
                 set!(-, width, UPPER_MIDDLE);
                 set!(-, width - 1, UPPER_RIGHT);
                 set!(-, 1, LEFT_MIDDLE);
-    
+
                 set!(+, 1, RIGHT_MIDDLE);
                 set!(+, width - 1, LOWER_RIGHT);
                 set!(+, width, LOWER_MIDDLE);
                 set!(+, width + 1, LOWER_LEFT);
-    
+
                 if let Wall(mask_ref) = &mut tiles[index] {
                     *mask_ref = output_mask
                 } else {
@@ -654,21 +657,21 @@ impl State {
         // Add toggleable walls
         for index in 0..wall_spec.tiles.len() {
             if wall_spec.tiles[index] == IS_WALL {
-                let width = usize::from(width.get());
+                let width = usize::from(wall_spec.width.get());
 
-                // Assume everything not set is a floor, to avoid merging 
+                // Assume everything not set is a floor, to avoid merging
                 // with walls from other specs.
                 let mut output_mask = 0b1111_1111;
-    
+
                 macro_rules! set {
                     (-, $subtrahend: expr, $mask: ident) => {
                         if let Some(&tile) = index.checked_sub($subtrahend)
                             .and_then(|i| wall_spec.tiles.get(i)) {
-            
+
                             // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
                             // we can use highest_one instead.
                             let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-    
+
                             if tile == IS_WALL {
                                 output_mask &= !(1 << shift);
                             }
@@ -677,28 +680,28 @@ impl State {
                     (+, $addend: expr, $mask: ident) => {
                         if let Some(&tile) = index.checked_add($addend)
                             .and_then(|i| wall_spec.tiles.get(i)) {
-            
+
                             // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
                             // we can use highest_one instead.
                             let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-    
+
                             if tile == IS_WALL {
                                 output_mask &= !(1 << shift);
                             }
                         }
                     };
                 }
-    
+
                 set!(-, width + 1, UPPER_LEFT);
                 set!(-, width, UPPER_MIDDLE);
                 set!(-, width - 1, UPPER_RIGHT);
                 set!(-, 1, LEFT_MIDDLE);
-    
+
                 set!(+, 1, RIGHT_MIDDLE);
                 set!(+, width - 1, LOWER_RIGHT);
                 set!(+, width, LOWER_MIDDLE);
                 set!(+, width + 1, LOWER_LEFT);
-    
+
                 let xy = i_to_xy(wall_spec.width, index) + wall_spec.base_wh;
 
                 insert_entity!(Entity {
@@ -810,7 +813,7 @@ impl State {
                     floor_spec.xy_from_tile_sprite(0u16),
                 ),
             };
-    
+
             commands.sspr(
                 s_xy,
                 command::Rect::from_unscaled(rect),
@@ -867,7 +870,7 @@ impl State {
         if let (staff_xy, EdgeHitKind::Neither) = xy_in_dir(self.player.position.xy(), self.facing) {
             draw_at_position_pieces(
                 staff_xy,
-                self.player.position.offset(), 
+                self.player.position.offset(),
                 TileSprite::Sword(
                     STAFF_BASE.sword_inner_or_0() + tiles_per_row as SwordTileSpriteInner * facing_index as SwordTileSpriteInner
                 ),
