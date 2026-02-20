@@ -223,6 +223,7 @@ fn game_update(commands: &mut Commands, specs: &Specs, state: &mut game::State, 
                         &specs.sword,
                         &specs.wall,
                         &specs.floor,
+                        &specs.toggle_wall,
                         input,
                         speaker,
                     );

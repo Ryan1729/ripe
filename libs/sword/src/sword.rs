@@ -6,6 +6,7 @@ use vec1::{Vec1, vec1};
 use xs::Xs;
 
 use std::collections::BTreeMap;
+use std::num::NonZeroU8;
 
 /*
     Notes on wall/floor tiles and their various edge types:
@@ -49,7 +50,7 @@ pub type NeighborMask = u8;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TileIndex {
     Wall(NeighborMask),
-    Floor(NeighborMask),
+    Floor,
 }
 
 impl Default for TileIndex {
@@ -59,33 +60,15 @@ impl Default for TileIndex {
 }
 
 impl TileIndex {
-    pub fn neighbor_mask(self) -> NeighborMask {
-        match self {
-            TileIndex::Wall(mask)
-            | TileIndex::Floor(mask) => mask,
-        }
-    }
-
-    pub fn neighbor_mask_mut(&mut self) -> &mut NeighborMask {
-        match self {
-            TileIndex::Wall(mask)
-            | TileIndex::Floor(mask) => mask,
-        }
-    }
-
-    pub fn set_mask(&mut self, mask: NeighborMask) {
-        *self.neighbor_mask_mut() = mask;
-    }
-
     pub fn is_floor_mask(self) -> NeighborMask {
         match self {
             TileIndex::Wall(..) => 0,
-            TileIndex::Floor(..) => 1,
+            TileIndex::Floor => 1,
         }
     }
 }
 
-pub type NeighborFlag = std::num::NonZeroU8;
+pub type NeighborFlag = NonZeroU8;
 
 // SAFETY: The value is not 0.
 pub const UPPER_LEFT: NeighborFlag = unsafe { NeighborFlag::new_unchecked(1 << 0) };
@@ -125,6 +108,16 @@ pub mod xy {
 
     pub fn y(inner: Inner) -> Y { Y(inner) }
 
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct W(pub Inner);
+
+    pub fn w(inner: Inner) -> W { W(inner) }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct H(pub Inner);
+
+    pub fn h(inner: Inner) -> H { H(inner) }
+
     macro_rules! def {
         ($($name: path),+) => {
             $(
@@ -145,7 +138,46 @@ pub mod xy {
         }
     }
 
-    def!{ X, Y }
+    def!{ X, Y, W, H }
+
+    macro_rules! unsigned_paired_impls {
+        ($($a_name: ident, $b_name: ident)+) => {$(
+            impl core::ops::AddAssign<$b_name> for $a_name {
+                fn add_assign(&mut self, other: $b_name) {
+                    self.0 += other.0;
+                }
+            }
+        
+            impl core::ops::Add<$b_name> for $a_name {
+                type Output = Self;
+        
+                fn add(mut self, other: $b_name) -> Self::Output {
+                    self += other;
+                    self
+                }
+            }
+        
+            impl core::ops::SubAssign<$b_name> for $a_name {
+                fn sub_assign(&mut self, other: $b_name) {
+                    self.0 -= other.0;
+                }
+            }
+        
+            impl core::ops::Sub<$b_name> for $a_name {
+                type Output = Self;
+        
+                fn sub(mut self, other: $b_name) -> Self::Output {
+                    self -= other;
+                    self
+                }
+            }
+        )+}
+    }
+
+    unsigned_paired_impls!{
+        X, W
+        Y, H
+    }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct XY {
@@ -158,19 +190,62 @@ pub mod xy {
             (offset::Inner::from(x.0), offset::Inner::from(y.0))
         }
     }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct WH {
+        pub w: W,
+        pub h: H,
+    }
+
+    impl core::ops::AddAssign<WH> for XY {
+        fn add_assign(&mut self, other: WH) {
+            self.x += other.w;
+            self.y += other.h;
+        }
+    }
+
+    impl core::ops::Add<WH> for XY {
+        type Output = Self;
+
+        fn add(mut self, other: WH) -> Self::Output {
+            self += other;
+            self
+        }
+    }
 }
-use xy::{X, Y, XY};
+use xy::{X, Y, XY, W, H, WH};
 
-type TileSprite = u16;
+type SwordTileSpriteInner = u8;
 
-const PLAYER_BASE: TileSprite = 0;
-const STAFF_BASE: TileSprite = 1;
-const STAIRS_TOP_LEFT_EDGE: TileSprite = 2;
+#[derive(Clone, Copy, Debug)]
+pub enum TileSprite {
+    Sword(SwordTileSpriteInner),
+    ToggleWall(NeighborMask)
+}
+
+impl Default for TileSprite {
+    fn default() -> Self {
+        TileSprite::Sword(<_>::default())
+    }
+}
+
+impl TileSprite {
+    const fn sword_inner_or_0(self) -> SwordTileSpriteInner {
+        match self {
+            TileSprite::Sword(inner) => inner,
+            _ => 0,
+        }
+    }
+}
+
+const PLAYER_BASE: TileSprite = TileSprite::Sword(0);
+const STAFF_BASE: TileSprite = TileSprite::Sword(1);
+const STAIRS_TOP_LEFT_EDGE: TileSprite = TileSprite::Sword(2);
 #[allow(unused)]
-const STAIRS_TOP_EDGE: TileSprite = STAIRS_TOP_LEFT_EDGE + 1;
-const STAIRS_TOP_RIGHT_EDGE: TileSprite = STAIRS_TOP_LEFT_EDGE + 2;
-const SWITCH_BASE: TileSprite = 40;
-const SWITCH_HIT: TileSprite = SWITCH_BASE + 1;
+const STAIRS_TOP_EDGE: TileSprite = TileSprite::Sword(STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + 1);
+const STAIRS_TOP_RIGHT_EDGE: TileSprite = TileSprite::Sword(STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + 2);
+const SWITCH_BASE: TileSprite = TileSprite::Sword(40);
+const SWITCH_HIT: TileSprite = TileSprite::Sword(SWITCH_BASE.sword_inner_or_0() + 1);
 
 type Tile = TileIndex;
 
@@ -392,7 +467,7 @@ pub fn xy_to_i(width: TilesWidth, xy: XY) -> Result<usize, XYToIError> {
     Ok(xy.y.usize() * width_usize + x_usize)
 }
 
-pub type TilesWidth = std::num::NonZeroU8;
+pub type TilesWidth = NonZeroU8;
 
 #[derive(Clone, Debug)]
 pub struct Tiles {
@@ -464,90 +539,110 @@ impl State {
         ] {
             insert_entity!(Entity {
                 position: Position::from(key.xy),
-                tile_sprite: STAIRS_TOP_LEFT_EDGE + offset,
+                tile_sprite: TileSprite::Sword(STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + offset),
             });
             offset += 1;
         }
 
         use TileIndex::*;
 
-        const W: Tile = Wall(0);
-        const F: Tile = Floor(0);
-
         let width = TilesWidth::new(10).expect("Don't set a 0 width!");
-        let mut tiles = vec1![
-            F, F, F, F, F, W, F, F, F, F,
-            F, F, F, F, F, W, F, F, F, F,
-            F, F, F, F, F, W, W, F, W, W,
-            F, F, F, F, F, F, F, F, F, F,
-            W, F, W, F, F, F, F, F, F, F,
-            W, W, W, F, F, F, F, F, F, F,
-            W, W, W, F, F, F, F, F, F, F,
-        ];
+        let mut tiles = {
+            const W: Tile = Wall(0);
+            const F: Tile = Floor;
+            vec1![
+                F, F, F, F, F, W, F, F, F, F,
+                F, F, F, F, F, W, F, F, F, F,
+                F, F, F, F, F, W, W, F, W, W,
+                F, F, F, F, F, F, F, F, F, F,
+                W, F, W, F, F, F, F, F, F, F,
+                W, W, W, F, F, F, F, F, F, F,
+                W, W, W, F, F, F, F, F, F, F,
+            ]
+        };
 
         let switch_key = Key {
             xy: XY { x: xy::x(1), y: xy::y(4) },
         };
 
-        // TODO Define a paralell set of distinct wall tiles with the same curving as the main ones
-        // TODO place a wall at these spots
-        let wall_keys = [
-            Key {
-                xy: XY { x: xy::x(5), y: xy::y(3) },
+        type ToggleWallSpecWidth = NonZeroU8;
+
+        // We have the default as wall elsewhere, so let's be consistent.
+        type IsFloorFlag = bool;
+        const IS_WALL: IsFloorFlag = false;
+        const IS_FLOOR: IsFloorFlag = true;
+
+        struct ToggleWallSpec {
+            width: ToggleWallSpecWidth,
+            // TODO? pack these tightly? Does this live long enough for us to care?
+            tiles: Vec1<IsFloorFlag>,
+            base_wh: WH,
+        }
+
+        let wall_spec: ToggleWallSpec = ToggleWallSpec {
+            width: ToggleWallSpecWidth::new(1).expect("Don't set a 0 width!"),
+            tiles: {
+                const W: IsFloorFlag = IS_WALL;
+                const F: IsFloorFlag = IS_FLOOR;
+                vec1![
+                    W,
+                    W,
+                    W,
+                    W,
+                ]
             },
-            Key {
-                xy: XY { x: xy::x(5), y: xy::y(4) },
-            },
-            Key {
-                xy: XY { x: xy::x(5), y: xy::y(5) },
-            },
-            Key {
-                xy: XY { x: xy::x(5), y: xy::y(6) },
-            },
-        ];
+            base_wh: WH { w: xy::w(5), h: xy::h(3) },
+        };
 
         // Set the indexes from the surrounding tiles.
         for index in 0..tiles.len() {
-            let width = usize::from(width.get());
-
-            let mut output_mask = 0;
-
-            macro_rules! set {
-                (-, $subtrahend: expr, $mask: ident) => {
-                    if let Some(tile) = index.checked_sub($subtrahend)
-                        .and_then(|i| tiles.get(i)) {
-        
-                        // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                        // we can use highest_one instead.
-                        let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-
-                        output_mask |= tile.is_floor_mask() << shift;
-                    }
-                };
-                (+, $addend: expr, $mask: ident) => {
-                    if let Some(tile) = index.checked_add($addend)
-                        .and_then(|i| tiles.get(i)) {
-        
-                        // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                        // we can use highest_one instead.
-                        let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-
-                        output_mask |= tile.is_floor_mask() << shift;
-                    }
-                };
+            if tiles[index].is_floor_mask() == 0 {
+                let width = usize::from(width.get());
+    
+                // Assume everything not set is a wall, for maximum merging.
+                let mut output_mask = 0;
+    
+                macro_rules! set {
+                    (-, $subtrahend: expr, $mask: ident) => {
+                        if let Some(tile) = index.checked_sub($subtrahend)
+                            .and_then(|i| tiles.get(i)) {
+            
+                            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                            // we can use highest_one instead.
+                            let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+    
+                            output_mask |= tile.is_floor_mask() << shift;
+                        }
+                    };
+                    (+, $addend: expr, $mask: ident) => {
+                        if let Some(tile) = index.checked_add($addend)
+                            .and_then(|i| tiles.get(i)) {
+            
+                            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                            // we can use highest_one instead.
+                            let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+    
+                            output_mask |= tile.is_floor_mask() << shift;
+                        }
+                    };
+                }
+    
+                set!(-, width + 1, UPPER_LEFT);
+                set!(-, width, UPPER_MIDDLE);
+                set!(-, width - 1, UPPER_RIGHT);
+                set!(-, 1, LEFT_MIDDLE);
+    
+                set!(+, 1, RIGHT_MIDDLE);
+                set!(+, width - 1, LOWER_RIGHT);
+                set!(+, width, LOWER_MIDDLE);
+                set!(+, width + 1, LOWER_LEFT);
+    
+                if let Wall(mask_ref) = &mut tiles[index] {
+                    *mask_ref = output_mask
+                } else {
+                    unreachable!("Tile changed while we were looking at it?!");
+                }
             }
-
-            set!(-, width + 1, UPPER_LEFT);
-            set!(-, width, UPPER_MIDDLE);
-            set!(-, width - 1, UPPER_RIGHT);
-            set!(-, 1, LEFT_MIDDLE);
-
-            set!(+, 1, RIGHT_MIDDLE);
-            set!(+, width - 1, LOWER_RIGHT);
-            set!(+, width, LOWER_MIDDLE);
-            set!(+, width + 1, LOWER_LEFT);
-
-            tiles[index].set_mask(output_mask);
         }
 
         // Add switch
@@ -555,6 +650,63 @@ impl State {
             position: Position::from(switch_key.xy),
             tile_sprite: SWITCH_BASE,
         });
+
+        // Add toggleable walls
+        for index in 0..wall_spec.tiles.len() {
+            if wall_spec.tiles[index] == IS_WALL {
+                let width = usize::from(width.get());
+
+                // Assume everything not set is a floor, to avoid merging 
+                // with walls from other specs.
+                let mut output_mask = 0b1111_1111;
+    
+                macro_rules! set {
+                    (-, $subtrahend: expr, $mask: ident) => {
+                        if let Some(&tile) = index.checked_sub($subtrahend)
+                            .and_then(|i| wall_spec.tiles.get(i)) {
+            
+                            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                            // we can use highest_one instead.
+                            let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+    
+                            if tile == IS_WALL {
+                                output_mask &= !(1 << shift);
+                            }
+                        }
+                    };
+                    (+, $addend: expr, $mask: ident) => {
+                        if let Some(&tile) = index.checked_add($addend)
+                            .and_then(|i| wall_spec.tiles.get(i)) {
+            
+                            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                            // we can use highest_one instead.
+                            let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+    
+                            if tile == IS_WALL {
+                                output_mask &= !(1 << shift);
+                            }
+                        }
+                    };
+                }
+    
+                set!(-, width + 1, UPPER_LEFT);
+                set!(-, width, UPPER_MIDDLE);
+                set!(-, width - 1, UPPER_RIGHT);
+                set!(-, 1, LEFT_MIDDLE);
+    
+                set!(+, 1, RIGHT_MIDDLE);
+                set!(+, width - 1, LOWER_RIGHT);
+                set!(+, width, LOWER_MIDDLE);
+                set!(+, width + 1, LOWER_LEFT);
+    
+                let xy = i_to_xy(wall_spec.width, index) + wall_spec.base_wh;
+
+                insert_entity!(Entity {
+                    position: Position::from(xy),
+                    tile_sprite: TileSprite::ToggleWall(output_mask),
+                });
+            }
+        }
 
         Self {
             rng,
@@ -570,7 +722,8 @@ impl State {
 
     pub fn is_complete(&self) -> bool {
         if let Some(mob) = self.mobs.get(&self.player.key()) {
-            return mob.tile_sprite >= STAIRS_TOP_LEFT_EDGE && mob.tile_sprite <= STAIRS_TOP_RIGHT_EDGE;
+            return mob.tile_sprite.sword_inner_or_0() >= STAIRS_TOP_LEFT_EDGE.sword_inner_or_0()
+                    && mob.tile_sprite.sword_inner_or_0() <= STAIRS_TOP_RIGHT_EDGE.sword_inner_or_0();
         }
         false
     }
@@ -599,6 +752,7 @@ impl State {
         sword_spec: &sprite::Spec::<sprite::SWORD>,
         wall_spec: &sprite::Spec::<sprite::Wall>,
         floor_spec: &sprite::Spec::<sprite::Floor>,
+        toggle_wall_spec: &sprite::Spec::<sprite::ToggleWall>,
         input: Input,
         _speaker: &mut Speaker,
     ) {
@@ -633,7 +787,7 @@ impl State {
 
             let spec_tile = match tile {
                 Wall(..) => wall_spec.tile(),
-                Floor(..) => floor_spec.tile(),
+                Floor => floor_spec.tile(),
             };
 
             let tile_w = spec_tile.w;
@@ -651,9 +805,9 @@ impl State {
                     wall_spec.rect(base_xy),
                     wall_spec.xy_from_tile_sprite(index),
                 ),
-                Floor(index) => (
+                Floor => (
                     floor_spec.rect(base_xy),
-                    floor_spec.xy_from_tile_sprite(index),
+                    floor_spec.xy_from_tile_sprite(0u16),
                 ),
             };
     
@@ -677,10 +831,20 @@ impl State {
                 y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
             };
 
-            commands.sspr(
-                sword_spec.xy_from_tile_sprite(tile_sprite),
-                command::Rect::from_unscaled(sword_spec.offset_rect(offset_xy, base_xy)),
-            );
+            match tile_sprite {
+                TileSprite::Sword(t_s) => {
+                    commands.sspr(
+                        sword_spec.xy_from_tile_sprite(t_s),
+                        command::Rect::from_unscaled(sword_spec.offset_rect(offset_xy, base_xy)),
+                    );
+                },
+                TileSprite::ToggleWall(t_s) => {
+                    commands.sspr(
+                        toggle_wall_spec.xy_from_tile_sprite(t_s),
+                        command::Rect::from_unscaled(toggle_wall_spec.offset_rect(offset_xy, base_xy)),
+                    );
+                },
+            }
         };
 
         let mut draw_at_position = |position: Position, tile_sprite| {
@@ -693,10 +857,21 @@ impl State {
 
         let facing_index = self.facing.index();
 
-        draw_at_position(self.player.position, self.player.tile_sprite + tiles_per_row as TileSprite * facing_index as TileSprite);
+        draw_at_position(
+            self.player.position,
+            TileSprite::Sword(
+                self.player.tile_sprite.sword_inner_or_0() + tiles_per_row as SwordTileSpriteInner * facing_index as SwordTileSpriteInner
+            ),
+        );
 
         if let (staff_xy, EdgeHitKind::Neither) = xy_in_dir(self.player.position.xy(), self.facing) {
-            draw_at_position_pieces(staff_xy, self.player.position.offset(), STAFF_BASE + tiles_per_row as TileSprite * facing_index as TileSprite);
+            draw_at_position_pieces(
+                staff_xy,
+                self.player.position.offset(), 
+                TileSprite::Sword(
+                    STAFF_BASE.sword_inner_or_0() + tiles_per_row as SwordTileSpriteInner * facing_index as SwordTileSpriteInner
+                ),
+            );
         }
     }
 }

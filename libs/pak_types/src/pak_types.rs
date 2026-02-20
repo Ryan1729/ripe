@@ -670,6 +670,10 @@ pub mod sprite {
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct Floor;
 
+    /// Marker
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct ToggleWall;
+
     pub type Inner = u16;
     #[derive(Debug, PartialEq, Eq)]
     pub struct X<Marker>(Inner, PhantomData<Marker>);
@@ -962,6 +966,7 @@ pub mod sprite {
         pub sword: Spec<SWORD>,
         pub wall: Spec<Wall>,
         pub floor: Spec<Floor>,
+        pub toggle_wall: Spec<ToggleWall>,
     }
     
     impl Default for Specs {
@@ -987,6 +992,8 @@ pub mod sprite {
                     tile: WH{ w: W(20), h: H(20) },
                     tiles_per_row: 2,
                 }),
+                // TODO? Bundle all these S.W.O.R.D. related ones into
+                // a substruct? {
                 sword: spec::<SWORD>(SpecPieces{
                     offset: WH{ w: W(176), h: H(0) },
                     tile: WH{ w: W(16), h: H(16) },
@@ -998,10 +1005,16 @@ pub mod sprite {
                     tiles_per_row: 16,
                 }),
                 floor: spec::<Floor>(SpecPieces{
+                    offset: WH{ w: W(176 + (5 - 1) * 16), h: H(15 * 16) },
+                    tile: WH{ w: W(16), h: H(16) },
+                    tiles_per_row: 16,
+                }),
+                toggle_wall: spec::<ToggleWall>(SpecPieces{
                     offset: WH{ w: W(176 + 5 * 16 + 16 * 16), h: H(0) },
                     tile: WH{ w: W(16), h: H(16) },
                     tiles_per_row: 16,
                 }),
+                // }
             }
         }
     }

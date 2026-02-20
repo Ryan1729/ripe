@@ -19,26 +19,31 @@ struct State {
 }
 
 fn frame(state: &mut State) -> (&[platform_types::Command], (&[gfx_sizes::ARGB], usize)) {
+    use TileIndex::{Wall, Floor};
     //
     // Update
     //
     if state.input.pressed_this_frame(Button::A) {
         state.tile_index = match state.tile_index {
-            TileIndex::Wall(neighbors) => TileIndex::Floor(neighbors),
-            TileIndex::Floor(neighbors) => TileIndex::Wall(neighbors),
+            TileIndex::Wall(..) => TileIndex::Floor,
+            TileIndex::Floor => TileIndex::Wall(0),
         };
     } else if state.input.pressed_this_frame(Button::UP) {
-        let mask = state.tile_index.neighbor_mask_mut();
-        *mask = mask.wrapping_add(1);
+        if let Wall(mask) = &mut state.tile_index { 
+            *mask = mask.wrapping_add(1);
+        }
     } else if state.input.pressed_this_frame(Button::DOWN) {
-        let mask = state.tile_index.neighbor_mask_mut();
-        *mask = mask.wrapping_sub(1);
+        if let Wall(mask) = &mut state.tile_index { 
+            *mask = mask.wrapping_sub(1);
+        }
     } else if state.input.pressed_this_frame(Button::RIGHT) {
-        let mask = state.tile_index.neighbor_mask_mut();
-        *mask = mask.wrapping_add(16);
+        if let Wall(mask) = &mut state.tile_index { 
+            *mask = mask.wrapping_add(16);
+        }
     } else if state.input.pressed_this_frame(Button::LEFT) {
-        let mask = state.tile_index.neighbor_mask_mut();
-        *mask = mask.wrapping_sub(16);
+        if let Wall(mask) = &mut state.tile_index { 
+            *mask = mask.wrapping_sub(16);
+        }
     }
 
 
@@ -65,9 +70,9 @@ fn frame(state: &mut State) -> (&[platform_types::Command], (&[gfx_sizes::ARGB],
                 wall_spec.rect(xy),
                 wall_spec.xy_from_tile_sprite(index),
             ),
-            TileIndex::Floor(index) => (
+            TileIndex::Floor => (
                 floor_spec.rect(xy),
-                floor_spec.xy_from_tile_sprite(index),
+                floor_spec.xy_from_tile_sprite(0u16),
             ),
         };
 
@@ -131,9 +136,10 @@ fn neighboring_demo_indexes(tile_index: TileIndex) -> [TileIndex; 9] {
     use TileIndex::{Wall, Floor};
     use sword::{LOWER_RIGHT, LOWER_MIDDLE, LOWER_LEFT, RIGHT_MIDDLE, LEFT_MIDDLE, UPPER_RIGHT, UPPER_MIDDLE, UPPER_LEFT};
 
-    let neighbor_mask = tile_index.neighbor_mask();
-
-    let is_floor_mask = tile_index.is_floor_mask();
+    let neighbor_mask = match tile_index {
+        Wall(mask) => mask,
+        Floor => return [Floor; 9],
+    };
 
     let neighboring_demo_index = |
         // "me" refers to the to-be-constructed index, and "base" refers to `state.tile_index`
@@ -141,7 +147,7 @@ fn neighboring_demo_indexes(tile_index: TileIndex) -> [TileIndex; 9] {
         adjacent_assignment_masks: &[(NeighborFlag, NeighborFlag)],
     | {
         let variant_fn = if (neighbor_mask & from_base_to_me_mask.get()) != 0 {
-            Floor
+            return Floor
         } else {
             Wall
         };
@@ -156,12 +162,6 @@ fn neighboring_demo_indexes(tile_index: TileIndex) -> [TileIndex; 9] {
 
             output_mask |= ((neighbor_mask & base_mask.get()) >> base_shift) << me_shift;
         }
-
-        // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-        // we can use highest_one instead
-        let from_me_to_base_shift = NeighborMask::BITS - 1 - from_me_to_base_mask.leading_zeros();
-
-        output_mask |= is_floor_mask << from_me_to_base_shift;
 
         variant_fn(output_mask)
     };
@@ -222,7 +222,7 @@ mod neighboring_demo_indexes_works_on {
         let w1 = neighboring_demo_indexes(Wall(0b0000_0001));
 
         let expected = [
-            Floor(0),
+            Floor,
             Wall(LEFT_MIDDLE.get()),
             Wall(0),
             Wall(UPPER_MIDDLE.get()),
@@ -245,9 +245,10 @@ mod neighboring_demo_indexes_works_on {
             Wall(0b0000_0001)
         );
         assert!(matches!(w254[0], Wall(_)));
-
-        assert!((w254[0].neighbor_mask() & RIGHT_MIDDLE.get()) != 0);
-        assert!((w254[0].neighbor_mask() & LOWER_MIDDLE.get()) != 0);
+        if let Wall(neighbor_mask) = w254[0] {
+            assert!((neighbor_mask & RIGHT_MIDDLE.get()) != 0);
+            assert!((neighbor_mask & LOWER_MIDDLE.get()) != 0);
+        }
     }
 
     #[test]
@@ -255,15 +256,15 @@ mod neighboring_demo_indexes_works_on {
         let w255 = neighboring_demo_indexes(Wall(0b1111_1111));
 
         let expected = [
-            Floor((RIGHT_MIDDLE | LOWER_MIDDLE).get()),
-            Floor((LEFT_MIDDLE | RIGHT_MIDDLE | LOWER_LEFT | LOWER_RIGHT).get()),
-            Floor((LEFT_MIDDLE | LOWER_MIDDLE).get()),
-            Floor((UPPER_MIDDLE | UPPER_RIGHT | LOWER_MIDDLE | LOWER_RIGHT).get()),
+            Floor,
+            Floor,
+            Floor,
+            Floor,
             Wall(0b1111_1111),
-            Floor((UPPER_LEFT | UPPER_MIDDLE | LOWER_LEFT | LOWER_MIDDLE).get()),
-            Floor((UPPER_MIDDLE | RIGHT_MIDDLE).get()),
-            Floor((UPPER_LEFT| UPPER_RIGHT | LEFT_MIDDLE | RIGHT_MIDDLE).get()),
-            Floor((UPPER_MIDDLE | LEFT_MIDDLE).get()),
+            Floor,
+            Floor,
+            Floor,
+            Floor,
         ];
 
         assert_eq!(w255, expected);
