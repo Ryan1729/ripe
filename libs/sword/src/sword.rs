@@ -217,7 +217,7 @@ use xy::{X, Y, XY, W, H, WH};
 
 type SwordTileSpriteInner = u8;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TileSprite {
     Sword(SwordTileSpriteInner),
     ToggleWall(NeighborMask)
@@ -235,6 +235,11 @@ impl TileSprite {
             TileSprite::Sword(inner) => inner,
             _ => 0,
         }
+    }
+
+    fn is_stairs(&self) -> bool {
+         self.sword_inner_or_0() >= STAIRS_TOP_LEFT_EDGE.sword_inner_or_0()
+             && self.sword_inner_or_0() <= STAIRS_TOP_RIGHT_EDGE.sword_inner_or_0()
     }
 }
 
@@ -292,10 +297,34 @@ mod position {
 }
 use position::Position;
 
+type ToggleWallSpecWidth = NonZeroU8;
+
+/// We have the default as wall elsewhere, so let's be consistent.
+type IsFloorFlag = bool;
+const IS_WALL: IsFloorFlag = false;
+const IS_FLOOR: IsFloorFlag = true;
+
+pub struct ToggleWallSpec {
+    pub width: ToggleWallSpecWidth,
+    // TODO? pack these tightly? Does this live long enough for us to care?
+    pub tiles: Vec1<IsFloorFlag>,
+    pub base_wh: WH,
+}
+
+pub type ToggleGroupId = u8;
+const NULL_GROUP: ToggleGroupId = 0;
+const FIRST_GROUP: ToggleGroupId = 1;
+
+pub type EntityFlags = u8;
+
+const GONE: EntityFlags = 1 << 0;
+
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
     pub position: Position,
     pub tile_sprite: TileSprite,
+    pub toggle_group_id: ToggleGroupId,
+    pub flags: EntityFlags,
 }
 
 impl Entity {
@@ -487,9 +516,42 @@ fn can_walk_onto_tile(tiles: &Tiles, xy: XY) -> bool {
 
 fn can_walk_onto(mobs: &Entities, tiles: &Tiles, key: Key) -> bool {
     can_walk_onto_tile(tiles, key.xy) && {
-        mobs.get(&key).is_none()
+        match mobs.get(&key) {
+            Some(mob) => {
+                // Can walk onto things that are gone.
+                (mob.flags & GONE) == GONE
+                || mob.tile_sprite.is_stairs()
+            },
+            None => true,
+        }
     }
 }
+
+#[derive(Clone, Debug)]
+pub enum AnimationKind {
+    Reset,
+}
+
+pub type Frames = u16;
+
+#[derive(Clone, Debug)]
+pub struct Animation {
+    pub kind: AnimationKind,
+    pub target_key: Key,
+    pub frames_left: Frames,
+}
+
+impl Animation {
+    pub fn reset(target_key: Key) -> Self {
+        Self {
+            kind: AnimationKind::Reset,
+            target_key,
+            frames_left: 12,
+        }
+    }
+}
+
+pub type Animations = Vec<Animation>;
 
 #[derive(Clone, Debug)]
 pub struct State {
@@ -498,6 +560,7 @@ pub struct State {
     pub facing: Dir8,
     pub mobs: Entities,
     pub tiles: Tiles,
+    pub animations: Animations,
 }
 
 impl State {
@@ -540,6 +603,7 @@ impl State {
             insert_entity!(Entity {
                 position: Position::from(key.xy),
                 tile_sprite: TileSprite::Sword(STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + offset),
+                ..<_>::default()
             });
             offset += 1;
         }
@@ -565,37 +629,25 @@ impl State {
             xy: XY { x: xy::x(1), y: xy::y(4) },
         };
 
-        type ToggleWallSpecWidth = NonZeroU8;
-
-        // We have the default as wall elsewhere, so let's be consistent.
-        type IsFloorFlag = bool;
-        const IS_WALL: IsFloorFlag = false;
-        const IS_FLOOR: IsFloorFlag = true;
-
-        struct ToggleWallSpec {
-            width: ToggleWallSpecWidth,
-            // TODO? pack these tightly? Does this live long enough for us to care?
-            tiles: Vec1<IsFloorFlag>,
-            base_wh: WH,
-        }
-
         // TODO automatically add floor to the tiles,
         // so we don't need to add it in the config file.
         // (Is a column along the right edge always enough?)
-        let wall_spec: ToggleWallSpec = ToggleWallSpec {
-            width: ToggleWallSpecWidth::new(2).expect("Don't set a 0 width!"),
-            tiles: {
-                const W: IsFloorFlag = IS_WALL;
-                const F: IsFloorFlag = IS_FLOOR;
-                vec1![
-                    W, F,
-                    W, F,
-                    W, F,
-                    W, F,
-                ]
+        let wall_specs: [ToggleWallSpec; 1] = [
+            ToggleWallSpec {
+                width: ToggleWallSpecWidth::new(2).expect("Don't set a 0 width!"),
+                tiles: {
+                    const W: IsFloorFlag = IS_WALL;
+                    const F: IsFloorFlag = IS_FLOOR;
+                    vec1![
+                        W, F,
+                        W, F,
+                        W, F,
+                        W, F,
+                    ]
+                },
+                base_wh: WH { w: xy::w(5), h: xy::h(3) },
             },
-            base_wh: WH { w: xy::w(5), h: xy::h(3) },
-        };
+        ];
 
         // Set the indexes from the surrounding tiles.
         for index in 0..tiles.len() {
@@ -652,63 +704,72 @@ impl State {
         insert_entity!(Entity {
             position: Position::from(switch_key.xy),
             tile_sprite: SWITCH_BASE,
+            toggle_group_id: FIRST_GROUP,
+            ..<_>::default()
         });
 
         // Add toggleable walls
-        for index in 0..wall_spec.tiles.len() {
-            if wall_spec.tiles[index] == IS_WALL {
-                let width = usize::from(wall_spec.width.get());
+        let mut free_group_id = FIRST_GROUP;
+        for wall_spec in wall_specs {
+            for index in 0..wall_spec.tiles.len() {
+                if wall_spec.tiles[index] == IS_WALL {
+                    let width = usize::from(wall_spec.width.get());
 
-                // Assume everything not set is a floor, to avoid merging
-                // with walls from other specs.
-                let mut output_mask = 0b1111_1111;
+                    // Assume everything not set is a floor, to avoid merging
+                    // with walls from other specs.
+                    let mut output_mask = 0b1111_1111;
 
-                macro_rules! set {
-                    (-, $subtrahend: expr, $mask: ident) => {
-                        if let Some(&tile) = index.checked_sub($subtrahend)
-                            .and_then(|i| wall_spec.tiles.get(i)) {
+                    macro_rules! set {
+                        (-, $subtrahend: expr, $mask: ident) => {
+                            if let Some(&tile) = index.checked_sub($subtrahend)
+                                .and_then(|i| wall_spec.tiles.get(i)) {
 
-                            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                            // we can use highest_one instead.
-                            let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+                                // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                                // we can use highest_one instead.
+                                let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
 
-                            if tile == IS_WALL {
-                                output_mask &= !(1 << shift);
+                                if tile == IS_WALL {
+                                    output_mask &= !(1 << shift);
+                                }
                             }
-                        }
-                    };
-                    (+, $addend: expr, $mask: ident) => {
-                        if let Some(&tile) = index.checked_add($addend)
-                            .and_then(|i| wall_spec.tiles.get(i)) {
+                        };
+                        (+, $addend: expr, $mask: ident) => {
+                            if let Some(&tile) = index.checked_add($addend)
+                                .and_then(|i| wall_spec.tiles.get(i)) {
 
-                            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                            // we can use highest_one instead.
-                            let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+                                // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                                // we can use highest_one instead.
+                                let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
 
-                            if tile == IS_WALL {
-                                output_mask &= !(1 << shift);
+                                if tile == IS_WALL {
+                                    output_mask &= !(1 << shift);
+                                }
                             }
-                        }
-                    };
+                        };
+                    }
+
+                    set!(-, width + 1, UPPER_LEFT);
+                    set!(-, width, UPPER_MIDDLE);
+                    set!(-, width - 1, UPPER_RIGHT);
+                    set!(-, 1, LEFT_MIDDLE);
+
+                    set!(+, 1, RIGHT_MIDDLE);
+                    set!(+, width - 1, LOWER_RIGHT);
+                    set!(+, width, LOWER_MIDDLE);
+                    set!(+, width + 1, LOWER_LEFT);
+
+                    let xy = i_to_xy(wall_spec.width, index) + wall_spec.base_wh;
+
+                    insert_entity!(Entity {
+                        position: Position::from(xy),
+                        tile_sprite: TileSprite::ToggleWall(output_mask),
+                        toggle_group_id: free_group_id,
+                        ..<_>::default()
+                    });
                 }
-
-                set!(-, width + 1, UPPER_LEFT);
-                set!(-, width, UPPER_MIDDLE);
-                set!(-, width - 1, UPPER_RIGHT);
-                set!(-, 1, LEFT_MIDDLE);
-
-                set!(+, 1, RIGHT_MIDDLE);
-                set!(+, width - 1, LOWER_RIGHT);
-                set!(+, width, LOWER_MIDDLE);
-                set!(+, width + 1, LOWER_LEFT);
-
-                let xy = i_to_xy(wall_spec.width, index) + wall_spec.base_wh;
-
-                insert_entity!(Entity {
-                    position: Position::from(xy),
-                    tile_sprite: TileSprite::ToggleWall(output_mask),
-                });
             }
+
+            free_group_id += 1;
         }
 
         Self {
@@ -720,13 +781,13 @@ impl State {
                 width,
                 tiles,
             },
+            animations: <_>::default(),
         }
     }
 
     pub fn is_complete(&self) -> bool {
         if let Some(mob) = self.mobs.get(&self.player.key()) {
-            return mob.tile_sprite.sword_inner_or_0() >= STAIRS_TOP_LEFT_EDGE.sword_inner_or_0()
-                    && mob.tile_sprite.sword_inner_or_0() <= STAIRS_TOP_RIGHT_EDGE.sword_inner_or_0();
+            return mob.tile_sprite.is_stairs();
         }
         false
     }
@@ -746,6 +807,31 @@ impl State {
 
         for entity in self.all_entities_mut() {
             entity.position.decay();
+        }
+
+        for i in (0..self.animations.len()).rev() {
+            let animation = &mut self.animations[i];
+            if animation.frames_left > 0 {
+                animation.frames_left -= 1;
+            } else {
+                let animation = self.animations.swap_remove(i);
+
+                // Handle any final actions
+                match animation.kind {
+                    AnimationKind::Reset => {
+                        if let Some(mob) = self.mobs.get_mut(&animation.target_key) {
+                            match mob.tile_sprite {
+                                SWITCH_HIT => {
+                                    mob.tile_sprite = SWITCH_BASE;
+                                }
+                                _ => {}
+                            }
+                        } else {
+                            debug_assert!(false, "No mob fount at {:?}", animation.target_key);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -776,6 +862,55 @@ impl State {
             self.facing = self.facing.counter_clockwise();
         } else if input.pressed_this_frame(Button::B) {
             self.facing = self.facing.clockwise();
+        }
+
+        let staff_xy_pair = xy_in_dir(self.player.position.xy(), self.facing);
+
+        if let &(staff_xy, EdgeHitKind::Neither) = &staff_xy_pair {
+            let key = Key { xy: staff_xy };
+
+            enum PostEffect {
+                NoOp,
+                Toggle(ToggleGroupId),
+            }
+            use PostEffect::*;
+            let mut effect = PostEffect::NoOp;
+
+            match self.mobs.get_mut(&key) {
+                Some(hit_mob) if hit_mob.tile_sprite == SWITCH_BASE => {
+                    hit_mob.tile_sprite = SWITCH_HIT;
+
+                    // Start animation timer
+                    self.animations.push(Animation::reset(key));
+
+                    // TODO Good place for SFX
+                    dbg!(hit_mob.toggle_group_id);
+                    // Toggle relevant mobs
+                    if hit_mob.toggle_group_id != NULL_GROUP {
+                        dbg!(hit_mob.toggle_group_id);
+                        effect = Toggle(hit_mob.toggle_group_id);
+                    }
+                }
+                Some(_) | None => {}
+            }
+
+            match effect {
+                NoOp => {},
+                Toggle(group_id) => {
+                    // TODO? Is it worth building an acceleration structure for this loopup?
+                    for mob in self.mobs.values_mut() {
+                        if mob.toggle_group_id == group_id {
+                            dbg!(mob.toggle_group_id);
+                            match mob.tile_sprite {
+                                TileSprite::ToggleWall(..) => {
+                                    mob.flags ^= GONE;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         //
@@ -855,10 +990,15 @@ impl State {
         };
 
         for entity in self.mobs.values() {
+            // Don't draw things that are gone.
+            if entity.flags & GONE == GONE { continue }
+
             draw_at_position(entity.position, entity.tile_sprite);
         }
 
         let facing_index = self.facing.index();
+
+        assert_eq!(self.player.flags & GONE, 0, "The player should never be gone!");
 
         draw_at_position(
             self.player.position,
@@ -867,7 +1007,7 @@ impl State {
             ),
         );
 
-        if let (staff_xy, EdgeHitKind::Neither) = xy_in_dir(self.player.position.xy(), self.facing) {
+        if let (staff_xy, EdgeHitKind::Neither) = staff_xy_pair {
             draw_at_position_pieces(
                 staff_xy,
                 self.player.position.offset(),
