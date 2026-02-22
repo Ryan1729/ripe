@@ -541,12 +541,14 @@ pub struct Animation {
     pub frames_left: Frames,
 }
 
+const RESET_ANIMATION_LENGTH: Frames = 12;
+
 impl Animation {
     pub fn reset(target_key: Key) -> Self {
         Self {
             kind: AnimationKind::Reset,
             target_key,
-            frames_left: 12,
+            frames_left: RESET_ANIMATION_LENGTH,
         }
     }
 }
@@ -800,7 +802,13 @@ impl State {
         std::iter::once(&mut self.player).chain(self.mobs.values_mut())
     }
 
+    fn staff_xy_pair(&self) -> (XY, EdgeHitKind) {
+        xy_in_dir(self.player.position.xy(), self.facing)
+    }
+
     fn tick(&mut self) {
+        let staff_xy_pair = self.staff_xy_pair();
+
         //
         // Advance timers
         //
@@ -814,20 +822,44 @@ impl State {
             if animation.frames_left > 0 {
                 animation.frames_left -= 1;
             } else {
-                let animation = self.animations.swap_remove(i);
+                let mut animation = self.animations.swap_remove(i);
 
                 // Handle any final actions
                 match animation.kind {
                     AnimationKind::Reset => {
+                        enum PostAction {
+                            NoOp,
+                            RedoAnimation,
+                        }
+                        let mut post_action = PostAction::NoOp;
+
                         if let Some(mob) = self.mobs.get_mut(&animation.target_key) {
                             match mob.tile_sprite {
                                 SWITCH_HIT => {
-                                    mob.tile_sprite = SWITCH_BASE;
+                                    let should_redo_animation = if let (staff_xy, EdgeHitKind::Neither) = staff_xy_pair {
+                                        staff_xy == animation.target_key.xy
+                                    } else {
+                                        false
+                                    };
+
+                                    if should_redo_animation {
+                                        post_action = PostAction::RedoAnimation;
+                                    } else {
+                                        mob.tile_sprite = SWITCH_BASE;
+                                    }
                                 }
                                 _ => {}
                             }
                         } else {
-                            debug_assert!(false, "No mob fount at {:?}", animation.target_key);
+                            debug_assert!(false, "No mob found at {:?}", animation.target_key);
+                        }
+
+                        match post_action {
+                            PostAction::NoOp => {}
+                            PostAction::RedoAnimation => {
+                                animation.frames_left = RESET_ANIMATION_LENGTH;
+                                self.animations.push(animation);
+                            }
                         }
                     }
                 }
@@ -864,7 +896,7 @@ impl State {
             self.facing = self.facing.clockwise();
         }
 
-        let staff_xy_pair = xy_in_dir(self.player.position.xy(), self.facing);
+        let staff_xy_pair = self.staff_xy_pair();
 
         if let &(staff_xy, EdgeHitKind::Neither) = &staff_xy_pair {
             let key = Key { xy: staff_xy };
@@ -884,10 +916,10 @@ impl State {
                     self.animations.push(Animation::reset(key));
 
                     // TODO Good place for SFX
-                    dbg!(hit_mob.toggle_group_id);
+
+
                     // Toggle relevant mobs
                     if hit_mob.toggle_group_id != NULL_GROUP {
-                        dbg!(hit_mob.toggle_group_id);
                         effect = Toggle(hit_mob.toggle_group_id);
                     }
                 }
@@ -900,7 +932,6 @@ impl State {
                     // TODO? Is it worth building an acceleration structure for this loopup?
                     for mob in self.mobs.values_mut() {
                         if mob.toggle_group_id == group_id {
-                            dbg!(mob.toggle_group_id);
                             match mob.tile_sprite {
                                 TileSprite::ToggleWall(..) => {
                                     mob.flags ^= GONE;
