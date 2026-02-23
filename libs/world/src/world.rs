@@ -864,6 +864,8 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
         const MIN_PER_SPHERE: u8 = 2;
         const MAX_PER_SPHERE: u8 = 10;
 
+        // A partitioning of the segment ID range into chunks.
+        // No segment ID appears in more than one chunk.
         let mut chunks: Vec<Vec<SegmentId>> = Vec::with_capacity(
             (segments_count / SegmentId::from(MIN_PER_SPHERE)).into()
         );
@@ -960,7 +962,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                         hallway_states.insert(
                             key_i,
                             key_j,
-                            hallway::State::SWORD(sword::State::new(rng)),
+                            hallway::State::SWORD(sword::State::new(rng, &specs.wall)),
                         );
                     },
                 }

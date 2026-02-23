@@ -189,14 +189,8 @@ mod platform {
 
     /// `Platform` function pointers
     pub fn size(spec: &sprite::Spec::<IcePuzzles>) -> Size {
-        let tile = spec.tile();
-        let tile_w = tile.w;
-        let tile_h = tile.h;
-        
-        Size::new(
-            (command::WIDTH / tile_w.get()).into(),
-            (command::HEIGHT / tile_h.get()).into(),
-        )
+        let (w, h) = spec.max_tile_counts();
+        Size::new(w.into(), h.into())
     }
 
     /// `platform` state management

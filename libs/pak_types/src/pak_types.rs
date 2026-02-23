@@ -895,6 +895,19 @@ pub mod sprite {
             self.tiles_per_row
         }
 
+        /// The largest amount of tiles that can be placed in a grid, given the COMMAND_WIDTH and COMMAND_HEIGHT,
+        /// and this spec's tile W/H.
+        pub fn max_tile_counts(&self) -> (u16, u16) {
+            let tile = self.tile();
+            let tile_w = tile.w;
+            let tile_h = tile.h;
+        
+            (
+                (gfx_sizes::COMMAND_WIDTH / tile_w.get()).into(),
+                (gfx_sizes::COMMAND_HEIGHT / tile_h.get()).into(),
+            )
+        }
+
         /// Not advised for general use, but only when initally constructing the specs
         /// while retaining the default values from Specs.
         // TODO? Is there a clean way to allow that to work, and avoid exposing this?

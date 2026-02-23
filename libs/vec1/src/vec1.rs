@@ -127,6 +127,10 @@ macro_rules! _vec1 {
     ($($element: expr),+ $(,)?) => {
         $crate::Vec1::try_from(vec![ $($element),+ ])
             .expect("vec1 macro should have syntactically prevented this error from happening!")
-    }
+    };
+    ($element: expr; $amount: expr) => {
+        $crate::Vec1::try_from(vec![ $element; core::cmp::max(usize::from($amount), 1) ])
+            .expect("vec1 macro should have syntactically prevented this error from happening!")
+    };
 }
 pub use _vec1 as vec1;

@@ -6,7 +6,7 @@ use vec1::{Vec1, vec1};
 use xs::Xs;
 
 use std::collections::BTreeMap;
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroU16};
 
 /*
     Notes on wall/floor tiles and their various edge types:
@@ -213,6 +213,7 @@ pub mod xy {
         }
     }
 }
+#[allow(unused_imports)]
 use xy::{X, Y, XY, W, H, WH};
 
 type SwordTileSpriteInner = u8;
@@ -474,18 +475,21 @@ fn xy_in_dir(xy: XY, dir: Dir8) -> (XY, EdgeHitKind) {
     )
 }
 
-pub fn i_to_xy(width: TilesWidth, index: usize) -> XY {
+pub fn i_to_xy(width: impl Into<TilesWidth>, index: usize) -> XY {
+    let width = width.into();
     XY {
         x: xy::x((index % usize::from(width.get())) as _),
         y: xy::y((index / usize::from(width.get())) as _),
     }
 }
 
+#[derive(Debug)]
 pub enum XYToIError {
     XPastWidth
 }
 
-pub fn xy_to_i(width: TilesWidth, xy: XY) -> Result<usize, XYToIError> {
+pub fn xy_to_i(width: impl Into<TilesWidth>, xy: XY) -> Result<usize, XYToIError> {
+    let width = width.into();
     let width_usize = usize::from(width.get());
 
     let x_usize = xy.x.usize();
@@ -496,7 +500,7 @@ pub fn xy_to_i(width: TilesWidth, xy: XY) -> Result<usize, XYToIError> {
     Ok(xy.y.usize() * width_usize + x_usize)
 }
 
-pub type TilesWidth = NonZeroU8;
+pub type TilesWidth = NonZeroU16;
 
 #[derive(Clone, Debug)]
 pub struct Tiles {
@@ -566,7 +570,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(rng: &mut Xs) -> Self {
+    pub fn new(rng: &mut Xs, wall_spec: &sprite::Spec<sprite::Wall>) -> Self {
         let seed = xs::new_seed(rng);
 
         let mut rng = xs::from_seed(seed);
@@ -590,41 +594,140 @@ impl State {
             })
         }
 
-        let mut offset = 0;
-        for key in [
-            Key {
-                xy: XY { x: xy::X(6), y },
-            },
-            Key {
-                xy: XY { x: xy::X(7), y },
-            },
-            Key {
-                xy: XY { x: xy::X(8), y },
-            },
-        ] {
-            insert_entity!(Entity {
-                position: Position::from(key.xy),
-                tile_sprite: TileSprite::Sword(STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + offset),
-                ..<_>::default()
-            });
-            offset += 1;
-        }
-
         use TileIndex::*;
 
-        let width = TilesWidth::new(10).expect("Don't set a 0 width!");
+        let (mut max_tile_w, mut max_tile_h) = wall_spec.max_tile_counts();
+
+        if max_tile_w == 0 {
+            max_tile_w = 1;
+        }
+        if max_tile_h == 0 {
+            max_tile_h = 1;
+        }
+
+        let width = TilesWidth::new(max_tile_w).expect("Don't set a 0 width!");
         let mut tiles = {
+            // Proposal for tiles generation:
+            //     Overall idea: Start with a completable level and add compliciations to it, that keep it solvable.
+            // Rough Algorithm:
+            // Start with a starting spot and an exit, right next to each other.
+            // Pick a random list of the following operations to do, in sequence:
+            //    * Add a longer hallway between them, maybe with a bend in the road.
+            //    * Add a toggle door, and a switch on the starting side.
+            //        * Sub steps:
+            //            * Pick a point in the hallway to have a door. 
+            //            * Place the door there, keeping track of the toggle group id.
+            //            * Pick a point between the door and the starting spot
+            //            * Place the switch there, and make it toggle the door
+            //
+            // If we end up wanting harder puzzles, come up with examples of them, say
+            // some small gadget where you have to unswitch a switch to get to another 
+            // switch, to unlock the next door and make inserting that a step to choose
+            // from.
+
+            // Might end up doing a Dijkstra's algorithm thing that counts the number of steps, 
+            // so we can place doors that block access to all places N steps along all paths.
+
+            // Suggested steps for the implementation itself:
+            // * Start generating random start and end locations, right next to each other.
+            // * Start extending the hallway by a random amount
+            //    * use the loop implied by the rough algorithm above, with a space for a `match`
+            // * Implement bounds checking and corner turning for the hallway
+            // * Place doors, or some other recognizable thing at random spots along the hallway
+            // * Place the switches for those doors.
+            // * Evaluate whether this feels like enough
+
+            // Start generating random start and end locations, right next to each other.
+
             const W: Tile = Wall(0);
             const F: Tile = Floor;
-            vec1![
-                F, F, F, F, F, W, F, F, F, F,
-                F, F, F, F, F, W, F, F, F, F,
-                F, F, F, F, F, W, W, F, W, W,
-                F, F, F, F, F, F, F, F, F, F,
-                W, F, W, F, F, F, F, F, F, F,
-                W, W, W, F, F, F, F, F, F, F,
-                W, W, W, F, F, F, F, F, F, F,
-            ]
+
+            let mut tiles = vec1![W; max_tile_w * max_tile_h];
+
+            mod random {
+                use super::*;
+                pub type Index = usize;
+
+                #[derive(Debug)]
+                pub enum NonEdgeError {
+                    WidthTooSmall,
+                    TilesTooShort,
+                    XYToI(XYToIError),
+                }
+
+                impl From<XYToIError> for NonEdgeError {
+                    fn from(e: XYToIError) -> Self {
+                        NonEdgeError::XYToI(e)
+                    }
+                }
+
+                pub fn non_edge_index(width: TilesWidth, tiles: &[Tile], rng: &mut Xs) -> Result<Index, NonEdgeError> {
+                    if width.get() < 3 {
+                        return Err(NonEdgeError::WidthTooSmall);
+                    }
+
+                    // The min/max non-edge corners; The corners of the rectangle of non-edge pieces.
+                    let min_corner_xy = todo!();
+                    let max_corner_xy = todo!();
+
+                    let min_corner_index = xy_to_i(width, min_corner_xy)?;
+                    let max_corner_index = xy_to_i(width, max_corner_xy)?;
+
+                    if max_corner_index < min_corner_index {
+                        return Err(NonEdgeError::TilesTooShort);
+                    }
+
+                    Ok(
+                        xs::range(rng, min_corner_index as u32..max_corner_index as u32 + 1) as usize
+                    )
+                }
+            }
+
+            let exit_index_result = random::non_edge_index(width, &tiles, &mut rng);
+            debug_assert!(exit_index_result.is_ok(), "got {exit_index_result:?}");
+            let exit_index = exit_index_result.unwrap_or_default();
+
+            // A lot of things here rely on the starting exit_index being an non-edge tile!
+
+            tiles[exit_index - 1] = F;
+            tiles[exit_index] = F;
+            tiles[exit_index + 1] = F;
+
+            let base_exit_xy = i_to_xy(width, exit_index);
+
+            let mut offset = 0;
+            for key in [
+                Key {
+                    xy: XY { x: base_exit_xy.x - xy::w(1), y: base_exit_xy.y },
+                },
+                Key {
+                    xy: XY { x: base_exit_xy.x, y: base_exit_xy.y },
+                },
+                Key {
+                    xy: XY { x: base_exit_xy.x + xy::w(1), y: base_exit_xy.y },
+                },
+            ] {
+                insert_entity!(Entity {
+                    position: Position::from(key.xy),
+                    tile_sprite: TileSprite::Sword(STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + offset),
+                    ..<_>::default()
+                });
+                offset += 1;
+            }
+
+            let start_xy = XY { x: base_exit_xy.x, y: base_exit_xy.y + xy::h(1) };
+
+            let start_index_result = xy_to_i(width, start_xy);
+
+            debug_assert!(start_index_result.is_ok(), "got {start_index_result:?}");
+
+            let start_index = start_index_result.unwrap_or_default();
+
+            tiles[start_index] = F;
+
+            player.position = start_xy.into();
+
+            tiles
         };
 
         let switch_key = Key {
