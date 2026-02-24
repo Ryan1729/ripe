@@ -1031,7 +1031,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
     {
         // Assert that every segment has at least two doors.
 
-        let mut checklist = vec![0 ;segments_count.into()];
+        let mut checklist = vec![0; segments_count.into()];
 
         for segment_id in 0..segments_count {
             for (_, mob) in world.mobs.for_id(segment_id) {

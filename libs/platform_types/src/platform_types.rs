@@ -573,12 +573,22 @@ pub mod button {
 }
 pub use button::Button;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default,PartialEq, Eq)]
 pub enum Dir {
+    #[default]
     Left,
     Right,
     Up,
     Down,
+}
+
+impl Dir {
+    pub const ALL: [Dir; 4] = [
+        Dir::Left,
+        Dir::Right,
+        Dir::Up,
+        Dir::Down,
+    ];
 }
 
 pub type Logger = Option<fn(&str) -> ()>;

@@ -96,7 +96,7 @@ pub const LOWER_RIGHT: NeighborFlag = unsafe { NeighborFlag::new_unchecked(1 << 
 */
 
 pub mod xy {
-    type Inner = u8;
+    pub type Inner = u16;
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct X(pub Inner);
@@ -122,12 +122,18 @@ pub mod xy {
         ($($name: path),+) => {
             $(
                 impl $name {
+                    pub const ONE: Self = Self(1);
+
                     pub fn dec(&self) -> Self {
                         Self(self.0.saturating_sub(1))
                     }
 
                     pub fn inc(&self) -> Self {
                         Self(self.0.saturating_add(1))
+                    }
+
+                    pub fn u32(self) -> u32 {
+                        u32::from(self.0)
                     }
 
                     pub fn usize(self) -> usize {
@@ -171,6 +177,16 @@ pub mod xy {
                     self
                 }
             }
+
+            impl $a_name {
+                pub fn checked_add(&self, b: $b_name) -> Option<Self> {
+                    Some(Self(self.0.checked_add(b.0)?))
+                }
+
+                pub fn checked_sub(&self, b: $b_name) -> Option<Self> {
+                    Some(Self(self.0.checked_sub(b.0)?))
+                }
+            }
         )+}
     }
 
@@ -188,6 +204,22 @@ pub mod xy {
     impl From<XY> for offset::Point {
         fn from(XY { x, y }: XY) -> Self {
             (offset::Inner::from(x.0), offset::Inner::from(y.0))
+        }
+    }
+
+    impl XY {
+        pub fn checked_push(self, dir: impl Into<crate::Dir8>) -> Option<XY> {
+            use crate::Dir8::*;
+            Some(match dir.into() {
+                UpLeft => XY { x: self.x.checked_sub(W::ONE)?, y: self.y.checked_sub(H::ONE)? },
+                Up => XY { x: self.x, y: self.y.checked_sub(H::ONE)? },
+                UpRight => XY { x: self.x.checked_add(W::ONE)?, y: self.y.checked_sub(H::ONE)? },
+                Right => XY { x: self.x.checked_add(W::ONE)?, y: self.y },
+                DownRight => XY { x: self.x.checked_add(W::ONE)?, y: self.y.checked_add(H::ONE)? },
+                Down => XY { x: self.x, y: self.y.checked_add(H::ONE)? },
+                DownLeft => XY { x: self.x.checked_sub(W::ONE)?, y: self.y.checked_add(H::ONE)? },
+                Left => XY { x: self.x.checked_sub(W::ONE)?, y: self.y },
+            })
         }
     }
 
@@ -598,6 +630,9 @@ impl State {
 
         let (mut max_tile_w, mut max_tile_h) = wall_spec.max_tile_counts();
 
+        // temp to debug
+        //max_tile_w = max_tile_w.saturating_sub(1);
+
         if max_tile_w == 0 {
             max_tile_w = 1;
         }
@@ -629,7 +664,7 @@ impl State {
             // so we can place doors that block access to all places N steps along all paths.
 
             // Suggested steps for the implementation itself:
-            // * Start generating random start and end locations, right next to each other.
+            // * Start generating random start and end locations, right next to each other. ✔
             // * Start extending the hallway by a random amount
             //    * use the loop implied by the rough algorithm above, with a space for a `match`
             // * Implement bounds checking and corner turning for the hallway
@@ -646,6 +681,8 @@ impl State {
 
             mod random {
                 use super::*;
+                use std::num::TryFromIntError;
+
                 pub type Index = usize;
 
                 #[derive(Debug)]
@@ -653,11 +690,18 @@ impl State {
                     WidthTooSmall,
                     TilesTooShort,
                     XYToI(XYToIError),
+                    TryFromInt(TryFromIntError)
                 }
 
                 impl From<XYToIError> for NonEdgeError {
                     fn from(e: XYToIError) -> Self {
                         NonEdgeError::XYToI(e)
+                    }
+                }
+
+                impl From<TryFromIntError> for NonEdgeError {
+                    fn from(e: TryFromIntError) -> Self {
+                        NonEdgeError::TryFromInt(e)
                     }
                 }
 
@@ -667,8 +711,19 @@ impl State {
                     }
 
                     // The min/max non-edge corners; The corners of the rectangle of non-edge pieces.
-                    let min_corner_xy = todo!();
-                    let max_corner_xy = todo!();
+                    let min_corner_xy = xy::XY { x: xy::x(1), y: xy::y(1) };
+                    let height = xy::Inner::try_from(tiles.len())? / width.get();
+                    if height < 3 {
+                        return Err(NonEdgeError::TilesTooShort);
+                    }
+
+                    // -2 because -1 to get to the last index, then another to go to the second last index.
+                    let max_corner_xy = xy::XY { x: xy::x(width.get() - 2), y: xy::y(height - 2) };
+
+                    let selected_xy = xy::XY {
+                        x: xy::x(xs::range(rng, min_corner_xy.x.u32()..max_corner_xy.x.u32() + 1) as xy::Inner),
+                        y: xy::y(xs::range(rng, min_corner_xy.y.u32()..max_corner_xy.y.u32() + 1) as xy::Inner)
+                    };
 
                     let min_corner_index = xy_to_i(width, min_corner_xy)?;
                     let max_corner_index = xy_to_i(width, max_corner_xy)?;
@@ -677,9 +732,7 @@ impl State {
                         return Err(NonEdgeError::TilesTooShort);
                     }
 
-                    Ok(
-                        xs::range(rng, min_corner_index as u32..max_corner_index as u32 + 1) as usize
-                    )
+                    Ok(xy_to_i(width, selected_xy)?)
                 }
             }
 
@@ -689,12 +742,15 @@ impl State {
 
             // A lot of things here rely on the starting exit_index being an non-edge tile!
 
+            // 
+            // Place Exit
+            //
             tiles[exit_index - 1] = F;
             tiles[exit_index] = F;
             tiles[exit_index + 1] = F;
 
             let base_exit_xy = i_to_xy(width, exit_index);
-
+            dbg!(base_exit_xy);
             let mut offset = 0;
             for key in [
                 Key {
@@ -715,15 +771,78 @@ impl State {
                 offset += 1;
             }
 
-            let start_xy = XY { x: base_exit_xy.x, y: base_exit_xy.y + xy::h(1) };
+            // 
+            // Select initial spot for start
+            //
 
-            let start_index_result = xy_to_i(width, start_xy);
+            let mut start_xy = XY { x: base_exit_xy.x, y: base_exit_xy.y + xy::h(1) };
 
-            debug_assert!(start_index_result.is_ok(), "got {start_index_result:?}");
+            macro_rules! floor_at_start {
+                () => {
+                    let start_index_result = xy_to_i(width, start_xy);
+        
+                    debug_assert!(start_index_result.is_ok(), "got {start_index_result:?}");
+        
+                    let start_index = start_index_result.unwrap_or_default();
+        
+                    tiles[start_index] = F;
+                }
+            }
+            floor_at_start!();
 
-            let start_index = start_index_result.unwrap_or_default();
+            //
+            // Perform random complication actions that preserve the solvabilty.
+            //
+            let complication_count = 10;
 
-            tiles[start_index] = F;
+            enum Complication {
+                ExtendPath,
+            }
+
+            for _ in 0..complication_count {
+                // TODO define multiple and pick randomly
+                let complication = Complication::ExtendPath;
+
+                match complication {
+                    Complication::ExtendPath => {
+                        let mut candidate_directions: [Dir; 4] = <_>::default();
+                        let mut candidate_directions_len = 0;
+
+                        for dir in Dir::ALL {
+                            let mut viable = false;
+
+                            if let Some(new_start_xy) = start_xy.checked_push(dir) {
+                                if let Ok(new_start_index) = xy_to_i(width, new_start_xy) {
+                                    if let Some(&tile) = tiles.get(new_start_index) {
+                                        viable = tile == W;
+                                    }
+                                }
+                            }
+
+                            if viable {
+                                candidate_directions[
+                                    usize::try_from(candidate_directions_len)
+                                    .expect("Not expected to be run on lower than 32 bit systems!")
+                                ] = dir;
+                                candidate_directions_len += 1;
+                            }
+                        }
+
+                        if candidate_directions_len > 0 {
+                            let i = xs::range(&mut rng, 0..candidate_directions_len);
+                            let dir = candidate_directions[
+                                usize::try_from(i)
+                                    .expect("Not expected to be run on lower than 32 bit systems!")
+                            ];
+
+                            if let Some(new_start_xy) = start_xy.checked_push(dir) {
+                                start_xy = new_start_xy;
+                                floor_at_start!();
+                            }
+                        }
+                    }
+                }
+            }
 
             player.position = start_xy.into();
 
@@ -805,77 +924,77 @@ impl State {
             }
         }
 
-        // Add switch
-        insert_entity!(Entity {
-            position: Position::from(switch_key.xy),
-            tile_sprite: SWITCH_BASE,
-            toggle_group_id: FIRST_GROUP,
-            ..<_>::default()
-        });
-
-        // Add toggleable walls
-        let mut free_group_id = FIRST_GROUP;
-        for wall_spec in wall_specs {
-            for index in 0..wall_spec.tiles.len() {
-                if wall_spec.tiles[index] == IS_WALL {
-                    let width = usize::from(wall_spec.width.get());
-
-                    // Assume everything not set is a floor, to avoid merging
-                    // with walls from other specs.
-                    let mut output_mask = 0b1111_1111;
-
-                    macro_rules! set {
-                        (-, $subtrahend: expr, $mask: ident) => {
-                            if let Some(&tile) = index.checked_sub($subtrahend)
-                                .and_then(|i| wall_spec.tiles.get(i)) {
-
-                                // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                                // we can use highest_one instead.
-                                let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-
-                                if tile == IS_WALL {
-                                    output_mask &= !(1 << shift);
-                                }
-                            }
-                        };
-                        (+, $addend: expr, $mask: ident) => {
-                            if let Some(&tile) = index.checked_add($addend)
-                                .and_then(|i| wall_spec.tiles.get(i)) {
-
-                                // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                                // we can use highest_one instead.
-                                let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-
-                                if tile == IS_WALL {
-                                    output_mask &= !(1 << shift);
-                                }
-                            }
-                        };
-                    }
-
-                    set!(-, width + 1, UPPER_LEFT);
-                    set!(-, width, UPPER_MIDDLE);
-                    set!(-, width - 1, UPPER_RIGHT);
-                    set!(-, 1, LEFT_MIDDLE);
-
-                    set!(+, 1, RIGHT_MIDDLE);
-                    set!(+, width - 1, LOWER_RIGHT);
-                    set!(+, width, LOWER_MIDDLE);
-                    set!(+, width + 1, LOWER_LEFT);
-
-                    let xy = i_to_xy(wall_spec.width, index) + wall_spec.base_wh;
-
-                    insert_entity!(Entity {
-                        position: Position::from(xy),
-                        tile_sprite: TileSprite::ToggleWall(output_mask),
-                        toggle_group_id: free_group_id,
-                        ..<_>::default()
-                    });
-                }
-            }
-
-            free_group_id += 1;
-        }
+        //// Add switch
+        //insert_entity!(Entity {
+            //position: Position::from(switch_key.xy),
+            //tile_sprite: SWITCH_BASE,
+            //toggle_group_id: FIRST_GROUP,
+            //..<_>::default()
+        //});
+//
+        //// Add toggleable walls
+        //let mut free_group_id = FIRST_GROUP;
+        //for wall_spec in wall_specs {
+            //for index in 0..wall_spec.tiles.len() {
+                //if wall_spec.tiles[index] == IS_WALL {
+                    //let width = usize::from(wall_spec.width.get());
+//
+                    //// Assume everything not set is a floor, to avoid merging
+                    //// with walls from other specs.
+                    //let mut output_mask = 0b1111_1111;
+//
+                    //macro_rules! set {
+                        //(-, $subtrahend: expr, $mask: ident) => {
+                            //if let Some(&tile) = index.checked_sub($subtrahend)
+                                //.and_then(|i| wall_spec.tiles.get(i)) {
+//
+                                //// TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                                //// we can use highest_one instead.
+                                //let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+//
+                                //if tile == IS_WALL {
+                                    //output_mask &= !(1 << shift);
+                                //}
+                            //}
+                        //};
+                        //(+, $addend: expr, $mask: ident) => {
+                            //if let Some(&tile) = index.checked_add($addend)
+                                //.and_then(|i| wall_spec.tiles.get(i)) {
+//
+                                //// TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                                //// we can use highest_one instead.
+                                //let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+//
+                                //if tile == IS_WALL {
+                                    //output_mask &= !(1 << shift);
+                                //}
+                            //}
+                        //};
+                    //}
+//
+                    //set!(-, width + 1, UPPER_LEFT);
+                    //set!(-, width, UPPER_MIDDLE);
+                    //set!(-, width - 1, UPPER_RIGHT);
+                    //set!(-, 1, LEFT_MIDDLE);
+//
+                    //set!(+, 1, RIGHT_MIDDLE);
+                    //set!(+, width - 1, LOWER_RIGHT);
+                    //set!(+, width, LOWER_MIDDLE);
+                    //set!(+, width + 1, LOWER_LEFT);
+//
+                    //let xy = i_to_xy(wall_spec.width, index) + wall_spec.base_wh;
+//
+                    //insert_entity!(Entity {
+                        //position: Position::from(xy),
+                        //tile_sprite: TileSprite::ToggleWall(output_mask),
+                        //toggle_group_id: free_group_id,
+                        //..<_>::default()
+                    //});
+                //}
+            //}
+//
+            //free_group_id += 1;
+        //}
 
         Self {
             rng,
