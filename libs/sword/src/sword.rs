@@ -650,27 +650,48 @@ impl State {
             //    * Add a longer hallway between them, maybe with a bend in the road.
             //    * Add a toggle door, and a switch on the starting side.
             //        * Sub steps:
-            //            * Pick a point in the hallway to have a door. 
+            //            * Pick a point in the hallway to have a door.
             //            * Place the door there, keeping track of the toggle group id.
             //            * Pick a point between the door and the starting spot
             //            * Place the switch there, and make it toggle the door
             //
             // If we end up wanting harder puzzles, come up with examples of them, say
-            // some small gadget where you have to unswitch a switch to get to another 
+            // some small gadget where you have to unswitch a switch to get to another
             // switch, to unlock the next door and make inserting that a step to choose
             // from.
 
-            // Might end up doing a Dijkstra's algorithm thing that counts the number of steps, 
+            // Might end up doing a Dijkstra's algorithm thing that counts the number of steps,
             // so we can place doors that block access to all places N steps along all paths.
 
-            // Suggested steps for the implementation itself:
+            // Suggested steps for the implementation itself (obsoleted, read on):
             // * Start generating random start and end locations, right next to each other. ✔
-            // * Start extending the hallway by a random amount
+            // * Start extending the hallway by a random amount ✔
             //    * use the loop implied by the rough algorithm above, with a space for a `match`
             // * Implement bounds checking and corner turning for the hallway
             // * Place doors, or some other recognizable thing at random spots along the hallway
             // * Place the switches for those doors.
             // * Evaluate whether this feels like enough
+
+            // Hmm. Just doing random movement collects in one spot on average. I think we need a different approach.
+            // This describes some options for dungeon generation: https://journal.stuffwithstuff.com/2014/12/21/rooms-and-mazes/
+            // The most relevant seeming idea there is to make a perfect maze, then fill stuff back in.
+            // Let's try something like that.
+            //
+            // Most maze algorithms generate mazes with thing walls so we'll need to convert to one thick walls.
+            // This page describes that conversion: https://gamedev.stackexchange.com/a/142525
+            //
+            // New suggested steps:
+            // * Hand define an example map in a format we will be able to generate using a algorithm description
+            // * Write and test a conversion from that format to 1 thick walls, setting the tiles to the output
+            // * Write the generation code, and output the result to the tiles
+            // * Place doors, or some other recognizable thing at random spots along the hallway
+            // * Place the switches for those doors.
+            // * Evaluate whether this feels like enough
+
+            // This description seems like a good one: https://weblog.jamisbuck.org/2010/12/27/maze-generation-recursive-backtracking
+
+            //
+            // End of planning/proposals
 
             // Start generating random start and end locations, right next to each other.
 
@@ -742,7 +763,7 @@ impl State {
 
             // A lot of things here rely on the starting exit_index being an non-edge tile!
 
-            // 
+            //
             // Place Exit
             //
             tiles[exit_index - 1] = F;
@@ -750,7 +771,7 @@ impl State {
             tiles[exit_index + 1] = F;
 
             let base_exit_xy = i_to_xy(width, exit_index);
-            dbg!(base_exit_xy);
+
             let mut offset = 0;
             for key in [
                 Key {
@@ -771,7 +792,7 @@ impl State {
                 offset += 1;
             }
 
-            // 
+            //
             // Select initial spot for start
             //
 
@@ -780,11 +801,11 @@ impl State {
             macro_rules! floor_at_start {
                 () => {
                     let start_index_result = xy_to_i(width, start_xy);
-        
+
                     debug_assert!(start_index_result.is_ok(), "got {start_index_result:?}");
-        
+
                     let start_index = start_index_result.unwrap_or_default();
-        
+
                     tiles[start_index] = F;
                 }
             }
