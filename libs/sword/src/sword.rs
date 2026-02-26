@@ -732,26 +732,26 @@ impl State {
             let tiles_length = max_tile_w * max_tile_h;
 
             // TODO confirm this division is right, and doesn't need a + 1 or something.
-            let proto_width = TilesWidth::new(max_tile_w / 2).unwrap_or(TilesWidth::MIN);
-            let proto_height = TilesWidth::new(max_tile_h / 2).unwrap_or(TilesWidth::MIN);;
+            let proto_width = TilesWidth::new((max_tile_w / 2) - 0).unwrap_or(TilesWidth::MIN);
+            let proto_height = TilesWidth::new((max_tile_h / 2) - 0).unwrap_or(TilesWidth::MIN);;
             let proto_tiles_length = usize::from(proto_width.get()) * usize::from(proto_height.get());
 
 
             let mut proto_tiles = vec1![0; proto_tiles_length];
-
             for i in 0..proto_tiles.len() {
-                let current_xy = i_to_xy(width, i);
-
-                for dir in Dir::ALL {
-                    if let Some(new_xy) = current_xy.checked_push(dir) {
-                        if let Ok(new_index) = xy_to_i(width, new_xy) {
-                            if let Ok([flags, adjacent_flags]) = proto_tiles.get_disjoint_mut([i, new_index]) {
-                                *flags |= dir.flag();
-                                *adjacent_flags |= dir.opposite().flag();
-                            }
-                        }
-                    }
-                }
+                proto_tiles[i] = 0b1111;
+                //let current_xy = i_to_xy(width, i);
+//
+                //for dir in Dir::ALL {
+                    //if let Some(new_xy) = current_xy.checked_push(dir) {
+                        //if let Ok(new_index) = xy_to_i(width, new_xy) {
+                            //if let Ok([flags, adjacent_flags]) = proto_tiles.get_disjoint_mut([i, new_index]) {
+                                //*flags |= dir.flag();
+                                //*adjacent_flags |= dir.opposite().flag();
+                            //}
+                        //}
+                    //}
+                //}
             }
 
             const W: Tile = Wall(0);
@@ -902,7 +902,7 @@ impl State {
             //
             // Perform random complication actions that preserve the solvabilty.
             //
-            let complication_count = 10;
+            let complication_count = 0;
 
             enum Complication {
                 ExtendPath,
