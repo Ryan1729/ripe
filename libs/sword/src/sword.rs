@@ -132,6 +132,10 @@ pub mod xy {
                         Self(self.0.saturating_add(1))
                     }
 
+                    pub fn double(&self) -> Self {
+                        Self(self.0.saturating_mul(2))
+                    }
+
                     pub fn u32(self) -> u32 {
                         u32::from(self.0)
                     }
@@ -240,6 +244,36 @@ pub mod xy {
         type Output = Self;
 
         fn add(mut self, other: WH) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    impl core::ops::AddAssign<W> for XY {
+        fn add_assign(&mut self, other: W) {
+            self.x += other;
+        }
+    }
+
+    impl core::ops::Add<W> for XY {
+        type Output = Self;
+
+        fn add(mut self, other: W) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    impl core::ops::AddAssign<H> for XY {
+        fn add_assign(&mut self, other: H) {
+            self.y += other;
+        }
+    }
+
+    impl core::ops::Add<H> for XY {
+        type Output = Self;
+
+        fn add(mut self, other: H) -> Self::Output {
             self += other;
             self
         }
@@ -677,11 +711,11 @@ impl State {
             // The most relevant seeming idea there is to make a perfect maze, then fill stuff back in.
             // Let's try something like that.
             //
-            // Most maze algorithms generate mazes with thing walls so we'll need to convert to one thick walls.
+            // Most maze algorithms generate mazes with thin walls so we'll need to convert to one thick walls.
             // This page describes that conversion: https://gamedev.stackexchange.com/a/142525
             //
             // New suggested steps:
-            // * Hand define an example map in a format we will be able to generate using a algorithm description
+            // * Hand define an example map in a format we will be able to generate using an algorithm description
             // * Write and test a conversion from that format to 1 thick walls, setting the tiles to the output
             // * Write the generation code, and output the result to the tiles
             // * Place doors, or some other recognizable thing at random spots along the hallway
@@ -695,10 +729,64 @@ impl State {
 
             // Start generating random start and end locations, right next to each other.
 
+            let tiles_length = max_tile_w * max_tile_h;
+
+            // TODO confirm this division is right, and doesn't need a + 1 or something.
+            let proto_width = TilesWidth::new(max_tile_w / 2).unwrap_or(TilesWidth::MIN);
+            let proto_height = TilesWidth::new(max_tile_h / 2).unwrap_or(TilesWidth::MIN);;
+            let proto_tiles_length = usize::from(proto_width.get()) * usize::from(proto_height.get());
+
+
+            let mut proto_tiles = vec1![0; proto_tiles_length];
+
+            for i in 0..proto_tiles.len() {
+                let current_xy = i_to_xy(width, i);
+
+                for dir in Dir::ALL {
+                    if let Some(new_xy) = current_xy.checked_push(dir) {
+                        if let Ok(new_index) = xy_to_i(width, new_xy) {
+                            if let Ok([flags, adjacent_flags]) = proto_tiles.get_disjoint_mut([i, new_index]) {
+                                *flags |= dir.flag();
+                                *adjacent_flags |= dir.opposite().flag();
+                            }
+                        }
+                    }
+                }
+            }
+
             const W: Tile = Wall(0);
             const F: Tile = Floor;
 
-            let mut tiles = vec1![W; max_tile_w * max_tile_h];
+            // Convert to 1-thick walls
+
+            let mut tiles = vec1![W; tiles_length];
+
+            for proto_i in 0..proto_tiles.len() {
+                let proto_tile_flags = proto_tiles[proto_i];
+
+                if proto_tile_flags != 0 {
+                    // The cell is open on at least one side.
+                    let proto_xy = i_to_xy(proto_width, proto_i);
+
+                    let tile_xy = XY { x: proto_xy.x.double().inc(), y: proto_xy.y.double().inc() };
+
+                    if let Ok(tile_i) = xy_to_i(width, tile_xy) {
+                        if let Some(el) = tiles.get_mut(tile_i) { *el = F; }
+                    }
+
+                    if proto_tile_flags & Dir::Right.flag() != 0 {
+                        if let Ok(tile_right_i) = xy_to_i(width, tile_xy + W::ONE) {
+                            if let Some(el) = tiles.get_mut(tile_right_i) { *el = F; }
+                        }
+                    }
+
+                    if proto_tile_flags & Dir::Up.flag() != 0 {
+                        if let Ok(tile_down_i) = xy_to_i(width, tile_xy + H::ONE) {
+                            if let Some(el) = tiles.get_mut(tile_down_i) { *el = F; }
+                        }
+                    }
+                }
+            }
 
             mod random {
                 use super::*;

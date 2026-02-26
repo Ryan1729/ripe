@@ -573,6 +573,7 @@ pub mod button {
 }
 pub use button::Button;
 
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Default,PartialEq, Eq)]
 pub enum Dir {
     #[default]
@@ -582,6 +583,8 @@ pub enum Dir {
     Down,
 }
 
+type DirFlag = u8;
+
 impl Dir {
     pub const ALL: [Dir; 4] = [
         Dir::Left,
@@ -589,6 +592,36 @@ impl Dir {
         Dir::Up,
         Dir::Down,
     ];
+
+    pub const OPPOSITE: [Dir; 4] = [
+        Dir::Right,
+        Dir::Left,
+        Dir::Down,
+        Dir::Up,
+    ];
+
+    pub const FLAG: [DirFlag; 4] = [
+        1 << 0,
+        1 << 1,
+        1 << 2,
+        1 << 3,
+    ];
+    
+    pub fn u8(self) -> u8 {
+        self as u8
+    }
+
+    pub fn index(self) -> usize {
+        usize::from(self.u8())
+    }
+
+    pub fn flag(self) -> DirFlag {
+        Self::FLAG[self.index()]
+    }
+
+    pub fn opposite(self) -> Dir {
+        Self::OPPOSITE[self.index()]
+    }
 }
 
 pub type Logger = Option<fn(&str) -> ()>;
