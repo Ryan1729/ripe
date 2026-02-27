@@ -625,6 +625,175 @@ impl Animation {
 
 pub type Animations = Vec<Animation>;
 
+type ProtoTileFlags = u8;
+
+fn maze_via_backtracking(
+    proto_tiles: &mut Vec1<ProtoTileFlags>,
+    rng: &mut Xs,
+    width: TilesWidth,
+    current_xy: XY
+) {
+    let mut dirs = Dir::ALL;
+    xs::shuffle(rng, &mut dirs);
+
+    for dir in dirs {
+        if let Some(new_xy) = current_xy.checked_push(dir) {
+            if let (Ok(current_index), Ok(new_index))
+                = (xy_to_i(width, current_xy), xy_to_i(width, new_xy))
+            {
+                if let Ok([flags, adjacent_flags])
+                    = proto_tiles.get_disjoint_mut([current_index, new_index])
+                {
+                    // Don't revisit previously visited spots
+                    if *adjacent_flags != 0 { continue }
+
+                    *flags |= dir.flag();
+                    *adjacent_flags |= dir.opposite().flag();
+                    maze_via_backtracking(proto_tiles, rng, width, new_xy);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod maze_via_backtracking_connects_all_cells_on {
+    use super::*;
+
+    #[allow(unused)]
+    fn print_tiles(
+        tiles: &[ProtoTileFlags],
+        width: TilesWidth,
+    ) {
+        let mut output = String::with_capacity(tiles.len());
+
+        output.push(' ');
+        for _ in 0..(width.get() * 2 - 1) {
+            output.push('_');
+        }
+        output.push('\n');
+
+        let height = xy::Inner::try_from(tiles.len()).unwrap_or(xy::Inner::MAX) / width.get();
+
+        for y in 0..height {
+            output.push('|');
+            for x in 0..width.get() {
+                let xy = XY { x: xy::x(x), y: xy::y(y) };
+
+                let Ok(i) = xy_to_i(width, xy) else { continue };
+
+                let tile = tiles[i];
+
+                output.push(if tile & Dir::Down.flag() != 0 { ' ' } else { '_' });
+
+                if tile & Dir::Right.flag() != 0 {
+                    output.push(
+                        if (tile | tiles.get(i + 1).cloned().unwrap_or(0)) & Dir::Down.flag() != 0 {
+                            ' '
+                        } else {
+                            '_'
+                        }
+                    );
+                } else {
+                    output.push('|');
+                }
+            }
+
+            output.push('\n');
+        }
+
+        eprintln!("{output}");
+    }
+
+    fn are_all_cells_connected(
+        proto_tiles: &mut Vec1<ProtoTileFlags>,
+        width: TilesWidth,
+    ) -> bool {
+        print_tiles(proto_tiles, width);
+        use std::collections::HashSet;
+        let mut seen = HashSet::with_capacity(proto_tiles.len());
+
+        let mut to_see = vec![XY::default()];
+
+        while let Some(xy) = to_see.pop() {
+            if let Ok(i) = xy_to_i(width, xy) {
+                seen.insert(i);
+                let tile = proto_tiles[i];
+
+                for dir in Dir::ALL {
+                    if tile & dir.flag() != 0
+                    && let Some(new_xy) = xy.checked_push(dir)
+                    && let Ok(new_i) = xy_to_i(width, new_xy)
+                    && !seen.contains(&new_i) {
+                        to_see.push(new_xy);
+                    }
+                }
+            }
+        }
+
+        seen.len() == proto_tiles.len()
+    }
+
+    // Test predicate test
+    #[test]
+    fn are_all_cells_connected_returns_false_sometimes() {
+        use Dir::*;
+
+        let rd = Right.flag() | Down.flag();
+        let ru = Right.flag() | Up.flag();
+        let rl = Right.flag() | Left.flag();
+        let ld =  Left.flag() | Down.flag();
+        let lu =  Left.flag() | Up.flag();
+
+        // All walls
+        let width = TilesWidth::new(4).unwrap();
+        let mut tiles = vec1![0; 16usize];
+
+        assert!(!are_all_cells_connected(&mut tiles, width));
+
+        // Top half
+        let width = TilesWidth::new(4).unwrap();
+        let mut tiles = vec1![
+            rd, rl, rl, ld,
+            ru, rl, rl, lu,
+             0,  0,  0,  0,
+             0,  0,  0,  0,
+        ];
+
+        assert!(!are_all_cells_connected(&mut tiles, width));
+
+        // Disjoint top and bottom
+        let width = TilesWidth::new(4).unwrap();
+        let mut tiles = vec1![
+            rd, rl, rl, ld,
+            ru, rl, rl, lu,
+
+            rd, rl, rl, ld,
+            ru, rl, rl, lu,
+        ];
+
+        assert!(!are_all_cells_connected(&mut tiles, width));
+    }
+
+    #[test]
+    fn this_small_example() {
+        let width = TilesWidth::new(10).unwrap();
+        let mut tiles = vec1![0; 100usize];
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        assert!(!are_all_cells_connected(&mut tiles, width));
+
+        maze_via_backtracking(&mut tiles, &mut rng, width, <_>::default());
+
+        assert!(are_all_cells_connected(&mut tiles, width));
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct State {
     pub rng: Xs,
@@ -645,8 +814,6 @@ impl State {
         player.tile_sprite = PLAYER_BASE;
 
         let mut mobs = Entities::default();
-
-        let y = xy::Y::default();
 
         macro_rules! insert_entity {
             ($entity: expr) => ({
@@ -733,26 +900,12 @@ impl State {
 
             // TODO confirm this division is right, and doesn't need a + 1 or something.
             let proto_width = TilesWidth::new((max_tile_w / 2) - 0).unwrap_or(TilesWidth::MIN);
-            let proto_height = TilesWidth::new((max_tile_h / 2) - 0).unwrap_or(TilesWidth::MIN);;
+            let proto_height = TilesWidth::new((max_tile_h / 2) - 0).unwrap_or(TilesWidth::MIN);
             let proto_tiles_length = usize::from(proto_width.get()) * usize::from(proto_height.get());
 
-
             let mut proto_tiles = vec1![0; proto_tiles_length];
-            for i in 0..proto_tiles.len() {
-                proto_tiles[i] = 0b1111;
-                //let current_xy = i_to_xy(width, i);
-//
-                //for dir in Dir::ALL {
-                    //if let Some(new_xy) = current_xy.checked_push(dir) {
-                        //if let Ok(new_index) = xy_to_i(width, new_xy) {
-                            //if let Ok([flags, adjacent_flags]) = proto_tiles.get_disjoint_mut([i, new_index]) {
-                                //*flags |= dir.flag();
-                                //*adjacent_flags |= dir.opposite().flag();
-                            //}
-                        //}
-                    //}
-                //}
-            }
+            // TODO Does starting at a random spot affect generation in a useful way?
+            maze_via_backtracking(&mut proto_tiles, &mut rng, width, <_>::default());
 
             const W: Tile = Wall(0);
             const F: Tile = Floor;
@@ -958,29 +1111,29 @@ impl State {
             tiles
         };
 
-        let switch_key = Key {
-            xy: XY { x: xy::x(1), y: xy::y(4) },
-        };
+        //let switch_key = Key {
+            //xy: XY { x: xy::x(1), y: xy::y(4) },
+        //};
 
         // TODO automatically add floor to the tiles,
         // so we don't need to add it in the config file.
         // (Is a column along the right edge always enough?)
-        let wall_specs: [ToggleWallSpec; 1] = [
-            ToggleWallSpec {
-                width: ToggleWallSpecWidth::new(2).expect("Don't set a 0 width!"),
-                tiles: {
-                    const W: IsFloorFlag = IS_WALL;
-                    const F: IsFloorFlag = IS_FLOOR;
-                    vec1![
-                        W, F,
-                        W, F,
-                        W, F,
-                        W, F,
-                    ]
-                },
-                base_wh: WH { w: xy::w(5), h: xy::h(3) },
-            },
-        ];
+        //let wall_specs: [ToggleWallSpec; 1] = [
+            //ToggleWallSpec {
+                //width: ToggleWallSpecWidth::new(2).expect("Don't set a 0 width!"),
+                //tiles: {
+                    //const W: IsFloorFlag = IS_WALL;
+                    //const F: IsFloorFlag = IS_FLOOR;
+                    //vec1![
+                        //W, F,
+                        //W, F,
+                        //W, F,
+                        //W, F,
+                    //]
+                //},
+                //base_wh: WH { w: xy::w(5), h: xy::h(3) },
+            //},
+        //];
 
         // Set the indexes from the surrounding tiles.
         for index in 0..tiles.len() {
