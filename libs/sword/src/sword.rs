@@ -705,7 +705,7 @@ mod maze_via_backtracking_connects_all_cells_on {
         eprintln!("{output}");
     }
 
-    fn are_all_cells_connected(
+    pub(crate) fn are_all_cells_connected(
         proto_tiles: &mut Vec1<ProtoTileFlags>,
         width: TilesWidth,
     ) -> bool {
@@ -791,6 +791,144 @@ mod maze_via_backtracking_connects_all_cells_on {
         maze_via_backtracking(&mut tiles, &mut rng, width, <_>::default());
 
         assert!(are_all_cells_connected(&mut tiles, width));
+    }
+}
+
+/// Convert the tiles to 1-thick walls
+fn to_one_thick(
+    proto_tiles: &[ProtoTileFlags],
+    proto_width: TilesWidth,
+    tiles_length: xy::Inner,
+    width: TilesWidth
+) -> Vec1<Tile> {
+    use TileIndex::*;
+
+    const W: Tile = Wall(0);
+    const F: Tile = Floor;
+
+    let mut tiles = vec1![W; tiles_length];
+
+    for proto_i in 0..proto_tiles.len() {
+        let proto_tile_flags = proto_tiles[proto_i];
+
+        if proto_tile_flags != 0 {
+            // The cell is open on at least one side.
+            let proto_xy = i_to_xy(proto_width, proto_i);
+
+            let tile_xy = XY { x: proto_xy.x.double().inc(), y: proto_xy.y.double().inc() };
+
+            if let Ok(tile_i) = xy_to_i(width, tile_xy) {
+                if let Some(el) = tiles.get_mut(tile_i) { *el = F; }
+            }
+
+            if proto_tile_flags & Dir::Right.flag() != 0 {
+                if let Ok(tile_right_i) = xy_to_i(width, tile_xy + W::ONE) {
+                    if let Some(el) = tiles.get_mut(tile_right_i) { *el = F; }
+                }
+            }
+
+            if proto_tile_flags & Dir::Up.flag() != 0 {
+                if let Ok(tile_down_i) = xy_to_i(width, tile_xy + H::ONE) {
+                    if let Some(el) = tiles.get_mut(tile_down_i) { *el = F; }
+                }
+            }
+        }
+    }
+
+    tiles
+}
+
+#[cfg(test)]
+mod to_one_thick_connects_all_cells_on {
+    use super::*;
+    use maze_via_backtracking_connects_all_cells_on::are_all_cells_connected as are_all_proto_cells_connected;
+
+    fn are_all_one_floor_tiles_connected(
+        tiles: &[Tile],
+        width: TilesWidth
+    ) -> bool {
+        use TileIndex::Floor;
+
+        let mut expected = 0;
+
+        let mut start_floor_i = None;
+
+        for i in 0..tiles.len() {
+            if tiles[i] == Floor {
+                expected += 1;
+
+                if start_floor_i.is_none() {
+                    start_floor_i = Some(i);
+                }
+            }
+        }
+
+        if expected == 0 {
+            return true
+        }
+
+        let start_floor_i = start_floor_i.unwrap();
+
+        use std::collections::HashSet;
+        let mut seen = HashSet::with_capacity(tiles.len() / 2 /* was not thought about too hard */);
+
+        let mut to_see = vec![i_to_xy(width, start_floor_i)];
+
+        while let Some(xy) = to_see.pop() {
+            if let Ok(i) = xy_to_i(width, xy) {
+                let tile = tiles[i];
+                
+                if tile != Floor { continue }
+
+                seen.insert(i);
+
+                for dir in Dir::ALL {
+                    if let Some(new_xy) = xy.checked_push(dir)
+                    && let Ok(new_i) = xy_to_i(width, new_xy)
+                    && !seen.contains(&new_i) {
+                        to_see.push(new_xy);
+                    }
+                }
+            }
+        }
+
+        seen.len() == expected
+    }
+
+    #[test]
+    fn this_generated_example() {
+        let tiles_width = 8;
+        let tiles_height = 8;
+        let tiles_length = tiles_width * tiles_height;
+
+        let proto_width = TilesWidth::new(tiles_width / 2).unwrap();
+        let proto_height = TilesWidth::new(tiles_height / 2).unwrap();
+        let proto_tiles_length = usize::from(proto_width.get()) * usize::from(proto_height.get());
+
+        let tiles_width = TilesWidth::new(tiles_width).unwrap();
+
+        let mut proto_tiles = vec1![0; proto_tiles_length];
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        assert!(!are_all_proto_cells_connected(&mut proto_tiles, proto_width));
+
+        maze_via_backtracking(&mut proto_tiles, &mut rng, proto_width, <_>::default());
+
+        assert!(are_all_proto_cells_connected(&mut proto_tiles, proto_width));
+
+        let tiles = to_one_thick(
+            &proto_tiles,
+            proto_width,
+            tiles_length,
+            tiles_width,
+        );
+
+        assert!(are_all_one_floor_tiles_connected(&tiles, tiles_width));
     }
 }
 
@@ -910,36 +1048,7 @@ impl State {
             const W: Tile = Wall(0);
             const F: Tile = Floor;
 
-            // Convert to 1-thick walls
-
-            let mut tiles = vec1![W; tiles_length];
-
-            for proto_i in 0..proto_tiles.len() {
-                let proto_tile_flags = proto_tiles[proto_i];
-
-                if proto_tile_flags != 0 {
-                    // The cell is open on at least one side.
-                    let proto_xy = i_to_xy(proto_width, proto_i);
-
-                    let tile_xy = XY { x: proto_xy.x.double().inc(), y: proto_xy.y.double().inc() };
-
-                    if let Ok(tile_i) = xy_to_i(width, tile_xy) {
-                        if let Some(el) = tiles.get_mut(tile_i) { *el = F; }
-                    }
-
-                    if proto_tile_flags & Dir::Right.flag() != 0 {
-                        if let Ok(tile_right_i) = xy_to_i(width, tile_xy + W::ONE) {
-                            if let Some(el) = tiles.get_mut(tile_right_i) { *el = F; }
-                        }
-                    }
-
-                    if proto_tile_flags & Dir::Up.flag() != 0 {
-                        if let Ok(tile_down_i) = xy_to_i(width, tile_xy + H::ONE) {
-                            if let Some(el) = tiles.get_mut(tile_down_i) { *el = F; }
-                        }
-                    }
-                }
-            }
+            let mut tiles = to_one_thick(&proto_tiles, proto_width, tiles_length, width);
 
             mod random {
                 use super::*;
