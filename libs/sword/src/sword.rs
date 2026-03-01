@@ -625,12 +625,40 @@ impl Animation {
 
 pub type Animations = Vec<Animation>;
 
+pub type TilesLength = usize;
+
+pub struct Sizes {
+    pub tiles_width: TilesWidth,
+    pub tiles_length: TilesLength,
+    pub proto_width: TilesWidth,
+    pub proto_length: TilesLength,
+}
+
+impl Sizes {
+    pub fn new(w: u16, h: u16) -> Self {
+        let tiles_length = (w * h).into();
+
+        let proto_width = TilesWidth::new((w / 2).saturating_sub(1)).unwrap_or(TilesWidth::MIN);
+        let proto_height = TilesWidth::new((h / 2).saturating_sub(1)).unwrap_or(TilesWidth::MIN);
+        let proto_length = usize::from(proto_width.get()) * usize::from(proto_height.get());
+
+        let tiles_width = TilesWidth::new(w).unwrap_or(TilesWidth::MIN);
+
+        Sizes {
+            tiles_width,
+            tiles_length,
+            proto_width,
+            proto_length,
+        }
+    }
+}
+
 type ProtoTileFlags = u8;
 
 fn maze_via_backtracking(
     proto_tiles: &mut Vec1<ProtoTileFlags>,
     rng: &mut Xs,
-    width: TilesWidth,
+    proto_width: TilesWidth,
     current_xy: XY
 ) {
     let mut dirs = Dir::ALL;
@@ -639,7 +667,7 @@ fn maze_via_backtracking(
     for dir in dirs {
         if let Some(new_xy) = current_xy.checked_push(dir) {
             if let (Ok(current_index), Ok(new_index))
-                = (xy_to_i(width, current_xy), xy_to_i(width, new_xy))
+                = (xy_to_i(proto_width, current_xy), xy_to_i(proto_width, new_xy))
             {
                 if let Ok([flags, adjacent_flags])
                     = proto_tiles.get_disjoint_mut([current_index, new_index])
@@ -649,7 +677,7 @@ fn maze_via_backtracking(
 
                     *flags |= dir.flag();
                     *adjacent_flags |= dir.opposite().flag();
-                    maze_via_backtracking(proto_tiles, rng, width, new_xy);
+                    maze_via_backtracking(proto_tiles, rng, proto_width, new_xy);
                 }
             }
         }
@@ -798,7 +826,7 @@ mod maze_via_backtracking_connects_all_cells_on {
 fn to_one_thick(
     proto_tiles: &[ProtoTileFlags],
     proto_width: TilesWidth,
-    tiles_length: xy::Inner,
+    tiles_length: TilesLength,
     width: TilesWidth
 ) -> Vec1<Tile> {
     use TileIndex::*;
@@ -827,7 +855,7 @@ fn to_one_thick(
                 }
             }
 
-            if proto_tile_flags & Dir::Up.flag() != 0 {
+            if proto_tile_flags & Dir::Down.flag() != 0 {
                 if let Ok(tile_down_i) = xy_to_i(width, tile_xy + H::ONE) {
                     if let Some(el) = tiles.get_mut(tile_down_i) { *el = F; }
                 }
@@ -843,10 +871,37 @@ mod to_one_thick_connects_all_cells_on {
     use super::*;
     use maze_via_backtracking_connects_all_cells_on::are_all_cells_connected as are_all_proto_cells_connected;
 
+    #[allow(unused)]
+    fn print_tiles(
+        tiles: &[Tile],
+        width: TilesWidth,
+    ) {
+        let mut output = String::with_capacity(tiles.len());
+
+        let height = xy::Inner::try_from(tiles.len()).unwrap_or(xy::Inner::MAX) / width.get();
+
+        for y in 0..height {
+            for x in 0..width.get() {
+                let xy = XY { x: xy::x(x), y: xy::y(y) };
+
+                let Ok(i) = xy_to_i(width, xy) else { continue };
+
+                let tile = tiles[i];
+
+                output.push(if tile == TileIndex::Floor { ' ' } else { '#' });
+            }
+
+            output.push('\n');
+        }
+
+        eprintln!("{output}");
+    }
+
     fn are_all_one_floor_tiles_connected(
         tiles: &[Tile],
         width: TilesWidth
     ) -> bool {
+        print_tiles(tiles, width);
         use TileIndex::Floor;
 
         let mut expected = 0;
@@ -897,17 +952,9 @@ mod to_one_thick_connects_all_cells_on {
 
     #[test]
     fn this_generated_example() {
-        let tiles_width = 8;
-        let tiles_height = 8;
-        let tiles_length = tiles_width * tiles_height;
+        let sizes = Sizes::new(8, 8);
 
-        let proto_width = TilesWidth::new(tiles_width / 2).unwrap();
-        let proto_height = TilesWidth::new(tiles_height / 2).unwrap();
-        let proto_tiles_length = usize::from(proto_width.get()) * usize::from(proto_height.get());
-
-        let tiles_width = TilesWidth::new(tiles_width).unwrap();
-
-        let mut proto_tiles = vec1![0; proto_tiles_length];
+        let mut proto_tiles = vec1![0; sizes.proto_length];
         let mut rng = xs::from_seed([
             0x0, 0x1, 0x2, 0x3,
             0x4, 0x5, 0x6, 0x7,
@@ -915,20 +962,20 @@ mod to_one_thick_connects_all_cells_on {
             0xC, 0xD, 0xE, 0xF,
         ]);
 
-        assert!(!are_all_proto_cells_connected(&mut proto_tiles, proto_width));
+        assert!(!are_all_proto_cells_connected(&mut proto_tiles, sizes.proto_width));
 
-        maze_via_backtracking(&mut proto_tiles, &mut rng, proto_width, <_>::default());
+        maze_via_backtracking(&mut proto_tiles, &mut rng, sizes.proto_width, <_>::default());
 
-        assert!(are_all_proto_cells_connected(&mut proto_tiles, proto_width));
+        assert!(are_all_proto_cells_connected(&mut proto_tiles, sizes.proto_width));
 
         let tiles = to_one_thick(
             &proto_tiles,
-            proto_width,
-            tiles_length,
-            tiles_width,
+            sizes.proto_width,
+            sizes.tiles_length,
+            sizes.tiles_width,
         );
 
-        assert!(are_all_one_floor_tiles_connected(&tiles, tiles_width));
+        assert!(are_all_one_floor_tiles_connected(&tiles, sizes.tiles_width));
     }
 }
 
@@ -1033,22 +1080,16 @@ impl State {
             // End of planning/proposals
 
             // Start generating random start and end locations, right next to each other.
+            let sizes = Sizes::new(max_tile_w, max_tile_h);
 
-            let tiles_length = max_tile_w * max_tile_h;
-
-            // TODO confirm this division is right, and doesn't need a + 1 or something.
-            let proto_width = TilesWidth::new((max_tile_w / 2) - 0).unwrap_or(TilesWidth::MIN);
-            let proto_height = TilesWidth::new((max_tile_h / 2) - 0).unwrap_or(TilesWidth::MIN);
-            let proto_tiles_length = usize::from(proto_width.get()) * usize::from(proto_height.get());
-
-            let mut proto_tiles = vec1![0; proto_tiles_length];
+            let mut proto_tiles = vec1![0; sizes.proto_length];
             // TODO Does starting at a random spot affect generation in a useful way?
-            maze_via_backtracking(&mut proto_tiles, &mut rng, width, <_>::default());
+            maze_via_backtracking(&mut proto_tiles, &mut rng, sizes.tiles_width, <_>::default());
 
             const W: Tile = Wall(0);
             const F: Tile = Floor;
 
-            let mut tiles = to_one_thick(&proto_tiles, proto_width, tiles_length, width);
+            let mut tiles = to_one_thick(&proto_tiles, sizes.proto_width, sizes.tiles_length, sizes.tiles_width);
 
             mod random {
                 use super::*;
