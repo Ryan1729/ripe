@@ -977,6 +977,34 @@ mod to_one_thick_connects_all_cells_on {
 
         assert!(are_all_one_floor_tiles_connected(&tiles, sizes.tiles_width));
     }
+
+    #[test]
+    fn this_larger_non_square_example() {
+        let sizes = Sizes::new(30, 20);
+
+        let mut proto_tiles = vec1![0; sizes.proto_length];
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        assert!(!are_all_proto_cells_connected(&mut proto_tiles, sizes.proto_width));
+
+        maze_via_backtracking(&mut proto_tiles, &mut rng, sizes.proto_width, <_>::default());
+
+        assert!(are_all_proto_cells_connected(&mut proto_tiles, sizes.proto_width));
+
+        let tiles = to_one_thick(
+            &proto_tiles,
+            sizes.proto_width,
+            sizes.tiles_length,
+            sizes.tiles_width,
+        );
+
+        assert!(are_all_one_floor_tiles_connected(&tiles, sizes.tiles_width));
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1084,7 +1112,7 @@ impl State {
 
             let mut proto_tiles = vec1![0; sizes.proto_length];
             // TODO Does starting at a random spot affect generation in a useful way?
-            maze_via_backtracking(&mut proto_tiles, &mut rng, sizes.tiles_width, <_>::default());
+            maze_via_backtracking(&mut proto_tiles, &mut rng, sizes.proto_width, <_>::default());
 
             const W: Tile = Wall(0);
             const F: Tile = Floor;
