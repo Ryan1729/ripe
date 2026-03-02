@@ -1183,6 +1183,88 @@ impl State {
             // A lot of things here rely on the starting exit_index being an non-edge tile!
 
             //
+            // Pick sections for things to be placed in
+            //
+
+            let start_index = {
+                let mut start_index = exit_index;
+                start_index += tiles.len() / 2;
+
+                while start_index >= tiles.len() {
+                    start_index -= tiles.len();
+                }
+
+                while tiles[start_index] != F {
+                    start_index += 1;
+
+                    while start_index >= tiles.len() {
+                        start_index -= tiles.len();
+                    }
+                }
+
+                start_index
+            };
+
+            let mut paths = Vec::with_capacity(tiles.len() /* not thought about too hard */);
+
+            type Index = usize;
+            type Path = Vec<Index>;
+
+            fn find_all_paths(
+                tiles: &[Tile],
+                width: TilesWidth,
+                current_xy: XY,
+                exit_xy: XY,
+                mut current_path: Path,
+                paths: &mut Vec<Path>,
+            ) {
+                if let Ok(current_i) = xy_to_i(width, current_xy)
+                && !current_path.contains(&current_i)
+                && let Some(Floor) = tiles.get(current_i) {
+                    current_path.push(current_i);
+
+                    if current_xy == exit_xy {
+                        paths.push(current_path);
+                    } else {
+                        if let Some(xy) = current_xy.checked_push(Dir::Left) {
+                            find_all_paths(&tiles, width, xy, exit_xy, current_path.clone(), paths);
+                        }
+                        if let Some(xy) = current_xy.checked_push(Dir::Right) {
+                            find_all_paths(&tiles, width, xy, exit_xy, current_path.clone(), paths);
+                        }
+                        if let Some(xy) = current_xy.checked_push(Dir::Up) {
+                            find_all_paths(&tiles, width, xy, exit_xy, current_path.clone(), paths);
+                        }
+                        if let Some(xy) = current_xy.checked_push(Dir::Down) {
+                            find_all_paths(&tiles, width, xy, exit_xy, current_path/* take ownership */, paths);
+                        }
+                    }
+                }
+            }
+
+            let start_xy = i_to_xy(width, start_index);
+            let exit_xy = i_to_xy(width, exit_index);
+
+            find_all_paths(&tiles, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
+
+            xs::shuffle(&mut rng, &mut paths);
+
+            let path: Path = paths.swap_remove(0);
+
+            // Replace all floor tiles that are not on the path 
+            // with walls.
+            // TODO? Maybe leave some there for flavor?
+            for i in 0..tiles.len() {
+                let tile = &mut tiles[i];
+
+                if *tile == Floor
+                && !path.contains(&i) {
+                    // The indexes are set later
+                    *tile = Wall(0);
+                }
+            }
+
+            //
             // Place Exit
             //
             tiles[exit_index - 1] = F;
