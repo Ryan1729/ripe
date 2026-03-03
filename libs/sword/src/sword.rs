@@ -866,36 +866,58 @@ fn to_one_thick(
     tiles
 }
 
+#[allow(unused)]
+fn print_tiles(
+    tiles: &[Tile],
+    width: TilesWidth,
+) {
+    let mut output = String::with_capacity(tiles.len());
+
+    let height = xy::Inner::try_from(tiles.len()).unwrap_or(xy::Inner::MAX) / width.get();
+
+    let space_count = 3;
+
+    for y in 0..height {
+        for x in 0..width.get() {
+            let xy = XY { x: xy::x(x), y: xy::y(y) };
+
+            let Ok(i) = xy_to_i(width, xy) else { continue };
+
+            let tile = tiles[i];
+
+            if let TileIndex::Wall(index) = tile { 
+                // default (space_count = 1)
+                //'#'
+
+                // decimal digits (space_count = 3)
+                let hundreds = index as u32/100;
+                let tens = (index as u32 - hundreds * 100)/10;
+                let ones = (index as u32 - hundreds * 100 - tens * 10);
+                output.push(char::from_digit(hundreds, 10).unwrap_or('?'));
+                output.push(char::from_digit(tens, 10).unwrap_or('?'));
+                output.push(char::from_digit(ones, 10).unwrap_or('?'));
+
+                // Braille (space_count = 1)
+                //output.push(char::from_u32(0x2800 + index as u32).unwrap_or('?'));
+            } else {
+                for _ in 0..space_count {
+                    output.push(' ');
+                }
+            }
+
+            
+        }
+
+        output.push('\n');
+    }
+
+    eprintln!("{output}");
+}
+
 #[cfg(test)]
 mod to_one_thick_connects_all_cells_on {
     use super::*;
     use maze_via_backtracking_connects_all_cells_on::are_all_cells_connected as are_all_proto_cells_connected;
-
-    #[allow(unused)]
-    fn print_tiles(
-        tiles: &[Tile],
-        width: TilesWidth,
-    ) {
-        let mut output = String::with_capacity(tiles.len());
-
-        let height = xy::Inner::try_from(tiles.len()).unwrap_or(xy::Inner::MAX) / width.get();
-
-        for y in 0..height {
-            for x in 0..width.get() {
-                let xy = XY { x: xy::x(x), y: xy::y(y) };
-
-                let Ok(i) = xy_to_i(width, xy) else { continue };
-
-                let tile = tiles[i];
-
-                output.push(if tile == TileIndex::Floor { ' ' } else { '#' });
-            }
-
-            output.push('\n');
-        }
-
-        eprintln!("{output}");
-    }
 
     fn are_all_one_floor_tiles_connected(
         tiles: &[Tile],
@@ -1004,6 +1026,88 @@ mod to_one_thick_connects_all_cells_on {
         );
 
         assert!(are_all_one_floor_tiles_connected(&tiles, sizes.tiles_width));
+    }
+}
+
+/// Set the indexes from the surrounding tiles.
+fn set_indexes(tiles: &mut [Tile], width: TilesWidth) {
+    for index in 0..tiles.len() {
+        if tiles[index].is_floor_mask() == 0 {
+            let width = usize::from(width.get());
+
+            // Assume everything not set is a wall, for maximum merging.
+            let mut output_mask = 0;
+
+            macro_rules! set {
+                (-, $subtrahend: expr, $mask: ident) => {
+                    if let Some(tile) = index.checked_sub($subtrahend)
+                        .and_then(|i| tiles.get(i)) {
+
+                        // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                        // we can use highest_one instead.
+                        let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+
+                        output_mask |= tile.is_floor_mask() << shift;
+                    }
+                };
+                (+, $addend: expr, $mask: ident) => {
+                    if let Some(tile) = index.checked_add($addend)
+                        .and_then(|i| tiles.get(i)) {
+
+                        // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                        // we can use highest_one instead.
+                        let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+
+                        output_mask |= tile.is_floor_mask() << shift;
+                    }
+                };
+            }
+
+            set!(-, width + 1, UPPER_LEFT);
+            set!(-, width, UPPER_MIDDLE);
+            set!(-, width - 1, UPPER_RIGHT);
+            set!(-, 1, LEFT_MIDDLE);
+
+            set!(+, 1, RIGHT_MIDDLE);
+            set!(+, width - 1, LOWER_RIGHT);
+            set!(+, width, LOWER_MIDDLE);
+            set!(+, width + 1, LOWER_LEFT);
+
+            if let Tile::Wall(mask_ref) = &mut tiles[index] {
+                *mask_ref = output_mask
+            } else {
+                unreachable!("Tile changed while we were looking at it?!");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod set_indexes_works_on {
+    use super::*;
+
+    #[test]
+    fn the_one_floor_cases() {
+        let width = TilesWidth::new(3).unwrap();
+
+        const W: Tile = Tile::Wall(0);
+        const F: Tile = Tile::Floor;
+
+        let wall_tiles = vec1![
+            W, W, W,
+            W, W, W,
+            W, W, W,
+        ];
+
+        for i in 0..8 {
+            let mut tiles = wall_tiles.clone();
+            tiles[if i < 4 { i } else { i + 1 }] = F;
+
+            set_indexes(&mut tiles, width);
+
+            // The middle tile
+            assert_eq!(tiles[4], Tile::Wall(1 << i), "i = {i}, tiles = {tiles:?}");
+        }
     }
 }
 
@@ -1247,7 +1351,8 @@ impl State {
 
             find_all_paths(&tiles, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
 
-            xs::shuffle(&mut rng, &mut paths);
+            paths.sort_by(|a, b| b.len().cmp(&a.len()));
+            dbg!(paths.iter().map(|p| p.len()).collect::<Vec<_>>());
 
             let path: Path = paths.swap_remove(0);
 
@@ -1395,56 +1500,9 @@ impl State {
             //},
         //];
 
-        // Set the indexes from the surrounding tiles.
-        for index in 0..tiles.len() {
-            if tiles[index].is_floor_mask() == 0 {
-                let width = usize::from(width.get());
+        set_indexes(&mut tiles, width);
 
-                // Assume everything not set is a wall, for maximum merging.
-                let mut output_mask = 0;
-
-                macro_rules! set {
-                    (-, $subtrahend: expr, $mask: ident) => {
-                        if let Some(tile) = index.checked_sub($subtrahend)
-                            .and_then(|i| tiles.get(i)) {
-
-                            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                            // we can use highest_one instead.
-                            let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-
-                            output_mask |= tile.is_floor_mask() << shift;
-                        }
-                    };
-                    (+, $addend: expr, $mask: ident) => {
-                        if let Some(tile) = index.checked_add($addend)
-                            .and_then(|i| tiles.get(i)) {
-
-                            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                            // we can use highest_one instead.
-                            let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-
-                            output_mask |= tile.is_floor_mask() << shift;
-                        }
-                    };
-                }
-
-                set!(-, width + 1, UPPER_LEFT);
-                set!(-, width, UPPER_MIDDLE);
-                set!(-, width - 1, UPPER_RIGHT);
-                set!(-, 1, LEFT_MIDDLE);
-
-                set!(+, 1, RIGHT_MIDDLE);
-                set!(+, width - 1, LOWER_RIGHT);
-                set!(+, width, LOWER_MIDDLE);
-                set!(+, width + 1, LOWER_LEFT);
-
-                if let Wall(mask_ref) = &mut tiles[index] {
-                    *mask_ref = output_mask
-                } else {
-                    unreachable!("Tile changed while we were looking at it?!");
-                }
-            }
-        }
+        print_tiles(&tiles, width);
 
         //// Add switch
         //insert_entity!(Entity {
