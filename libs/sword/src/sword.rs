@@ -1069,9 +1069,9 @@ fn set_indexes(tiles: &mut [Tile], width: TilesWidth) {
             set!(-, 1, LEFT_MIDDLE);
 
             set!(+, 1, RIGHT_MIDDLE);
-            set!(+, width - 1, LOWER_RIGHT);
+            set!(+, width - 1, LOWER_LEFT);
             set!(+, width, LOWER_MIDDLE);
-            set!(+, width + 1, LOWER_LEFT);
+            set!(+, width + 1, LOWER_RIGHT);
 
             if let Tile::Wall(mask_ref) = &mut tiles[index] {
                 *mask_ref = output_mask
@@ -1086,27 +1086,70 @@ fn set_indexes(tiles: &mut [Tile], width: TilesWidth) {
 mod set_indexes_works_on {
     use super::*;
 
-    #[test]
-    fn the_one_floor_cases() {
-        let width = TilesWidth::new(3).unwrap();
-
+    /// Only returns walls with unset (zero) indexes.
+    fn three_by_three_walls_from_index(index: u8) -> Vec1<Tile> {
         const W: Tile = Tile::Wall(0);
         const F: Tile = Tile::Floor;
 
-        let wall_tiles = vec1![
+        let mut output = vec1![
             W, W, W,
             W, W, W,
             W, W, W,
         ];
 
         for i in 0..8 {
-            let mut tiles = wall_tiles.clone();
-            tiles[if i < 4 { i } else { i + 1 }] = F;
+            let mask = 1 << i;
+
+            if index & mask != 0 {
+                output[if i < 4 { i } else { i + 1 } as usize] = F;
+            }
+        }
+
+        output
+    }
+
+    #[test]
+    fn the_one_floor_cases() {
+        let width = TilesWidth::new(3).unwrap();
+        for i in 0..8 {
+            let index = 0b1u8.rotate_left(i);
+
+            let mut tiles = three_by_three_walls_from_index(index);
 
             set_indexes(&mut tiles, width);
 
             // The middle tile
-            assert_eq!(tiles[4], Tile::Wall(1 << i), "i = {i}, tiles = {tiles:?}");
+            assert_eq!(tiles[4], Tile::Wall(index), "i = {i}, tiles = {tiles:?}");
+        }
+    }
+
+    #[test]
+    fn the_adjacent_two_floor_cases() {
+        let width = TilesWidth::new(3).unwrap();
+        for i in 0..8 {
+            let index = 0b11u8.rotate_left(i);
+
+            let mut tiles = three_by_three_walls_from_index(index);
+
+            set_indexes(&mut tiles, width);
+
+            // The middle tile
+            assert_eq!(tiles[4], Tile::Wall(index), "i = {i}, tiles = {tiles:?}");
+        }
+    }
+
+    #[test]
+    fn the_one_apart_two_floor_cases() {
+        let width = TilesWidth::new(3).unwrap();
+        for i in 0..8 {
+            let index = 0b101u8.rotate_left(i);
+
+            let mut tiles = three_by_three_walls_from_index(index);
+
+            set_indexes(&mut tiles, width);
+
+            // The middle tile
+            assert_eq!(tiles[4], Tile::Wall(index), "i = {i}, tiles = {tiles:?}");
         }
     }
 }
