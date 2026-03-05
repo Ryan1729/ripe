@@ -1352,7 +1352,7 @@ impl State {
                 start_index
             };
 
-            let mut paths = Vec::with_capacity(tiles.len() /* not thought about too hard */);
+            let mut paths = Vec::with_capacity(16 /* not thought about too hard */);
 
             type Index = usize;
             type Path = Vec<Index>;
@@ -1394,10 +1394,65 @@ impl State {
 
             find_all_paths(&tiles, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
 
-            paths.sort_by(|a, b| b.len().cmp(&a.len()));
-            dbg!(paths.iter().map(|p| p.len()).collect::<Vec<_>>());
-
+            // Currently there's always only one path. Might pick the longest path among multiple later.
+            // TODO This has been oserved to fail sometimes! Extract function that constucts the path 
+            // and write several test cases to isolate reasons why this happens and fix them.
+            assert!(paths.len() > 0);
             let path: Path = paths.swap_remove(0);
+
+            // There's a few types of indexes flying around in this part of the code, and it feels like mistakes are 
+            // likely to happen. So we define some index types and wrap the relevant collections with structs to
+            // ensure that certain plausible mistakes are compile errors.
+
+            // To ensure compile errors, we just need to have all the relevant types be distinct from each other,
+            // so we can leave one as the common index type.
+            type TilesIndex = Index;
+            
+
+            #[derive(Default)]
+            struct PathEdgeIndexes {
+                _indexes: [TilesIndex; 3],
+            }
+            struct PathEdgeI(Index);
+
+            const PEI_0: PathEdgeI = PathEdgeI(0);
+            const PEI_1: PathEdgeI = PathEdgeI(1);
+            const PEI_2: PathEdgeI = PathEdgeI(2);
+
+            impl std::ops::Index<PathEdgeI> for PathEdgeIndexes {
+                type Output = TilesIndex;
+            
+                fn index(&self, PathEdgeI(i): PathEdgeI) -> &Self::Output {
+                    &self._indexes[i]
+                }
+            }
+            impl std::ops::IndexMut<PathEdgeI> for PathEdgeIndexes {
+                fn index_mut(&mut self, PathEdgeI(i): PathEdgeI) -> &mut Self::Output {
+                    &mut self._indexes[i]
+                }
+            }
+
+            #[derive(Clone)]
+            struct PathWrapper {
+                _path: Vec<TilesIndex>,
+            }
+            impl PathWrapper {
+                fn len(&self) -> usize { self._path.len() }
+                fn contains(&self, index: &TilesIndex) -> bool { self._path.contains(index) }
+                fn push(&mut self, element: TilesIndex) { self._path.push(element); }
+            }
+
+            struct PathI(Index);
+
+            impl std::ops::Index<PathI> for PathWrapper {
+                type Output = TilesIndex;
+            
+                fn index(&self, PathI(i): PathI) -> &Self::Output {
+                    &self._path[i]
+                }
+            }
+
+            let path = PathWrapper{ _path: path };
 
             // Replace all floor tiles that are not on the path 
             // with walls.
@@ -1412,12 +1467,20 @@ impl State {
                 }
             }
 
+            let mut floor_indexes = path.clone();
+
             //
             // Place Exit
             //
+
+            // Relies on the exit_index being an non-edge tile!
             tiles[exit_index - 1] = F;
+            floor_indexes.push(exit_index - 1);
             tiles[exit_index] = F;
+            debug_assert!(path.contains(&exit_index));
+            debug_assert!(floor_indexes.contains(&exit_index));
             tiles[exit_index + 1] = F;
+            floor_indexes.push(exit_index + 1);
 
             let base_exit_xy = i_to_xy(width, exit_index);
 
@@ -1463,53 +1526,182 @@ impl State {
             //
             // Perform random complication actions that preserve the solvabilty.
             //
-            let complication_count = 0;
+
+            let mut free_group_id = FIRST_GROUP;
+
+            let complication_count = 3;
 
             enum Complication {
-                ExtendPath,
+                // Can we extend the path in an intereting way? Perhaps from the middle?
+                //ExtendPath, 
+                AddSwitchDoor,
+                //MoveSwitch,
+                //MoveDoor,
             }
 
             for _ in 0..complication_count {
                 // TODO define multiple and pick randomly
-                let complication = Complication::ExtendPath;
+                let complication = Complication::AddSwitchDoor;
 
                 match complication {
-                    Complication::ExtendPath => {
-                        let mut candidate_directions: [Dir; 4] = <_>::default();
-                        let mut candidate_directions_len = 0;
+                    Complication::AddSwitchDoor => {
+                        let width_usize = usize::from(width.get());
 
-                        for dir in Dir::ALL {
-                            let mut viable = false;
+                        // * Pick a point in the hallway to have a door.
 
-                            if let Some(new_start_xy) = start_xy.checked_push(dir) {
-                                if let Ok(new_start_index) = xy_to_i(width, new_start_xy) {
-                                    if let Some(&tile) = tiles.get(new_start_index) {
-                                        viable = tile == W;
+                        // We want an index in the middle of the path, not right 
+                        // at the ends where the exit and the start are, so it
+                        // doesn't make the puzzle trival or impossible.
+
+                        let mut door_indexes = PathEdgeIndexes::default();
+
+                        assert!(path.len() > 3 + 3);
+                        door_indexes[PEI_1] = path[PathI(xs::index(&mut rng, 3..(path.len() - 3)))];
+                        
+                        // Look for the adjacent walls
+                        // Try x first
+                        door_indexes[PEI_0] = door_indexes[PEI_1].saturating_sub(1);
+                        door_indexes[PEI_2] = door_indexes[PEI_1].saturating_add(1);
+
+                        match (
+                            tiles.get(door_indexes[PEI_0]),
+                            tiles.get(door_indexes[PEI_2])
+                        ) {
+                            (Some(Wall(_)), Some(Wall(_))) => { /* keep these */ }
+                            _ => {
+                                // Try y now
+                                let width_usize = usize::from(width.get());
+
+                                door_indexes[PEI_0] = door_indexes[PEI_1].saturating_sub(width_usize);
+                                door_indexes[PEI_2] = door_indexes[PEI_1].saturating_add(width_usize);
+
+                                match (
+                                    tiles.get(door_indexes[PEI_0]),
+                                    tiles.get(door_indexes[PEI_2])
+                                ) {
+                                    (Some(Wall(_)), Some(Wall(_))) => { /* keep these */ }
+                                    _ => {
+                                        // Probably got unlucky and picked a spot a hallway had already spread from
+                                        continue
                                     }
                                 }
                             }
-
-                            if viable {
-                                candidate_directions[
-                                    usize::try_from(candidate_directions_len)
-                                    .expect("Not expected to be run on lower than 32 bit systems!")
-                                ] = dir;
-                                candidate_directions_len += 1;
-                            }
                         }
 
-                        if candidate_directions_len > 0 {
-                            let i = xs::range(&mut rng, 0..candidate_directions_len);
-                            let dir = candidate_directions[
-                                usize::try_from(i)
-                                    .expect("Not expected to be run on lower than 32 bit systems!")
-                            ];
-
-                            if let Some(new_start_xy) = start_xy.checked_push(dir) {
-                                start_xy = new_start_xy;
-                                floor_at_start!();
-                            }
+                        // * Pick a point between the door and the starting spot for the switch
+                        let switch_range = 3..door_indexes[PEI_1];
+                        if switch_range.is_empty() {
+                            continue
                         }
+
+                        // The index on the path relating to where the switch will be 
+                        let switch_on_path_i: TilesIndex = xs::index(&mut rng, switch_range);
+                        
+
+                        // Look for the adjacent walls
+                        // Try x first
+                        let switch_on_path_i_minus_1: TilesIndex = switch_on_path_i.saturating_sub(1);
+                        let switch_on_path_i_plus_1: TilesIndex = switch_on_path_i.saturating_add(1);
+
+                        let switch_i: TilesIndex = match (
+                            tiles.get(switch_on_path_i_minus_1),
+                            tiles.get(switch_on_path_i_plus_1)
+                        ) {
+                            (Some(Wall(_)), _) => switch_on_path_i_minus_1,
+                            (None, Some(Wall(_))) => switch_on_path_i_plus_1,
+                            _ => {
+                                let switch_on_path_i_minus_w: TilesIndex = switch_on_path_i.saturating_sub(width_usize);
+                                let switch_on_path_i_plus_w: TilesIndex = switch_on_path_i.saturating_add(width_usize);
+
+                                match (
+                                    tiles.get(switch_on_path_i_minus_w),
+                                    tiles.get(switch_on_path_i_plus_w)
+                                ) {
+                                    (Some(Wall(_)), _) => switch_on_path_i_minus_w,
+                                    (None, Some(Wall(_))) => switch_on_path_i_plus_w,
+                                    _ => {
+                                        // Probably got unlucky and picked a spot a hallway had already spread from
+                                        continue
+                                    }
+                                }
+                            },
+                        };
+
+                        // TODO Attempt to drill a hallway into thie wall to make the switch farther away.
+                        // (And maybe recurse this switch placement onto the resulting path, if it seems long enough!)
+
+                        // * Place the door
+                        floor_indexes.push(door_indexes[PEI_0]);
+                        floor_indexes.push(door_indexes[PEI_2]);
+
+                        // End of section where indexing bugs are relevant.
+                        let door_indexes = door_indexes._indexes;
+
+                        for index in door_indexes {
+                            // Assume everything not set is a floor, to avoid merging
+                            // with the tile walls.
+                            let mut output_mask = 0b1111_1111;
+        
+                            macro_rules! set {
+                                (-, $subtrahend: expr, $mask: ident) => {
+                                    if let Some(&tile) = index.checked_sub($subtrahend)
+                                        .and_then(|i| tiles.get(i)) {
+        
+                                        // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                                        // we can use highest_one instead.
+                                        let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+        
+                                        if tile.is_floor_mask() == 0 {
+                                            output_mask &= !(1 << shift);
+                                        }
+                                    }
+                                };
+                                (+, $addend: expr, $mask: ident) => {
+                                    if let Some(&tile) = index.checked_add($addend)
+                                        .and_then(|i| tiles.get(i)) {
+        
+                                        // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                                        // we can use highest_one instead.
+                                        let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
+        
+                                        if tile.is_floor_mask() == 0 {
+                                            output_mask &= !(1 << shift);
+                                        }
+                                    }
+                                };
+                            }
+
+                            set!(-, width_usize + 1, UPPER_LEFT);
+                            set!(-, width_usize, UPPER_MIDDLE);
+                            set!(-, width_usize - 1, UPPER_RIGHT);
+                            set!(-, 1, LEFT_MIDDLE);
+        
+                            set!(+, 1, RIGHT_MIDDLE);
+                            set!(+, width_usize - 1, LOWER_RIGHT);
+                            set!(+, width_usize, LOWER_MIDDLE);
+                            set!(+, width_usize + 1, LOWER_LEFT);
+
+                            let xy = i_to_xy(width, index);
+
+                            insert_entity!(Entity {
+                                position: Position::from(xy),
+                                tile_sprite: TileSprite::ToggleWall(output_mask),
+                                toggle_group_id: free_group_id,
+                                ..<_>::default()
+                            });
+                        }
+
+                        // * Place the switch
+                        let switch_xy = i_to_xy(width, switch_i);
+                        
+                        insert_entity!(Entity {
+                            position: Position::from(switch_xy),
+                            tile_sprite: SWITCH_BASE,
+                            toggle_group_id: free_group_id,
+                            ..<_>::default()
+                        });
+
+                        free_group_id += 1;
                     }
                 }
             }
@@ -1556,7 +1748,6 @@ impl State {
         //});
 //
         //// Add toggleable walls
-        //let mut free_group_id = FIRST_GROUP;
         //for wall_spec in wall_specs {
             //for index in 0..wall_spec.tiles.len() {
                 //if wall_spec.tiles[index] == IS_WALL {
