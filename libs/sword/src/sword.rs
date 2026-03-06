@@ -5,7 +5,7 @@ use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
 use vec1::{Vec1, vec1};
 use xs::Xs;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::num::{NonZeroU8, NonZeroU16};
 
 /*
@@ -871,12 +871,21 @@ fn print_tiles(
     tiles: &[Tile],
     width: TilesWidth,
 ) {
+   print_tiles_options(tiles, width, <_>::default())
+}
+
+#[allow(unused)]
+fn print_tiles_options(
+    tiles: &[Tile],
+    width: TilesWidth,
+    tags: HashMap<usize, char>,
+) {
     let mut output = String::with_capacity(tiles.len());
 
     let height = xy::Inner::try_from(tiles.len()).unwrap_or(xy::Inner::MAX) / width.get();
 
     let space_count = 3;
-
+    dbg!(&tags);
     for y in 0..height {
         for x in 0..width.get() {
             let xy = XY { x: xy::x(x), y: xy::y(y) };
@@ -900,8 +909,10 @@ fn print_tiles(
                 // Braille (space_count = 1)
                 //output.push(char::from_u32(0x2800 + index as u32).unwrap_or('?'));
             } else {
+                let ch = tags.get(&i).cloned().unwrap_or(' ');
+
                 for _ in 0..space_count {
-                    output.push(' ');
+                    output.push(ch);
                 }
             }
 
@@ -1325,7 +1336,22 @@ impl State {
 
             let exit_index_result = random::non_edge_index(width, &tiles, &mut rng);
             debug_assert!(exit_index_result.is_ok(), "got {exit_index_result:?}");
-            let exit_index = exit_index_result.unwrap_or_default();
+            let exit_index = {
+                let mut exit_index = exit_index_result.unwrap_or_default();
+                while exit_index >= tiles.len() {
+                    exit_index -= tiles.len();
+                }
+
+                while tiles[exit_index] != F {
+                    exit_index += 1;
+
+                    while exit_index >= tiles.len() {
+                        exit_index -= tiles.len();
+                    }
+                }
+
+                exit_index
+            };
 
             // A lot of things here rely on the starting exit_index being an non-edge tile!
 
@@ -1392,11 +1418,21 @@ impl State {
             let start_xy = i_to_xy(width, start_index);
             let exit_xy = i_to_xy(width, exit_index);
 
+            print_tiles_options(
+                &tiles,
+                width,
+                {
+                    let mut tags = HashMap::default();
+                    tags.insert(start_index, 's');
+                    tags.insert(exit_index, 'e');
+                    tags
+                }
+            );
+            dbg!(start_xy, exit_xy);
+
             find_all_paths(&tiles, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
 
             // Currently there's always only one path. Might pick the longest path among multiple later.
-            // TODO This has been oserved to fail sometimes! Extract function that constucts the path 
-            // and write several test cases to isolate reasons why this happens and fix them.
             assert!(paths.len() > 0);
             let path: Path = paths.swap_remove(0);
 
@@ -1627,7 +1663,7 @@ impl State {
                             },
                         };
 
-                        // TODO Attempt to drill a hallway into thie wall to make the switch farther away.
+                        // TODO Attempt to drill a hallway into the wall to make the switch farther away.
                         // (And maybe recurse this switch placement onto the resulting path, if it seems long enough!)
 
                         // * Place the door
