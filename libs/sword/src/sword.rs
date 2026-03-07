@@ -894,7 +894,7 @@ fn print_tiles_options(
 
             let tile = tiles[i];
 
-            if let TileIndex::Wall(index) = tile { 
+            if let TileIndex::Wall(index) = tile {
                 // default (space_count = 1)
                 //'#'
 
@@ -916,7 +916,7 @@ fn print_tiles_options(
                 }
             }
 
-            
+
         }
 
         output.push('\n');
@@ -965,7 +965,7 @@ mod to_one_thick_connects_all_cells_on {
         while let Some(xy) = to_see.pop() {
             if let Ok(i) = xy_to_i(width, xy) {
                 let tile = tiles[i];
-                
+
                 if tile != Floor { continue }
 
                 seen.insert(i);
@@ -1436,14 +1436,14 @@ impl State {
             assert!(paths.len() > 0);
             let path: Path = paths.swap_remove(0);
 
-            // There's a few types of indexes flying around in this part of the code, and it feels like mistakes are 
+            // There's a few types of indexes flying around in this part of the code, and it feels like mistakes are
             // likely to happen. So we define some index types and wrap the relevant collections with structs to
             // ensure that certain plausible mistakes are compile errors.
 
             // To ensure compile errors, we just need to have all the relevant types be distinct from each other,
             // so we can leave one as the common index type.
             type TilesIndex = Index;
-            
+
 
             #[derive(Default)]
             struct PathEdgeIndexes {
@@ -1457,7 +1457,7 @@ impl State {
 
             impl std::ops::Index<PathEdgeI> for PathEdgeIndexes {
                 type Output = TilesIndex;
-            
+
                 fn index(&self, PathEdgeI(i): PathEdgeI) -> &Self::Output {
                     &self._indexes[i]
                 }
@@ -1476,21 +1476,30 @@ impl State {
                 fn len(&self) -> usize { self._path.len() }
                 fn contains(&self, index: &TilesIndex) -> bool { self._path.contains(index) }
                 fn push(&mut self, element: TilesIndex) { self._path.push(element); }
+
+                fn iter(&self) -> impl Iterator<Item = &TilesIndex> {
+                    self._path.iter()
+                }
             }
 
+            #[derive(PartialEq, Eq, PartialOrd, Ord)]
             struct PathI(Index);
 
             impl std::ops::Index<PathI> for PathWrapper {
                 type Output = TilesIndex;
-            
+
                 fn index(&self, PathI(i): PathI) -> &Self::Output {
                     &self._path[i]
                 }
             }
 
+            impl From<PathI> for Index {
+                fn from(PathI(i): PathI) -> Index { i }
+            }
+
             let path = PathWrapper{ _path: path };
 
-            // Replace all floor tiles that are not on the path 
+            // Replace all floor tiles that are not on the path
             // with walls.
             // TODO? Maybe leave some there for flavor?
             for i in 0..tiles.len() {
@@ -1541,25 +1550,6 @@ impl State {
             }
 
             //
-            // Select initial spot for start
-            //
-
-            let mut start_xy = XY { x: base_exit_xy.x, y: base_exit_xy.y + xy::h(1) };
-
-            macro_rules! floor_at_start {
-                () => {
-                    let start_index_result = xy_to_i(width, start_xy);
-
-                    debug_assert!(start_index_result.is_ok(), "got {start_index_result:?}");
-
-                    let start_index = start_index_result.unwrap_or_default();
-
-                    tiles[start_index] = F;
-                }
-            }
-            floor_at_start!();
-
-            //
             // Perform random complication actions that preserve the solvabilty.
             //
 
@@ -1569,7 +1559,7 @@ impl State {
 
             enum Complication {
                 // Can we extend the path in an intereting way? Perhaps from the middle?
-                //ExtendPath, 
+                //ExtendPath,
                 AddSwitchDoor,
                 //MoveSwitch,
                 //MoveDoor,
@@ -1585,7 +1575,7 @@ impl State {
 
                         // * Pick a point in the hallway to have a door.
 
-                        // We want an index in the middle of the path, not right 
+                        // We want an index in the middle of the path, not right
                         // at the ends where the exit and the start are, so it
                         // doesn't make the puzzle trival or impossible.
 
@@ -1593,7 +1583,7 @@ impl State {
 
                         assert!(path.len() > 3 + 3);
                         door_indexes[PEI_1] = path[PathI(xs::index(&mut rng, 3..(path.len() - 3)))];
-                        
+
                         // Look for the adjacent walls
                         // Try x first
                         door_indexes[PEI_0] = door_indexes[PEI_1].saturating_sub(1);
@@ -1625,14 +1615,19 @@ impl State {
                         }
 
                         // * Pick a point between the door and the starting spot for the switch
-                        let switch_range = 3..door_indexes[PEI_1];
+
+                        let switch_range =
+                            PathI(3)..PathI(
+                                path.iter().position(|&i| i == door_indexes[PEI_1]).expect("Door index not found in path?!")
+                            );
                         if switch_range.is_empty() {
                             continue
                         }
 
-                        // The index on the path relating to where the switch will be 
-                        let switch_on_path_i: TilesIndex = xs::index(&mut rng, switch_range);
-                        
+                        // The index on the path relating to where the switch will be
+                        let switch_on_path_i: TilesIndex = path[
+                            PathI(xs::index(&mut rng, switch_range.start.into()..switch_range.end.into()))
+                        ];
 
                         // Look for the adjacent walls
                         // Try x first
@@ -1666,6 +1661,9 @@ impl State {
                         // TODO Attempt to drill a hallway into the wall to make the switch farther away.
                         // (And maybe recurse this switch placement onto the resulting path, if it seems long enough!)
 
+                        assert_eq!(tiles[switch_i].is_floor_mask(), 0);
+                        tiles[switch_i] = F;
+
                         // * Place the door
                         floor_indexes.push(door_indexes[PEI_0]);
                         floor_indexes.push(door_indexes[PEI_2]);
@@ -1677,16 +1675,16 @@ impl State {
                             // Assume everything not set is a floor, to avoid merging
                             // with the tile walls.
                             let mut output_mask = 0b1111_1111;
-        
+
                             macro_rules! set {
                                 (-, $subtrahend: expr, $mask: ident) => {
                                     if let Some(&tile) = index.checked_sub($subtrahend)
                                         .and_then(|i| tiles.get(i)) {
-        
+
                                         // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
                                         // we can use highest_one instead.
                                         let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-        
+
                                         if tile.is_floor_mask() == 0 {
                                             output_mask &= !(1 << shift);
                                         }
@@ -1695,11 +1693,11 @@ impl State {
                                 (+, $addend: expr, $mask: ident) => {
                                     if let Some(&tile) = index.checked_add($addend)
                                         .and_then(|i| tiles.get(i)) {
-        
+
                                         // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
                                         // we can use highest_one instead.
                                         let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-        
+
                                         if tile.is_floor_mask() == 0 {
                                             output_mask &= !(1 << shift);
                                         }
@@ -1711,7 +1709,7 @@ impl State {
                             set!(-, width_usize, UPPER_MIDDLE);
                             set!(-, width_usize - 1, UPPER_RIGHT);
                             set!(-, 1, LEFT_MIDDLE);
-        
+
                             set!(+, 1, RIGHT_MIDDLE);
                             set!(+, width_usize - 1, LOWER_RIGHT);
                             set!(+, width_usize, LOWER_MIDDLE);
@@ -1729,7 +1727,7 @@ impl State {
 
                         // * Place the switch
                         let switch_xy = i_to_xy(width, switch_i);
-                        
+
                         insert_entity!(Entity {
                             position: Position::from(switch_xy),
                             tile_sprite: SWITCH_BASE,
