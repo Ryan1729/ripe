@@ -1634,7 +1634,7 @@ impl State {
                         let switch_on_path_i_minus_1: TilesIndex = switch_on_path_i.saturating_sub(1);
                         let switch_on_path_i_plus_1: TilesIndex = switch_on_path_i.saturating_add(1);
 
-                        let switch_i: TilesIndex = match (
+                        let mut switch_i: TilesIndex = match (
                             tiles.get(switch_on_path_i_minus_1),
                             tiles.get(switch_on_path_i_plus_1)
                         ) {
@@ -1663,6 +1663,78 @@ impl State {
 
                         assert_eq!(tiles[switch_i].is_floor_mask(), 0);
                         tiles[switch_i] = F;
+
+                        struct Targeting {
+                            source: TilesIndex,
+                            target: TilesIndex,
+                        }
+
+                        let mut possible_new_switch_i = switch_i;
+
+                        macro_rules! is_wall_or_source {
+                            ($source: ident, $index_opt: expr) => {
+                                $index_opt
+                                    .map(|i| i == $source || matches!(tiles[i], Wall(_)))
+                                    .unwrap_or(false)
+                            };
+                        }
+
+                        macro_rules! is_acceptable_to_drill_from {
+                            ($targeting: expr) => ({
+                                let Targeting{ source, target } = $targeting;
+
+                                if let Wall(_) = tiles[target]
+                                && is_wall_or_source!(source, target.checked_sub(width_usize))
+                                && is_wall_or_source!(source, target.checked_add(width_usize))
+                                && is_wall_or_source!(source, target.checked_sub(1))
+                                && is_wall_or_source!(source, target.checked_add(1))
+                                {
+                                    true
+                                } else {
+                                    false
+                                }
+                            })
+                        };
+
+                        let mut last_dir = Dir::ALL[0];
+                        for dir in Dir::ALL {
+                            if let Some(i) = match dir {
+                                Dir::Up => possible_new_switch_i.checked_sub(width_usize),
+                                Dir::Down => possible_new_switch_i.checked_add(width_usize),
+                                Dir::Left => possible_new_switch_i.checked_sub(1),
+                                Dir::Right => possible_new_switch_i.checked_add(1),
+                            } && is_acceptable_to_drill_from!(Targeting{ source: possible_new_switch_i, target: i }) {
+                                possible_new_switch_i = i;
+                                last_dir = dir;
+                                break
+                            }
+                        }
+
+                        while let Wall(_) = tiles[possible_new_switch_i] {
+                            tiles[possible_new_switch_i] = F;
+                            if xs::zero_to_one(&mut rng) < 0.125 {
+                                // Even if we break here, `tiles[possible_new_switch_i] == F`
+                                break
+                            }
+
+                            if xs::zero_to_one(&mut rng) < 0.125 {
+                                let mut dirs = Dir::ALL;
+                                xs::shuffle(&mut rng, &mut dirs);
+
+                                last_dir = dirs[0];
+                            }
+
+                            if let Some(i) = match last_dir {
+                                Dir::Up => possible_new_switch_i.checked_sub(width_usize),
+                                Dir::Down => possible_new_switch_i.checked_add(width_usize),
+                                Dir::Left => possible_new_switch_i.checked_sub(1),
+                                Dir::Right => possible_new_switch_i.checked_add(1),
+                            } && is_acceptable_to_drill_from!(Targeting{ source: possible_new_switch_i, target: i }) {
+                                possible_new_switch_i = i;
+                            }
+                        }
+                        assert_eq!(tiles[possible_new_switch_i], F);
+                        switch_i = possible_new_switch_i;
 
                         // * Place the door
                         floor_indexes.push(door_indexes[PEI_0]);
