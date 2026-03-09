@@ -8,6 +8,8 @@ use xs::Xs;
 use std::collections::{BTreeMap, HashMap};
 use std::num::{NonZeroU8, NonZeroU16};
 
+type Index = usize;
+
 /*
     Notes on wall/floor tiles and their various edge types:
 
@@ -566,6 +568,7 @@ pub fn xy_to_i(width: impl Into<TilesWidth>, xy: XY) -> Result<usize, XYToIError
     Ok(xy.y.usize() * width_usize + x_usize)
 }
 
+pub type TilesWidthInner = u16;
 pub type TilesWidth = NonZeroU16;
 
 #[derive(Clone, Debug)]
@@ -630,7 +633,7 @@ pub type TilesLength = usize;
 pub struct Sizes {
     pub tiles_width: TilesWidth,
     pub tiles_length: TilesLength,
-    pub proto_width: TilesWidth,
+    pub proto_width: ProtoTilesWidth,
     pub proto_length: TilesLength,
 }
 
@@ -638,7 +641,7 @@ impl Sizes {
     pub fn new(w: u16, h: u16) -> Self {
         let tiles_length = (w * h).into();
 
-        let proto_width = TilesWidth::new((w / 2).saturating_sub(1)).unwrap_or(TilesWidth::MIN);
+        let proto_width = ProtoTilesWidth(TilesWidth::new((w / 2).saturating_sub(1)).unwrap_or(TilesWidth::MIN));
         let proto_height = TilesWidth::new((h / 2).saturating_sub(1)).unwrap_or(TilesWidth::MIN);
         let proto_length = usize::from(proto_width.get()) * usize::from(proto_height.get());
 
@@ -655,10 +658,14 @@ impl Sizes {
 
 type ProtoTileFlags = u8;
 
+/// A flag that is outside the range of the Dir flags, which is meant to idicate that the given cell
+/// should not be filled at all.
+const SKIP: ProtoTileFlags = 1 << (Dir::ALL.len() + 1);
+
 fn maze_via_backtracking(
     proto_tiles: &mut Vec1<ProtoTileFlags>,
     rng: &mut Xs,
-    proto_width: TilesWidth,
+    proto_width: ProtoTilesWidth,
     current_xy: XY
 ) {
     let mut dirs = Dir::ALL;
@@ -667,7 +674,7 @@ fn maze_via_backtracking(
     for dir in dirs {
         if let Some(new_xy) = current_xy.checked_push(dir) {
             if let (Ok(current_index), Ok(new_index))
-                = (xy_to_i(proto_width, current_xy), xy_to_i(proto_width, new_xy))
+                = (xy_to_i(proto_width.0, current_xy), xy_to_i(proto_width.0, new_xy))
             {
                 if let Ok([flags, adjacent_flags])
                     = proto_tiles.get_disjoint_mut([current_index, new_index])
@@ -684,60 +691,61 @@ fn maze_via_backtracking(
     }
 }
 
+#[allow(unused)]
+fn print_proto_tiles(
+    tiles: &[ProtoTileFlags],
+    width: TilesWidth,
+) {
+    let mut output = String::with_capacity(tiles.len());
+
+    output.push(' ');
+    for _ in 0..(width.get() * 2 - 1) {
+        output.push('_');
+    }
+    output.push('\n');
+
+    let height = xy::Inner::try_from(tiles.len()).unwrap_or(xy::Inner::MAX) / width.get();
+
+    for y in 0..height {
+        output.push('|');
+        for x in 0..width.get() {
+            let xy = XY { x: xy::x(x), y: xy::y(y) };
+
+            let Ok(i) = xy_to_i(width, xy) else { continue };
+
+            let tile = tiles[i];
+
+            output.push(if tile & Dir::Down.flag() != 0 { ' ' } else { '_' });
+
+            if tile & Dir::Right.flag() != 0 {
+                output.push(
+                    if (tile | tiles.get(i + 1).cloned().unwrap_or(0)) & Dir::Down.flag() != 0 {
+                        ' '
+                    } else {
+                        '_'
+                    }
+                );
+            } else {
+                output.push('|');
+            }
+        }
+
+        output.push('\n');
+    }
+
+    eprintln!("{output}");
+}
+
 #[cfg(test)]
 mod maze_via_backtracking_connects_all_cells_on {
     use super::*;
 
-    #[allow(unused)]
-    fn print_tiles(
-        tiles: &[ProtoTileFlags],
-        width: TilesWidth,
-    ) {
-        let mut output = String::with_capacity(tiles.len());
-
-        output.push(' ');
-        for _ in 0..(width.get() * 2 - 1) {
-            output.push('_');
-        }
-        output.push('\n');
-
-        let height = xy::Inner::try_from(tiles.len()).unwrap_or(xy::Inner::MAX) / width.get();
-
-        for y in 0..height {
-            output.push('|');
-            for x in 0..width.get() {
-                let xy = XY { x: xy::x(x), y: xy::y(y) };
-
-                let Ok(i) = xy_to_i(width, xy) else { continue };
-
-                let tile = tiles[i];
-
-                output.push(if tile & Dir::Down.flag() != 0 { ' ' } else { '_' });
-
-                if tile & Dir::Right.flag() != 0 {
-                    output.push(
-                        if (tile | tiles.get(i + 1).cloned().unwrap_or(0)) & Dir::Down.flag() != 0 {
-                            ' '
-                        } else {
-                            '_'
-                        }
-                    );
-                } else {
-                    output.push('|');
-                }
-            }
-
-            output.push('\n');
-        }
-
-        eprintln!("{output}");
-    }
-
-    pub(crate) fn are_all_cells_connected(
+    pub(crate) fn are_all_cells_connected_options(
         proto_tiles: &mut Vec1<ProtoTileFlags>,
         width: TilesWidth,
+        skip_mask: ProtoTileFlags,
     ) -> bool {
-        print_tiles(proto_tiles, width);
+        print_proto_tiles(proto_tiles, width);
         use std::collections::HashSet;
         let mut seen = HashSet::with_capacity(proto_tiles.len());
 
@@ -745,13 +753,18 @@ mod maze_via_backtracking_connects_all_cells_on {
 
         while let Some(xy) = to_see.pop() {
             if let Ok(i) = xy_to_i(width, xy) {
-                seen.insert(i);
                 let tile = proto_tiles[i];
+
+                if tile & skip_mask != 0 { continue }
+
+                // Don't even look at ones that should be skipped.
+                seen.insert(i);
 
                 for dir in Dir::ALL {
                     if tile & dir.flag() != 0
                     && let Some(new_xy) = xy.checked_push(dir)
                     && let Ok(new_i) = xy_to_i(width, new_xy)
+                    && new_i < proto_tiles.len()
                     && !seen.contains(&new_i) {
                         to_see.push(new_xy);
                     }
@@ -759,7 +772,22 @@ mod maze_via_backtracking_connects_all_cells_on {
             }
         }
 
-        seen.len() == proto_tiles.len()
+        let mut skip_count = 0;
+
+        for i in 0..proto_tiles.len() {
+            let tile = proto_tiles[i];
+
+            if tile & skip_mask != 0 { skip_count += 1 }
+        }
+
+        seen.len() == (proto_tiles.len() - skip_count)
+    }
+
+    pub(crate) fn are_all_cells_connected(
+        proto_tiles: &mut Vec1<ProtoTileFlags>,
+        width: TilesWidth,
+    ) -> bool {
+        are_all_cells_connected_options(proto_tiles, width, 0)
     }
 
     // Test predicate test
@@ -804,8 +832,45 @@ mod maze_via_backtracking_connects_all_cells_on {
     }
 
     #[test]
+    fn are_all_cells_connected_options_respects_the_skip_flag() {
+        use Dir::*;
+
+        let f = Up.flag() | Down.flag() | Right.flag() | Left.flag();
+
+        // All floor
+        let width = TilesWidth::new(4).unwrap();
+        let mut tiles = vec1![f; 16usize];
+
+        assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
+
+        // Top half
+        let width = TilesWidth::new(4).unwrap();
+        let mut tiles = vec1![
+             f,  f,  f,  f,
+             f,  f,  f,  f,
+             SKIP,  SKIP,  SKIP,  SKIP,
+             SKIP,  SKIP,  SKIP,  SKIP,
+        ];
+
+        assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
+
+        // Disjoint top and bottom
+        let width = TilesWidth::new(4).unwrap();
+        let mut tiles = vec1![
+            f,  f,  f,  f,
+
+            SKIP,  SKIP,  SKIP,  SKIP,
+            SKIP,  SKIP,  SKIP,  SKIP,
+
+            f,  f,  f,  f,
+        ];
+
+        assert!(!are_all_cells_connected_options(&mut tiles, width, SKIP));
+    }
+
+    #[test]
     fn this_small_example() {
-        let width = TilesWidth::new(10).unwrap();
+        let width = ProtoTilesWidth::new(10).unwrap();
         let mut tiles = vec1![0; 100usize];
         let mut rng = xs::from_seed([
             0x0, 0x1, 0x2, 0x3,
@@ -822,10 +887,205 @@ mod maze_via_backtracking_connects_all_cells_on {
     }
 }
 
+mod random {
+    use super::*;
+    use std::num::TryFromIntError;
+
+    pub type Index = usize;
+
+    #[derive(Debug)]
+    pub enum NonEdgeError {
+        WidthTooSmall,
+        TilesTooShort,
+        XYToI(XYToIError),
+        TryFromInt(TryFromIntError)
+    }
+
+    impl From<XYToIError> for NonEdgeError {
+        fn from(e: XYToIError) -> Self {
+            NonEdgeError::XYToI(e)
+        }
+    }
+
+    impl From<TryFromIntError> for NonEdgeError {
+        fn from(e: TryFromIntError) -> Self {
+            NonEdgeError::TryFromInt(e)
+        }
+    }
+
+    pub fn non_edge_index(width: TilesWidth, tiles_len: Index, rng: &mut Xs) -> Result<Index, NonEdgeError> {
+        if width.get() < 3 {
+            return Err(NonEdgeError::WidthTooSmall);
+        }
+
+        // The min/max non-edge corners; The corners of the rectangle of non-edge pieces.
+        let min_corner_xy = xy::XY { x: xy::x(1), y: xy::y(1) };
+        let height = xy::Inner::try_from(tiles_len)? / width.get();
+        if height < 3 {
+            return Err(NonEdgeError::TilesTooShort);
+        }
+
+        // -2 because -1 to get to the last index, then another to go to the second last index.
+        let max_corner_xy = xy::XY { x: xy::x(width.get() - 2), y: xy::y(height - 2) };
+
+        let selected_xy = xy::XY {
+            x: xy::x(xs::range(rng, min_corner_xy.x.u32()..max_corner_xy.x.u32() + 1) as xy::Inner),
+            y: xy::y(xs::range(rng, min_corner_xy.y.u32()..max_corner_xy.y.u32() + 1) as xy::Inner)
+        };
+
+        let min_corner_index = xy_to_i(width, min_corner_xy)?;
+        let max_corner_index = xy_to_i(width, max_corner_xy)?;
+
+        if max_corner_index < min_corner_index {
+            return Err(NonEdgeError::TilesTooShort);
+        }
+
+        Ok(xy_to_i(width, selected_xy)?)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ProtoTilesIndex(Index);
+
+#[derive(Clone, Copy)]
+struct ProtoTilesWidth(TilesWidth);
+
+impl ProtoTilesWidth {
+    fn new(inner: TilesWidthInner) -> Option<Self> {
+        TilesWidth::new(inner).map(Self)
+    }
+
+    fn get(&self) -> TilesWidthInner {
+        self.0.get()
+    }
+}
+
+fn place_exit(rng: &mut Xs, proto_tiles: &mut [ProtoTileFlags], ProtoTilesWidth(width): ProtoTilesWidth) -> ProtoTilesIndex {
+    let width_usize = usize::from(width.get());
+
+    let u = Dir::Up.flag();
+    let d = Dir::Down.flag();
+    let l = Dir::Left.flag();
+    let r = Dir::Right.flag();
+
+    // Multiple things in the generation function rely on the starting exit_index being an non-edge tile!
+    let exit_index_result = random::non_edge_index(width, proto_tiles.len(), rng);
+    debug_assert!(exit_index_result.is_ok(), "got {exit_index_result:?}");
+    // Default to the first non-edge tile
+    let exit_index = exit_index_result.unwrap_or(width_usize + 2);
+
+    // Relies on the exit_index being an non-edge tile!
+    proto_tiles[exit_index - width_usize - 1] = SKIP;
+    proto_tiles[exit_index - width_usize] = SKIP;
+    proto_tiles[exit_index - width_usize + 1] = SKIP;
+    proto_tiles[exit_index - 1] = SKIP | r;
+    proto_tiles[exit_index] = SKIP | r | l | d;
+    proto_tiles[exit_index + 1] = SKIP | l;
+    proto_tiles[exit_index + width_usize - 1] = SKIP;
+    proto_tiles[exit_index + width_usize] = SKIP | u | d;
+    proto_tiles[exit_index + width_usize + 1] = SKIP;
+
+    ProtoTilesIndex(exit_index)
+}
+
+#[cfg(test)]
+mod maze_via_backtracking_allows_blocking_out_areas_on {
+    use super::*;
+    use maze_via_backtracking_connects_all_cells_on::{are_all_cells_connected, are_all_cells_connected_options};
+
+    #[test]
+    fn this_small_example() {
+        let width = ProtoTilesWidth::new(10).unwrap();
+        let mut tiles = vec1![0; 100usize];
+
+        for i in 0..tiles.len() {
+            if i % usize::from(width.get()) > 5 {
+                tiles[i] |= SKIP;
+            }
+        }
+
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        assert!(!are_all_cells_connected(&mut tiles, width));
+        assert!(!are_all_cells_connected_options(&mut tiles, width, SKIP));
+
+        maze_via_backtracking(&mut tiles, &mut rng, width, <_>::default());
+
+        assert!(!are_all_cells_connected(&mut tiles, width));
+        assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
+
+        for i in 0..tiles.len() {
+            if i % usize::from(width.get()) > 5 {
+                // The dir flags should all be 0, still
+                assert_eq!(tiles[i], SKIP);
+            }
+        }
+    }
+
+    // Place exit blocks out tiles internally
+    #[test]
+    fn this_small_place_exit_example() {
+        let width = ProtoTilesWidth::new(10).unwrap();
+        let mut tiles = vec1![0; 100usize];
+
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        let _exit_index = place_exit(&mut rng, &mut tiles, width);
+
+        assert!(!are_all_cells_connected(&mut tiles, width));
+        assert!(!are_all_cells_connected_options(&mut tiles, width, SKIP));
+
+        maze_via_backtracking(&mut tiles, &mut rng, width, <_>::default());
+
+        assert!(!are_all_cells_connected(&mut tiles, width));
+        assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
+    }
+
+    #[test]
+    fn this_found_place_exit_example() {
+        // Problem turned out to be we were passing the wrong width in the real code.
+        let width = ProtoTilesWidth::new(30).unwrap();
+        let mut tiles = vec1![0; 126usize];
+
+        let mut rng = xs::from_seed([
+            124,  46,  81,  18,
+            81,    4, 192, 183,
+            246, 205, 191,  15,
+            127,  54, 227,  50,
+        ]);
+
+        let _exit_index = place_exit(&mut rng, &mut tiles, width);
+
+        assert!(!are_all_cells_connected(&mut tiles, width));
+        assert!(!are_all_cells_connected_options(&mut tiles, width, SKIP));
+
+        maze_via_backtracking(&mut tiles, &mut rng, width, <_>::default());
+
+        assert!(!are_all_cells_connected(&mut tiles, width));
+        assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
+    }
+}
+
+fn proto_i_to_tile_xy(proto_width: ProtoTilesWidth, proto_i: ProtoTilesIndex) -> XY {
+    let proto_xy = i_to_xy(proto_width.0, proto_i.0);
+
+     XY { x: proto_xy.x.double().inc(), y: proto_xy.y.double().inc() }
+}
+
 /// Convert the tiles to 1-thick walls
 fn to_one_thick(
     proto_tiles: &[ProtoTileFlags],
-    proto_width: TilesWidth,
+    proto_width: ProtoTilesWidth,
     tiles_length: TilesLength,
     width: TilesWidth
 ) -> Vec1<Tile> {
@@ -841,9 +1101,7 @@ fn to_one_thick(
 
         if proto_tile_flags != 0 {
             // The cell is open on at least one side.
-            let proto_xy = i_to_xy(proto_width, proto_i);
-
-            let tile_xy = XY { x: proto_xy.x.double().inc(), y: proto_xy.y.double().inc() };
+            let tile_xy = proto_i_to_tile_xy(proto_width, ProtoTilesIndex(proto_i));
 
             if let Ok(tile_i) = xy_to_i(width, tile_xy) {
                 if let Some(el) = tiles.get_mut(tile_i) { *el = F; }
@@ -885,7 +1143,7 @@ fn print_tiles_options(
     let height = xy::Inner::try_from(tiles.len()).unwrap_or(xy::Inner::MAX) / width.get();
 
     let space_count = 3;
-    dbg!(&tags);
+
     for y in 0..height {
         for x in 0..width.get() {
             let xy = XY { x: xy::x(x), y: xy::y(y) };
@@ -1265,10 +1523,14 @@ impl State {
             //
             // End of planning/proposals
 
-            // Start generating random start and end locations, right next to each other.
             let sizes = Sizes::new(max_tile_w, max_tile_h);
 
+            let width_usize = usize::from(width.get());
+
             let mut proto_tiles = vec1![0; sizes.proto_length];
+
+            let proto_exit_index = place_exit(&mut rng, &mut proto_tiles, sizes.proto_width);
+
             // TODO Does starting at a random spot affect generation in a useful way?
             maze_via_backtracking(&mut proto_tiles, &mut rng, sizes.proto_width, <_>::default());
 
@@ -1277,83 +1539,9 @@ impl State {
 
             let mut tiles = to_one_thick(&proto_tiles, sizes.proto_width, sizes.tiles_length, sizes.tiles_width);
 
-            mod random {
-                use super::*;
-                use std::num::TryFromIntError;
-
-                pub type Index = usize;
-
-                #[derive(Debug)]
-                pub enum NonEdgeError {
-                    WidthTooSmall,
-                    TilesTooShort,
-                    XYToI(XYToIError),
-                    TryFromInt(TryFromIntError)
-                }
-
-                impl From<XYToIError> for NonEdgeError {
-                    fn from(e: XYToIError) -> Self {
-                        NonEdgeError::XYToI(e)
-                    }
-                }
-
-                impl From<TryFromIntError> for NonEdgeError {
-                    fn from(e: TryFromIntError) -> Self {
-                        NonEdgeError::TryFromInt(e)
-                    }
-                }
-
-                pub fn non_edge_index(width: TilesWidth, tiles: &[Tile], rng: &mut Xs) -> Result<Index, NonEdgeError> {
-                    if width.get() < 3 {
-                        return Err(NonEdgeError::WidthTooSmall);
-                    }
-
-                    // The min/max non-edge corners; The corners of the rectangle of non-edge pieces.
-                    let min_corner_xy = xy::XY { x: xy::x(1), y: xy::y(1) };
-                    let height = xy::Inner::try_from(tiles.len())? / width.get();
-                    if height < 3 {
-                        return Err(NonEdgeError::TilesTooShort);
-                    }
-
-                    // -2 because -1 to get to the last index, then another to go to the second last index.
-                    let max_corner_xy = xy::XY { x: xy::x(width.get() - 2), y: xy::y(height - 2) };
-
-                    let selected_xy = xy::XY {
-                        x: xy::x(xs::range(rng, min_corner_xy.x.u32()..max_corner_xy.x.u32() + 1) as xy::Inner),
-                        y: xy::y(xs::range(rng, min_corner_xy.y.u32()..max_corner_xy.y.u32() + 1) as xy::Inner)
-                    };
-
-                    let min_corner_index = xy_to_i(width, min_corner_xy)?;
-                    let max_corner_index = xy_to_i(width, max_corner_xy)?;
-
-                    if max_corner_index < min_corner_index {
-                        return Err(NonEdgeError::TilesTooShort);
-                    }
-
-                    Ok(xy_to_i(width, selected_xy)?)
-                }
-            }
-
-            let exit_index_result = random::non_edge_index(width, &tiles, &mut rng);
-            debug_assert!(exit_index_result.is_ok(), "got {exit_index_result:?}");
-            let exit_index = {
-                let mut exit_index = exit_index_result.unwrap_or_default();
-                while exit_index >= tiles.len() {
-                    exit_index -= tiles.len();
-                }
-
-                while tiles[exit_index] != F {
-                    exit_index += 1;
-
-                    while exit_index >= tiles.len() {
-                        exit_index -= tiles.len();
-                    }
-                }
-
-                exit_index
-            };
-
-            // A lot of things here rely on the starting exit_index being an non-edge tile!
+            let exit_index = xy_to_i(sizes.tiles_width, proto_i_to_tile_xy(sizes.proto_width, proto_exit_index))
+                // Default to the first non-edge tile
+                .unwrap_or(width_usize + 2);
 
             //
             // Pick sections for things to be placed in
@@ -1380,7 +1568,6 @@ impl State {
 
             let mut paths = Vec::with_capacity(16 /* not thought about too hard */);
 
-            type Index = usize;
             type Path = Vec<Index>;
 
             fn find_all_paths(
@@ -1418,22 +1605,23 @@ impl State {
             let start_xy = i_to_xy(width, start_index);
             let exit_xy = i_to_xy(width, exit_index);
 
-            print_tiles_options(
-                &tiles,
-                width,
-                {
-                    let mut tags = HashMap::default();
-                    tags.insert(start_index, 's');
-                    tags.insert(exit_index, 'e');
-                    tags
-                }
-            );
-            dbg!(start_xy, exit_xy);
-
             find_all_paths(&tiles, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
 
             // Currently there's always only one path. Might pick the longest path among multiple later.
-            assert!(paths.len() > 0);
+            if paths.is_empty() {
+                print_tiles_options(
+                    &tiles,
+                    width,
+                    {
+                        let mut tags = HashMap::default();
+                        tags.insert(start_index, 's');
+                        tags.insert(exit_index, 'e');
+                        tags
+                    }
+                );
+                eprintln!("{:?} to {:?}", start_xy, exit_xy);
+                assert!(!paths.is_empty());
+            }
             let path: Path = paths.swap_remove(0);
 
             // There's a few types of indexes flying around in this part of the code, and it feels like mistakes are
@@ -1571,8 +1759,6 @@ impl State {
 
                 match complication {
                     Complication::AddSwitchDoor => {
-                        let width_usize = usize::from(width.get());
-
                         // * Pick a point in the hallway to have a door.
 
                         // We want an index in the middle of the path, not right
@@ -1596,8 +1782,6 @@ impl State {
                             (Some(Wall(_)), Some(Wall(_))) => { /* keep these */ }
                             _ => {
                                 // Try y now
-                                let width_usize = usize::from(width.get());
-
                                 door_indexes[PEI_0] = door_indexes[PEI_1].saturating_sub(width_usize);
                                 door_indexes[PEI_2] = door_indexes[PEI_1].saturating_add(width_usize);
 
@@ -1667,6 +1851,7 @@ impl State {
                         struct Targeting {
                             source: TilesIndex,
                             target: TilesIndex,
+                            width: TilesWidth,
                         }
 
                         let mut possible_new_switch_i = switch_i;
@@ -1681,20 +1866,23 @@ impl State {
 
                         macro_rules! is_acceptable_to_drill_from {
                             ($targeting: expr) => ({
-                                let Targeting{ source, target } = $targeting;
+                                let Targeting{ source, target, width } = $targeting;
 
                                 if let Wall(_) = tiles[target]
                                 && is_wall_or_source!(source, target.checked_sub(width_usize))
                                 && is_wall_or_source!(source, target.checked_add(width_usize))
                                 && is_wall_or_source!(source, target.checked_sub(1))
                                 && is_wall_or_source!(source, target.checked_add(1))
+                                && let source_xy = i_to_xy(width, source)
+                                && let target_xy = i_to_xy(width, target)
                                 {
-                                    true
+                                    // TODO? Should we jsut work more in XY and only calcualte indexes when needed?
+                                    (source_xy.x == target_xy.x) || (source_xy.y == target_xy.y)
                                 } else {
                                     false
                                 }
                             })
-                        };
+                        }
 
                         let mut last_dir = Dir::ALL[0];
                         for dir in Dir::ALL {
@@ -1703,7 +1891,7 @@ impl State {
                                 Dir::Down => possible_new_switch_i.checked_add(width_usize),
                                 Dir::Left => possible_new_switch_i.checked_sub(1),
                                 Dir::Right => possible_new_switch_i.checked_add(1),
-                            } && is_acceptable_to_drill_from!(Targeting{ source: possible_new_switch_i, target: i }) {
+                            } && is_acceptable_to_drill_from!(Targeting{ source: possible_new_switch_i, target: i, width }) {
                                 possible_new_switch_i = i;
                                 last_dir = dir;
                                 break
@@ -1729,7 +1917,7 @@ impl State {
                                 Dir::Down => possible_new_switch_i.checked_add(width_usize),
                                 Dir::Left => possible_new_switch_i.checked_sub(1),
                                 Dir::Right => possible_new_switch_i.checked_add(1),
-                            } && is_acceptable_to_drill_from!(Targeting{ source: possible_new_switch_i, target: i }) {
+                            } && is_acceptable_to_drill_from!(Targeting{ source: possible_new_switch_i, target: i, width }) {
                                 possible_new_switch_i = i;
                             }
                         }

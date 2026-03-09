@@ -98,3 +98,34 @@ pub fn from_seed(mut seed: Seed) -> Xs {
         wrap!(12, 13, 14, 15),
     ]
 }
+
+/// Returns a seed that if used will produce an Xs with the same state as the input.
+pub fn extract_seed(rng: &Xs) -> Seed {
+    let a = rng[0].0.to_le_bytes();
+    let b = rng[1].0.to_le_bytes();
+    let c = rng[2].0.to_le_bytes();
+    let d = rng[3].0.to_le_bytes();
+
+    [
+        a[0], a[1], a[2], a[3],
+        b[0], b[1], b[2], b[3],
+        c[0], c[1], c[2], c[3],
+        d[0], d[1], d[2], d[3],
+    ]
+}
+
+#[test]
+fn from_seed_then_extract_seed_is_identity() {
+    let initial_seed = [
+        0x0, 0x1, 0x2, 0x3,
+        0x4, 0x5, 0x6, 0x7,
+        0x8, 0x9, 0xA, 0xB,
+        0xC, 0xD, 0xE, 0xF,
+    ];
+
+    let rng = from_seed(initial_seed);
+
+    let final_seed = extract_seed(&rng);
+
+    assert_eq!(initial_seed, final_seed);
+}
