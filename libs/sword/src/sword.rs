@@ -307,19 +307,59 @@ impl TileSprite {
     }
 
     fn is_stairs(&self) -> bool {
-         self.sword_inner_or_0() >= STAIRS_TOP_LEFT_EDGE.sword_inner_or_0()
-             && self.sword_inner_or_0() <= STAIRS_TOP_RIGHT_EDGE.sword_inner_or_0()
+        for tile_sprite in EXIT_SPRITES {
+            if self.sword_inner_or_0() == tile_sprite.sword_inner_or_0() { return true }
+        }
+
+        false
     }
 }
 
 const PLAYER_BASE: TileSprite = TileSprite::Sword(0);
 const STAFF_BASE: TileSprite = TileSprite::Sword(1);
-const STAIRS_TOP_LEFT_EDGE: TileSprite = TileSprite::Sword(2);
+const DOWN_STAIRS_TOP_LEFT_EDGE: TileSprite = TileSprite::Sword(2);
 #[allow(unused)]
-const STAIRS_TOP_EDGE: TileSprite = TileSprite::Sword(STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + 1);
-const STAIRS_TOP_RIGHT_EDGE: TileSprite = TileSprite::Sword(STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + 2);
+const DOWN_STAIRS_TOP_EDGE: TileSprite = TileSprite::Sword(DOWN_STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + 1);
+const DOWN_STAIRS_TOP_RIGHT_EDGE: TileSprite = TileSprite::Sword(DOWN_STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + 2);
+
+const UP_STAIRS_TOP_LEFT_EDGE: TileSprite = TileSprite::Sword(7);
+#[allow(unused)]
+const UP_STAIRS_TOP_EDGE: TileSprite = TileSprite::Sword(UP_STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + 1);
+const UP_STAIRS_TOP_RIGHT_EDGE: TileSprite = TileSprite::Sword(UP_STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + 2);
+
+const RIGHT_STAIRS_TOP_EDGE: TileSprite = TileSprite::Sword(45);
+const RIGHT_STAIRS_MIDDLE_EDGE: TileSprite = TileSprite::Sword(50);
+const RIGHT_STAIRS_BOTTOM_EDGE: TileSprite = TileSprite::Sword(55);
+
+const LEFT_STAIRS_TOP_LEFT_EDGE: TileSprite = TileSprite::Sword(46);
+const LEFT_STAIRS_MIDDLE_EDGE: TileSprite = TileSprite::Sword(51);
+const LEFT_STAIRS_BOTTOM_EDGE: TileSprite = TileSprite::Sword(56);
+
 const SWITCH_BASE: TileSprite = TileSprite::Sword(40);
 const SWITCH_HIT: TileSprite = TileSprite::Sword(SWITCH_BASE.sword_inner_or_0() + 1);
+
+const EXIT_SPRITES: [TileSprite; 12] = [
+    UP_STAIRS_TOP_LEFT_EDGE,
+    UP_STAIRS_TOP_EDGE,
+    UP_STAIRS_TOP_RIGHT_EDGE,
+    
+    DOWN_STAIRS_TOP_LEFT_EDGE,
+    DOWN_STAIRS_TOP_EDGE,
+    DOWN_STAIRS_TOP_RIGHT_EDGE,
+
+    RIGHT_STAIRS_TOP_EDGE,
+    RIGHT_STAIRS_MIDDLE_EDGE,
+    RIGHT_STAIRS_BOTTOM_EDGE,
+    
+    LEFT_STAIRS_TOP_LEFT_EDGE,
+    LEFT_STAIRS_MIDDLE_EDGE,
+    LEFT_STAIRS_BOTTOM_EDGE,
+];
+
+const UP_STAIRS_TOP_LEFT_EDGE_INDEX: Index = 0;
+const DOWN_STAIRS_TOP_LEFT_EDGE_INDEX: Index = 3;
+const LEFT_STAIRS_TOP_LEFT_EDGE_INDEX: Index = 6;
+const RIGHT_STAIRS_TOP_LEFT_EDGE_INDEX: Index = 9;
 
 type Tile = TileIndex;
 
@@ -704,7 +744,7 @@ fn print_proto_tiles(
     }
     output.push('\n');
 
-    let height = xy::Inner::try_from(tiles.len()).unwrap_or(xy::Inner::MAX) / width.get();
+    let height = calc_height(width, tiles);
 
     for y in 0..height {
         output.push('|');
@@ -960,7 +1000,11 @@ impl ProtoTilesWidth {
     }
 }
 
-fn place_exit(rng: &mut Xs, proto_tiles: &mut [ProtoTileFlags], ProtoTilesWidth(width): ProtoTilesWidth) -> ProtoTilesIndex {
+fn place_exit(
+    rng: &mut Xs,
+    proto_tiles: &mut [ProtoTileFlags],
+    ProtoTilesWidth(width): ProtoTilesWidth
+) -> (ProtoTilesIndex, Dir) {
     let width_usize = usize::from(width.get());
 
     let u = Dir::Up.flag();
@@ -974,18 +1018,72 @@ fn place_exit(rng: &mut Xs, proto_tiles: &mut [ProtoTileFlags], ProtoTilesWidth(
     // Default to the first non-edge tile
     let exit_index = exit_index_result.unwrap_or(width_usize + 2);
 
+    let exit_xy = i_to_xy(width, exit_index);
+
+    let height = calc_height(width, proto_tiles);
+
+    let exit_facing = 'exit_facing: {
+        let mut available_dirs = [
+            if exit_xy.y >= xy::y(2) { Some(Dir::Up) } else { None },
+            if exit_xy.y <= xy::y(height.saturating_sub(2).into()) { Some(Dir::Down) } else { None },
+            if exit_xy.x >= xy::x(2) { Some(Dir::Left) } else { None },
+            if exit_xy.x <= xy::x(width.get().saturating_sub(2).into()) { Some(Dir::Up) } else { None },
+        ];
+
+        xs::shuffle(rng, &mut available_dirs);
+
+        for dir_opt in available_dirs {
+            if let Some(dir) = dir_opt {
+                break 'exit_facing dir;
+            }
+        }
+
+        unreachable!()
+    };
+
     // Relies on the exit_index being an non-edge tile!
     proto_tiles[exit_index - width_usize - 1] = SKIP;
     proto_tiles[exit_index - width_usize] = SKIP;
     proto_tiles[exit_index - width_usize + 1] = SKIP;
-    proto_tiles[exit_index - 1] = SKIP | r;
-    proto_tiles[exit_index] = SKIP | r | l | d;
-    proto_tiles[exit_index + 1] = SKIP | l;
+    proto_tiles[exit_index - 1] = SKIP;
+    proto_tiles[exit_index] = SKIP;
+    proto_tiles[exit_index + 1] = SKIP;
     proto_tiles[exit_index + width_usize - 1] = SKIP;
-    proto_tiles[exit_index + width_usize] = SKIP | u | d;
+    proto_tiles[exit_index + width_usize] = SKIP;
     proto_tiles[exit_index + width_usize + 1] = SKIP;
+    todo!("Debug this stuff");
+    let exit_indexes = match exit_facing {
+        Dir::Up
+        | Dir::Down => {
+            proto_tiles[exit_index - 1] |= r;
+            proto_tiles[exit_index] |= r | l | exit_facing.flag();
+            proto_tiles[exit_index + 1] |= l;
 
-    ProtoTilesIndex(exit_index)
+            let i = if exit_facing == Dir::Up {
+                exit_index - width_usize
+            } else {
+                exit_index + width_usize
+            };
+
+            proto_tiles[i] = SKIP | u | d;
+        },
+        Dir::Left
+        | Dir::Right => {
+            proto_tiles[exit_index - width_usize] |= u;
+            proto_tiles[exit_index] |= u | d | exit_facing.flag();
+            proto_tiles[exit_index + width_usize] |= d;
+
+            let i = if exit_facing == Dir::Left {
+                exit_index - 1
+            } else {
+                exit_index + 1
+            };
+
+            proto_tiles[i] = SKIP | r | l;
+        },
+    };
+
+    (ProtoTilesIndex(exit_index), exit_facing)
 }
 
 #[cfg(test)]
@@ -1132,6 +1230,20 @@ fn print_tiles(
    print_tiles_options(tiles, width, <_>::default())
 }
 
+fn calc_height<A>(
+    width: TilesWidth,
+    tiles: &[A],
+) -> xy::Inner {
+    calc_height_len(width, tiles.len())
+}
+
+fn calc_height_len(
+    width: TilesWidth,
+    tiles_len: usize,
+) -> xy::Inner {
+    xy::Inner::try_from(tiles_len).map(|len| len / width.get()).unwrap_or(xy::Inner::MAX)
+}
+
 #[allow(unused)]
 fn print_tiles_options(
     tiles: &[Tile],
@@ -1140,7 +1252,7 @@ fn print_tiles_options(
 ) {
     let mut output = String::with_capacity(tiles.len());
 
-    let height = xy::Inner::try_from(tiles.len()).unwrap_or(xy::Inner::MAX) / width.get();
+    let height = calc_height(width, tiles);
 
     let space_count = 3;
 
@@ -1529,7 +1641,7 @@ impl State {
 
             let mut proto_tiles = vec1![0; sizes.proto_length];
 
-            let proto_exit_index = place_exit(&mut rng, &mut proto_tiles, sizes.proto_width);
+            let (proto_exit_index, exit_facing) = place_exit(&mut rng, &mut proto_tiles, sizes.proto_width);
 
             // TODO Does starting at a random spot affect generation in a useful way?
             maze_via_backtracking(&mut proto_tiles, &mut rng, sizes.proto_width, <_>::default());
@@ -1566,6 +1678,9 @@ impl State {
                 start_index
             };
 
+            let start_xy = i_to_xy(width, start_index);
+            let exit_xy = i_to_xy(width, exit_index);
+
             let mut paths = Vec::with_capacity(16 /* not thought about too hard */);
 
             type Path = Vec<Index>;
@@ -1601,9 +1716,6 @@ impl State {
                     }
                 }
             }
-
-            let start_xy = i_to_xy(width, start_index);
-            let exit_xy = i_to_xy(width, exit_index);
 
             find_all_paths(&tiles, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
 
@@ -1707,31 +1819,38 @@ impl State {
             //
 
             // Relies on the exit_index being an non-edge tile!
-            tiles[exit_index - 1] = F;
-            floor_indexes.push(exit_index - 1);
-            tiles[exit_index] = F;
-            debug_assert!(path.contains(&exit_index));
-            debug_assert!(floor_indexes.contains(&exit_index));
-            tiles[exit_index + 1] = F;
-            floor_indexes.push(exit_index + 1);
 
-            let base_exit_xy = i_to_xy(width, exit_index);
+            let exit_indexes = match exit_facing {
+                Dir::Up
+                | Dir::Down => [exit_index - 1, exit_index, exit_index + 1],
+                Dir::Left
+                | Dir::Right => [exit_index - width_usize, exit_index, exit_index + width_usize],
+            };
+
+            let exit_sprites_index = match exit_facing {
+                Dir::Up => UP_STAIRS_TOP_LEFT_EDGE_INDEX,
+                Dir::Down => DOWN_STAIRS_TOP_LEFT_EDGE_INDEX,
+                Dir::Left => LEFT_STAIRS_TOP_LEFT_EDGE_INDEX,
+                Dir::Right => RIGHT_STAIRS_TOP_LEFT_EDGE_INDEX,
+            };
 
             let mut offset = 0;
-            for key in [
-                Key {
-                    xy: XY { x: base_exit_xy.x - xy::w(1), y: base_exit_xy.y },
-                },
-                Key {
-                    xy: XY { x: base_exit_xy.x, y: base_exit_xy.y },
-                },
-                Key {
-                    xy: XY { x: base_exit_xy.x + xy::w(1), y: base_exit_xy.y },
-                },
-            ] {
+            for index in exit_indexes {
+                tiles[index] = F;
+                if !floor_indexes.contains(&index) {
+                    floor_indexes.push(index);
+                } else {
+                    debug_assert_eq!(exit_index, index);
+                    debug_assert!(path.contains(&index));
+                }
+
+                let exit_xy = i_to_xy(width, index);
+
                 insert_entity!(Entity {
-                    position: Position::from(key.xy),
-                    tile_sprite: TileSprite::Sword(STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + offset),
+                    position: Position::from(exit_xy),
+                    tile_sprite: TileSprite::Sword(
+                        EXIT_SPRITES[exit_sprites_index + offset].sword_inner_or_0()
+                    ),
                     ..<_>::default()
                 });
                 offset += 1;
@@ -2005,104 +2124,9 @@ impl State {
             tiles
         };
 
-        //let switch_key = Key {
-            //xy: XY { x: xy::x(1), y: xy::y(4) },
-        //};
-
-        // TODO automatically add floor to the tiles,
-        // so we don't need to add it in the config file.
-        // (Is a column along the right edge always enough?)
-        //let wall_specs: [ToggleWallSpec; 1] = [
-            //ToggleWallSpec {
-                //width: ToggleWallSpecWidth::new(2).expect("Don't set a 0 width!"),
-                //tiles: {
-                    //const W: IsFloorFlag = IS_WALL;
-                    //const F: IsFloorFlag = IS_FLOOR;
-                    //vec1![
-                        //W, F,
-                        //W, F,
-                        //W, F,
-                        //W, F,
-                    //]
-                //},
-                //base_wh: WH { w: xy::w(5), h: xy::h(3) },
-            //},
-        //];
-
         set_indexes(&mut tiles, width);
 
         print_tiles(&tiles, width);
-
-        //// Add switch
-        //insert_entity!(Entity {
-            //position: Position::from(switch_key.xy),
-            //tile_sprite: SWITCH_BASE,
-            //toggle_group_id: FIRST_GROUP,
-            //..<_>::default()
-        //});
-//
-        //// Add toggleable walls
-        //for wall_spec in wall_specs {
-            //for index in 0..wall_spec.tiles.len() {
-                //if wall_spec.tiles[index] == IS_WALL {
-                    //let width = usize::from(wall_spec.width.get());
-//
-                    //// Assume everything not set is a floor, to avoid merging
-                    //// with walls from other specs.
-                    //let mut output_mask = 0b1111_1111;
-//
-                    //macro_rules! set {
-                        //(-, $subtrahend: expr, $mask: ident) => {
-                            //if let Some(&tile) = index.checked_sub($subtrahend)
-                                //.and_then(|i| wall_spec.tiles.get(i)) {
-//
-                                //// TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                                //// we can use highest_one instead.
-                                //let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-//
-                                //if tile == IS_WALL {
-                                    //output_mask &= !(1 << shift);
-                                //}
-                            //}
-                        //};
-                        //(+, $addend: expr, $mask: ident) => {
-                            //if let Some(&tile) = index.checked_add($addend)
-                                //.and_then(|i| wall_spec.tiles.get(i)) {
-//
-                                //// TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                                //// we can use highest_one instead.
-                                //let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-//
-                                //if tile == IS_WALL {
-                                    //output_mask &= !(1 << shift);
-                                //}
-                            //}
-                        //};
-                    //}
-//
-                    //set!(-, width + 1, UPPER_LEFT);
-                    //set!(-, width, UPPER_MIDDLE);
-                    //set!(-, width - 1, UPPER_RIGHT);
-                    //set!(-, 1, LEFT_MIDDLE);
-//
-                    //set!(+, 1, RIGHT_MIDDLE);
-                    //set!(+, width - 1, LOWER_RIGHT);
-                    //set!(+, width, LOWER_MIDDLE);
-                    //set!(+, width + 1, LOWER_LEFT);
-//
-                    //let xy = i_to_xy(wall_spec.width, index) + wall_spec.base_wh;
-//
-                    //insert_entity!(Entity {
-                        //position: Position::from(xy),
-                        //tile_sprite: TileSprite::ToggleWall(output_mask),
-                        //toggle_group_id: free_group_id,
-                        //..<_>::default()
-                    //});
-                //}
-            //}
-//
-            //free_group_id += 1;
-        //}
 
         Self {
             rng,
