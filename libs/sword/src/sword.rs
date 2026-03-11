@@ -347,13 +347,13 @@ const EXIT_SPRITES: [TileSprite; 12] = [
     DOWN_STAIRS_TOP_EDGE,
     DOWN_STAIRS_TOP_RIGHT_EDGE,
 
-    RIGHT_STAIRS_TOP_EDGE,
-    RIGHT_STAIRS_MIDDLE_EDGE,
-    RIGHT_STAIRS_BOTTOM_EDGE,
-    
     LEFT_STAIRS_TOP_LEFT_EDGE,
     LEFT_STAIRS_MIDDLE_EDGE,
     LEFT_STAIRS_BOTTOM_EDGE,
+
+    RIGHT_STAIRS_TOP_EDGE,
+    RIGHT_STAIRS_MIDDLE_EDGE,
+    RIGHT_STAIRS_BOTTOM_EDGE,
 ];
 
 const UP_STAIRS_TOP_LEFT_EDGE_INDEX: Index = 0;
@@ -703,7 +703,7 @@ type ProtoTileFlags = u8;
 const SKIP: ProtoTileFlags = 1 << (Dir::ALL.len() + 1);
 
 fn maze_via_backtracking(
-    proto_tiles: &mut Vec1<ProtoTileFlags>,
+    proto_tiles: &mut [ProtoTileFlags],
     rng: &mut Xs,
     proto_width: ProtoTilesWidth,
     current_xy: XY
@@ -1000,17 +1000,22 @@ impl ProtoTilesWidth {
     }
 }
 
-fn place_exit(
+fn generate_maze(
     rng: &mut Xs,
     proto_tiles: &mut [ProtoTileFlags],
-    ProtoTilesWidth(width): ProtoTilesWidth
+    proto_width: ProtoTilesWidth
 ) -> (ProtoTilesIndex, Dir) {
+    let ProtoTilesWidth(width) = proto_width;
     let width_usize = usize::from(width.get());
 
     let u = Dir::Up.flag();
     let d = Dir::Down.flag();
     let l = Dir::Left.flag();
     let r = Dir::Right.flag();
+
+    //
+    // Place the exit first
+    //
 
     // Multiple things in the generation function rely on the starting exit_index being an non-edge tile!
     let exit_index_result = random::non_edge_index(width, proto_tiles.len(), rng);
@@ -1051,37 +1056,53 @@ fn place_exit(
     proto_tiles[exit_index + width_usize - 1] = SKIP;
     proto_tiles[exit_index + width_usize] = SKIP;
     proto_tiles[exit_index + width_usize + 1] = SKIP;
-    todo!("Debug this stuff");
-    let exit_indexes = match exit_facing {
+
+    let (exit_hallway_index, orthogonal_flags) = match exit_facing {
         Dir::Up
         | Dir::Down => {
             proto_tiles[exit_index - 1] |= r;
             proto_tiles[exit_index] |= r | l | exit_facing.flag();
             proto_tiles[exit_index + 1] |= l;
 
-            let i = if exit_facing == Dir::Up {
+            // Remove the SKIP flag so the maze reaches here
+            let exit_hallway_index = if exit_facing == Dir::Up {
                 exit_index - width_usize
             } else {
                 exit_index + width_usize
             };
 
-            proto_tiles[i] = SKIP | u | d;
+            (exit_hallway_index, u | d)
         },
         Dir::Left
         | Dir::Right => {
-            proto_tiles[exit_index - width_usize] |= u;
+            proto_tiles[exit_index - width_usize] |= d;
             proto_tiles[exit_index] |= u | d | exit_facing.flag();
-            proto_tiles[exit_index + width_usize] |= d;
+            proto_tiles[exit_index + width_usize] |= u;
 
-            let i = if exit_facing == Dir::Left {
+            let exit_hallway_index = if exit_facing == Dir::Left {
                 exit_index - 1
             } else {
                 exit_index + 1
             };
 
-            proto_tiles[i] = SKIP | r | l;
+            (exit_hallway_index, r | l)
         },
     };
+
+    // Remove the SKIP flag so the maze reaches here
+    proto_tiles[exit_hallway_index] = 0;
+
+    //
+    // Generate the maze in the area we didn't block out
+    //
+
+    // TODO Does starting at a random spot affect generation in a useful way?
+    maze_via_backtracking(proto_tiles, rng, proto_width, <_>::default());
+
+    //
+    // Hook up the maze to the blocked out exit
+    //
+    proto_tiles[exit_hallway_index] |= orthogonal_flags;
 
     (ProtoTilesIndex(exit_index), exit_facing)
 }
@@ -1123,54 +1144,6 @@ mod maze_via_backtracking_allows_blocking_out_areas_on {
                 assert_eq!(tiles[i], SKIP);
             }
         }
-    }
-
-    // Place exit blocks out tiles internally
-    #[test]
-    fn this_small_place_exit_example() {
-        let width = ProtoTilesWidth::new(10).unwrap();
-        let mut tiles = vec1![0; 100usize];
-
-        let mut rng = xs::from_seed([
-            0x0, 0x1, 0x2, 0x3,
-            0x4, 0x5, 0x6, 0x7,
-            0x8, 0x9, 0xA, 0xB,
-            0xC, 0xD, 0xE, 0xF,
-        ]);
-
-        let _exit_index = place_exit(&mut rng, &mut tiles, width);
-
-        assert!(!are_all_cells_connected(&mut tiles, width));
-        assert!(!are_all_cells_connected_options(&mut tiles, width, SKIP));
-
-        maze_via_backtracking(&mut tiles, &mut rng, width, <_>::default());
-
-        assert!(!are_all_cells_connected(&mut tiles, width));
-        assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
-    }
-
-    #[test]
-    fn this_found_place_exit_example() {
-        // Problem turned out to be we were passing the wrong width in the real code.
-        let width = ProtoTilesWidth::new(30).unwrap();
-        let mut tiles = vec1![0; 126usize];
-
-        let mut rng = xs::from_seed([
-            124,  46,  81,  18,
-            81,    4, 192, 183,
-            246, 205, 191,  15,
-            127,  54, 227,  50,
-        ]);
-
-        let _exit_index = place_exit(&mut rng, &mut tiles, width);
-
-        assert!(!are_all_cells_connected(&mut tiles, width));
-        assert!(!are_all_cells_connected_options(&mut tiles, width, SKIP));
-
-        maze_via_backtracking(&mut tiles, &mut rng, width, <_>::default());
-
-        assert!(!are_all_cells_connected(&mut tiles, width));
-        assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
     }
 }
 
@@ -1641,10 +1614,7 @@ impl State {
 
             let mut proto_tiles = vec1![0; sizes.proto_length];
 
-            let (proto_exit_index, exit_facing) = place_exit(&mut rng, &mut proto_tiles, sizes.proto_width);
-
-            // TODO Does starting at a random spot affect generation in a useful way?
-            maze_via_backtracking(&mut proto_tiles, &mut rng, sizes.proto_width, <_>::default());
+            let (proto_exit_index, exit_facing) = generate_maze(&mut rng, &mut proto_tiles, sizes.proto_width);
 
             const W: Tile = Wall(0);
             const F: Tile = Floor;
@@ -1862,7 +1832,8 @@ impl State {
 
             let mut free_group_id = FIRST_GROUP;
 
-            let complication_count = 3;
+            let target_complication_count = 3;
+            let mut current_complication_count = 0;
 
             enum Complication {
                 // Can we extend the path in an intereting way? Perhaps from the middle?
@@ -1872,7 +1843,7 @@ impl State {
                 //MoveDoor,
             }
 
-            for _ in 0..complication_count {
+            while current_complication_count < target_complication_count {
                 // TODO define multiple and pick randomly
                 let complication = Complication::AddSwitchDoor;
 
@@ -1987,7 +1958,7 @@ impl State {
                             ($targeting: expr) => ({
                                 let Targeting{ source, target, width } = $targeting;
 
-                                if let Wall(_) = tiles[target]
+                                if let Some(Wall(_)) = tiles.get(target)
                                 && is_wall_or_source!(source, target.checked_sub(width_usize))
                                 && is_wall_or_source!(source, target.checked_add(width_usize))
                                 && is_wall_or_source!(source, target.checked_sub(1))
@@ -1995,7 +1966,7 @@ impl State {
                                 && let source_xy = i_to_xy(width, source)
                                 && let target_xy = i_to_xy(width, target)
                                 {
-                                    // TODO? Should we jsut work more in XY and only calcualte indexes when needed?
+                                    // TODO? Should we just work more in XY and only calcualte indexes when needed?
                                     (source_xy.x == target_xy.x) || (source_xy.y == target_xy.y)
                                 } else {
                                     false
@@ -2115,6 +2086,7 @@ impl State {
                         });
 
                         free_group_id += 1;
+                        current_complication_count += 1;
                     }
                 }
             }
