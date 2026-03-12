@@ -583,7 +583,7 @@ pub enum Dir {
     Down,
 }
 
-type DirFlag = u8;
+pub type DirFlag = u8;
 
 impl Dir {
     pub const ALL: [Dir; 4] = [
@@ -607,19 +607,19 @@ impl Dir {
         1 << 3,
     ];
     
-    pub fn u8(self) -> u8 {
+    pub const fn u8(self) -> u8 {
         self as u8
     }
 
-    pub fn index(self) -> usize {
-        usize::from(self.u8())
+    pub const fn index(self) -> usize {
+        self.u8() as usize
     }
 
-    pub fn flag(self) -> DirFlag {
+    pub const fn flag(self) -> DirFlag {
         Self::FLAG[self.index()]
     }
 
-    pub fn opposite(self) -> Dir {
+    pub const fn opposite(self) -> Dir {
         Self::OPPOSITE[self.index()]
     }
 }

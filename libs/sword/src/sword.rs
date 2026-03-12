@@ -1,7 +1,7 @@
 ///! S.W.O.R.D.: Staff Whacking Ordeal Required, Duh
 
 use gfx::{Commands};
-use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
+use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
 use vec1::{Vec1, vec1};
 use xs::Xs;
 
@@ -698,7 +698,7 @@ impl Sizes {
 
 type ProtoTileFlags = u8;
 
-/// A flag that is outside the range of the Dir flags, which is meant to idicate that the given cell
+/// A flag that is outside the range of the Dir flags, which is meant to indicate that the given cell
 /// should not be filled at all.
 const SKIP: ProtoTileFlags = 1 << (Dir::ALL.len() + 1);
 
@@ -734,7 +734,7 @@ fn maze_via_backtracking(
 #[allow(unused)]
 fn print_proto_tiles(
     tiles: &[ProtoTileFlags],
-    width: TilesWidth,
+    ProtoTilesWidth(width): ProtoTilesWidth,
 ) {
     let mut output = String::with_capacity(tiles.len());
 
@@ -782,7 +782,7 @@ mod maze_via_backtracking_connects_all_cells_on {
 
     pub(crate) fn are_all_cells_connected_options(
         proto_tiles: &mut Vec1<ProtoTileFlags>,
-        width: TilesWidth,
+        width: ProtoTilesWidth,
         skip_mask: ProtoTileFlags,
     ) -> bool {
         print_proto_tiles(proto_tiles, width);
@@ -825,7 +825,7 @@ mod maze_via_backtracking_connects_all_cells_on {
 
     pub(crate) fn are_all_cells_connected(
         proto_tiles: &mut Vec1<ProtoTileFlags>,
-        width: TilesWidth,
+        width: ProtoTilesWidth,
     ) -> bool {
         are_all_cells_connected_options(proto_tiles, width, 0)
     }
@@ -835,6 +835,8 @@ mod maze_via_backtracking_connects_all_cells_on {
     fn are_all_cells_connected_returns_false_sometimes() {
         use Dir::*;
 
+        let width = ProtoTilesWidth::new(4).unwrap();
+
         let rd = Right.flag() | Down.flag();
         let ru = Right.flag() | Up.flag();
         let rl = Right.flag() | Left.flag();
@@ -842,13 +844,11 @@ mod maze_via_backtracking_connects_all_cells_on {
         let lu =  Left.flag() | Up.flag();
 
         // All walls
-        let width = TilesWidth::new(4).unwrap();
         let mut tiles = vec1![0; 16usize];
 
         assert!(!are_all_cells_connected(&mut tiles, width));
 
         // Top half
-        let width = TilesWidth::new(4).unwrap();
         let mut tiles = vec1![
             rd, rl, rl, ld,
             ru, rl, rl, lu,
@@ -859,7 +859,6 @@ mod maze_via_backtracking_connects_all_cells_on {
         assert!(!are_all_cells_connected(&mut tiles, width));
 
         // Disjoint top and bottom
-        let width = TilesWidth::new(4).unwrap();
         let mut tiles = vec1![
             rd, rl, rl, ld,
             ru, rl, rl, lu,
@@ -877,14 +876,14 @@ mod maze_via_backtracking_connects_all_cells_on {
 
         let f = Up.flag() | Down.flag() | Right.flag() | Left.flag();
 
+        let width = ProtoTilesWidth::new(4).unwrap();
+
         // All floor
-        let width = TilesWidth::new(4).unwrap();
         let mut tiles = vec1![f; 16usize];
 
         assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
 
         // Top half
-        let width = TilesWidth::new(4).unwrap();
         let mut tiles = vec1![
              f,  f,  f,  f,
              f,  f,  f,  f,
@@ -895,7 +894,6 @@ mod maze_via_backtracking_connects_all_cells_on {
         assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
 
         // Disjoint top and bottom
-        let width = TilesWidth::new(4).unwrap();
         let mut tiles = vec1![
             f,  f,  f,  f,
 
@@ -1000,6 +998,12 @@ impl ProtoTilesWidth {
     }
 }
 
+impl From<ProtoTilesWidth> for TilesWidth {
+    fn from(ProtoTilesWidth(width): ProtoTilesWidth) -> Self {
+        width
+    }
+}
+
 fn generate_maze(
     rng: &mut Xs,
     proto_tiles: &mut [ProtoTileFlags],
@@ -1007,11 +1011,6 @@ fn generate_maze(
 ) -> (ProtoTilesIndex, Dir) {
     let ProtoTilesWidth(width) = proto_width;
     let width_usize = usize::from(width.get());
-
-    let u = Dir::Up.flag();
-    let d = Dir::Down.flag();
-    let l = Dir::Left.flag();
-    let r = Dir::Right.flag();
 
     //
     // Place the exit first
@@ -1046,7 +1045,43 @@ fn generate_maze(
         unreachable!()
     };
 
-    // Relies on the exit_index being an non-edge tile!
+    let (exit_hallway_index, orthogonal_flags) = set_flags_for_exit(
+        proto_tiles,
+        proto_width,
+        exit_index,
+        exit_facing
+    );
+
+    //
+    // Generate the maze in the area we didn't block out
+    //
+
+    // TODO Does starting at a random spot affect generation in a useful way?
+    maze_via_backtracking(proto_tiles, rng, proto_width, <_>::default());
+
+    //
+    // Hook up the maze to the blocked out exit
+    //
+    proto_tiles[exit_hallway_index] |= orthogonal_flags;
+
+    (ProtoTilesIndex(exit_index), exit_facing)
+}
+
+/// Relies on the exit_index being an non-edge tile!
+fn set_flags_for_exit(
+    proto_tiles: &mut [ProtoTileFlags],
+    proto_width: ProtoTilesWidth,
+    exit_index: Index,
+    exit_facing: Dir
+) -> (Index, DirFlag) {
+    let ProtoTilesWidth(width) = proto_width;
+    let width_usize = usize::from(width.get());
+
+    let u = Dir::Up.flag();
+    let d = Dir::Down.flag();
+    let l = Dir::Left.flag();
+    let r = Dir::Right.flag();
+
     proto_tiles[exit_index - width_usize - 1] = SKIP;
     proto_tiles[exit_index - width_usize] = SKIP;
     proto_tiles[exit_index - width_usize + 1] = SKIP;
@@ -1056,6 +1091,8 @@ fn generate_maze(
     proto_tiles[exit_index + width_usize - 1] = SKIP;
     proto_tiles[exit_index + width_usize] = SKIP;
     proto_tiles[exit_index + width_usize + 1] = SKIP;
+
+    let opposite_flag = exit_facing.opposite().flag();
 
     let (exit_hallway_index, orthogonal_flags) = match exit_facing {
         Dir::Up
@@ -1071,6 +1108,9 @@ fn generate_maze(
                 exit_index + width_usize
             };
 
+            proto_tiles[exit_hallway_index - 1] |= r | opposite_flag;
+            proto_tiles[exit_hallway_index + 1] |= l | opposite_flag;
+
             (exit_hallway_index, u | d)
         },
         Dir::Left
@@ -1085,6 +1125,9 @@ fn generate_maze(
                 exit_index + 1
             };
 
+            proto_tiles[exit_hallway_index - width_usize] |= u | opposite_flag;
+            proto_tiles[exit_hallway_index + width_usize] |= d | opposite_flag;
+
             (exit_hallway_index, r | l)
         },
     };
@@ -1092,19 +1135,131 @@ fn generate_maze(
     // Remove the SKIP flag so the maze reaches here
     proto_tiles[exit_hallway_index] = 0;
 
-    //
-    // Generate the maze in the area we didn't block out
-    //
+    (exit_hallway_index, orthogonal_flags)
+}
 
-    // TODO Does starting at a random spot affect generation in a useful way?
-    maze_via_backtracking(proto_tiles, rng, proto_width, <_>::default());
+#[cfg(test)]
+mod set_flags_for_exit_produces_the_exact_result_on {
+    use super::*;
 
-    //
-    // Hook up the maze to the blocked out exit
-    //
-    proto_tiles[exit_hallway_index] |= orthogonal_flags;
+    const U: DirFlag = Dir::Up.flag();
+    const D: DirFlag = Dir::Down.flag();
+    const L: DirFlag = Dir::Left.flag();
+    const R: DirFlag = Dir::Right.flag();
+    const S: DirFlag = SKIP;
 
-    (ProtoTilesIndex(exit_index), exit_facing)
+    // Short for assert. We can be this terse because the scope here is limited.
+    macro_rules! a {
+        ($actual: expr, $expected: expr, $width: expr $(,)?) => {
+            let actual = $actual;
+            let expected = $expected;
+
+            if actual != expected {
+                let width = $width;
+                let width_usize = usize::from(width.get());
+                println!("actual:");
+                print_proto_tiles(&actual, width);
+                for i in 0..actual.len() {
+                    print!(" {:#04X}", actual[i]);
+                    if i % width_usize == width_usize - 1 { println!(); }
+                }
+                println!();
+
+                println!("expected:");
+                print_proto_tiles(&expected, width);
+                for i in 0..expected.len() {
+                    print!(" {:#04X}", expected[i]);
+                    if i % width_usize == width_usize - 1 { println!(); }
+                }
+                println!();
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn the_minimal_up_case() {
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        let mut proto_tiles = vec1![0; 9usize];
+        let exit_index = 4; // The center of the 3 x 3
+
+        set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Up);
+
+        a!(
+            proto_tiles, 
+            // One cell intentionally leaves out the S
+            // to give a place to hook the maze onto.
+            vec1![
+                S | R | D,     L | R | D, S | L | D,
+                S | R | U, S | L | R | U, S | L | U,
+                        S,             S,         S,
+            ],
+            proto_width,
+        );
+    }
+
+    #[test]
+    fn the_minimal_down_case() {
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        let mut proto_tiles = vec1![0; 9usize];
+        let exit_index = 4; // The center of the 3 x 3
+
+        set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Down);
+
+        a!(
+            proto_tiles, 
+            // One cell intentionally leaves out the S
+            // to give a place to hook the maze onto.
+            vec1![
+                        S,             S,         S,
+                S | R | D, S | L | R | D, S | L | D,
+                S | R | U,     L | R | U, S | L | U,
+            ],
+            proto_width,
+        );
+    }
+
+    #[test]
+    fn the_minimal_left_case() {
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        let mut proto_tiles = vec1![0; 9usize];
+        let exit_index = 4; // The center of the 3 x 3
+
+        set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Left);
+
+        a!(
+            proto_tiles, 
+            // One cell intentionally leaves out the S
+            // to give a place to hook the maze onto.
+            vec1![
+                    S | R | D,     S | L | D, S,
+                    R | U | D, S | L | U | D, S,
+                    S | R | U,     S | L | U, S,
+            ],
+            proto_width,
+        );
+    }
+
+    #[test]
+    fn the_minimal_right_case() {
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        let mut proto_tiles = vec1![0; 9usize];
+        let exit_index = 4; // The center of the 3 x 3
+
+        set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Right);
+
+        a!(
+            proto_tiles, 
+            // One cell intentionally leaves out the S
+            // to give a place to hook the maze onto.
+            vec1![
+                        S,     S | R | D, S | L | D,
+                        S, S | R | U | D, L | U | D,
+                        S,     S | R | U, S | L | U,
+            ],
+            proto_width,
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1963,10 +2118,11 @@ impl State {
                                 && is_wall_or_source!(source, target.checked_add(width_usize))
                                 && is_wall_or_source!(source, target.checked_sub(1))
                                 && is_wall_or_source!(source, target.checked_add(1))
-                                && let source_xy = i_to_xy(width, source)
-                                && let target_xy = i_to_xy(width, target)
                                 {
-                                    // TODO? Should we just work more in XY and only calcualte indexes when needed?
+                                    let source_xy = i_to_xy(width, source);
+                                    let target_xy = i_to_xy(width, target);
+
+                                    // TODO? Should we just work more in XY and only calculate indexes when needed?
                                     (source_xy.x == target_xy.x) || (source_xy.y == target_xy.y)
                                 } else {
                                     false
