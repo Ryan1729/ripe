@@ -1092,16 +1092,16 @@ fn set_flags_for_exit(
     proto_tiles[exit_index + width_usize] = SKIP;
     proto_tiles[exit_index + width_usize + 1] = SKIP;
 
+    let flag = exit_facing.flag();
     let opposite_flag = exit_facing.opposite().flag();
 
     let (exit_hallway_index, orthogonal_flags) = match exit_facing {
         Dir::Up
         | Dir::Down => {
-            proto_tiles[exit_index - 1] |= r;
-            proto_tiles[exit_index] |= r | l | exit_facing.flag();
-            proto_tiles[exit_index + 1] |= l;
+            proto_tiles[exit_index - 1] |= r | flag;
+            proto_tiles[exit_index] |= r | l | flag;
+            proto_tiles[exit_index + 1] |= l | flag;
 
-            // Remove the SKIP flag so the maze reaches here
             let exit_hallway_index = if exit_facing == Dir::Up {
                 exit_index - width_usize
             } else {
@@ -1109,15 +1109,17 @@ fn set_flags_for_exit(
             };
 
             proto_tiles[exit_hallway_index - 1] |= r | opposite_flag;
+            // Remove the SKIP flag so the maze reaches here
+            proto_tiles[exit_hallway_index] = r | l | opposite_flag;
             proto_tiles[exit_hallway_index + 1] |= l | opposite_flag;
 
             (exit_hallway_index, u | d)
         },
         Dir::Left
         | Dir::Right => {
-            proto_tiles[exit_index - width_usize] |= d;
-            proto_tiles[exit_index] |= u | d | exit_facing.flag();
-            proto_tiles[exit_index + width_usize] |= u;
+            proto_tiles[exit_index - width_usize] |= d | flag;
+            proto_tiles[exit_index] |= u | d | flag;
+            proto_tiles[exit_index + width_usize] |= u | flag;
 
             let exit_hallway_index = if exit_facing == Dir::Left {
                 exit_index - 1
@@ -1125,15 +1127,16 @@ fn set_flags_for_exit(
                 exit_index + 1
             };
 
-            proto_tiles[exit_hallway_index - width_usize] |= u | opposite_flag;
-            proto_tiles[exit_hallway_index + width_usize] |= d | opposite_flag;
+            proto_tiles[exit_hallway_index - width_usize] |= d | opposite_flag;
+            // Remove the SKIP flag so the maze reaches here
+            proto_tiles[exit_hallway_index] = u | d | opposite_flag;
+            proto_tiles[exit_hallway_index + width_usize] |= u | opposite_flag;
 
             (exit_hallway_index, r | l)
         },
     };
 
-    // Remove the SKIP flag so the maze reaches here
-    proto_tiles[exit_hallway_index] = 0;
+    
 
     (exit_hallway_index, orthogonal_flags)
 }
