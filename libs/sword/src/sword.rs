@@ -361,7 +361,18 @@ const DOWN_STAIRS_TOP_LEFT_EDGE_INDEX: Index = 3;
 const LEFT_STAIRS_TOP_LEFT_EDGE_INDEX: Index = 6;
 const RIGHT_STAIRS_TOP_LEFT_EDGE_INDEX: Index = 9;
 
-type Tile = TileIndex;
+pub type TileFlags = u16;
+pub const TILE_REQUIRED: TileFlags = 1 << 0;
+
+fn to_tile_flags(proto_tile_flags: ProtoTileFlags) -> TileFlags {
+    TileFlags::from(proto_tile_flags >> 4)
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Tile {
+    pub sprite_index: TileIndex,
+    pub flags: TileFlags,
+}
 
 
 mod position {
@@ -623,7 +634,7 @@ fn can_walk_onto_tile(tiles: &Tiles, xy: XY) -> bool {
     };
 
     tiles.tiles.get(i)
-        .map(|t| t.is_floor_mask() == 1)
+        .map(|t| t.sprite_index.is_floor_mask() == 1)
         .unwrap_or(false)
 }
 
@@ -1045,7 +1056,7 @@ fn generate_maze(
         unreachable!()
     };
 
-    let (exit_hallway_index, orthogonal_flags) = set_flags_for_exit(
+    let (exit_hallway_index, fix_flags) = set_flags_for_exit(
         proto_tiles,
         proto_width,
         exit_index,
@@ -1062,7 +1073,8 @@ fn generate_maze(
     //
     // Hook up the maze to the blocked out exit
     //
-    proto_tiles[exit_hallway_index] |= orthogonal_flags;
+    proto_tiles[exit_hallway_index] |= fix_flags;
+    print_proto_tiles(&proto_tiles, proto_width);
 
     (ProtoTilesIndex(exit_index), exit_facing)
 }
@@ -1095,7 +1107,7 @@ fn set_flags_for_exit(
     let flag = exit_facing.flag();
     let opposite_flag = exit_facing.opposite().flag();
 
-    let (exit_hallway_index, orthogonal_flags) = match exit_facing {
+    let (exit_hallway_index, fix_flags) = match exit_facing {
         Dir::Up
         | Dir::Down => {
             proto_tiles[exit_index - 1] |= r | flag;
@@ -1109,11 +1121,11 @@ fn set_flags_for_exit(
             };
 
             proto_tiles[exit_hallway_index - 1] |= r | opposite_flag;
-            // Remove the SKIP flag so the maze reaches here
-            proto_tiles[exit_hallway_index] = r | l | opposite_flag;
+            // Clear flags so the maze reaches here
+            proto_tiles[exit_hallway_index] = 0;
             proto_tiles[exit_hallway_index + 1] |= l | opposite_flag;
 
-            (exit_hallway_index, u | d)
+            (exit_hallway_index, r | l | opposite_flag)
         },
         Dir::Left
         | Dir::Right => {
@@ -1128,17 +1140,15 @@ fn set_flags_for_exit(
             };
 
             proto_tiles[exit_hallway_index - width_usize] |= d | opposite_flag;
-            // Remove the SKIP flag so the maze reaches here
-            proto_tiles[exit_hallway_index] = u | d | opposite_flag;
+            // Clear flags so the maze reaches here
+            proto_tiles[exit_hallway_index] = 0;
             proto_tiles[exit_hallway_index + width_usize] |= u | opposite_flag;
 
-            (exit_hallway_index, r | l)
+            (exit_hallway_index, u | d | opposite_flag)
         },
-    };
+    };    
 
-    
-
-    (exit_hallway_index, orthogonal_flags)
+    (exit_hallway_index, fix_flags)
 }
 
 #[cfg(test)]
@@ -1320,10 +1330,10 @@ fn to_one_thick(
 ) -> Vec1<Tile> {
     use TileIndex::*;
 
-    const W: Tile = Wall(0);
-    const F: Tile = Floor;
+    const W: TileIndex = Wall(0);
+    const F: TileIndex = Floor;
 
-    let mut tiles = vec1![W; tiles_length];
+    let mut tiles = vec1![Tile::default(); tiles_length];
 
     for proto_i in 0..proto_tiles.len() {
         let proto_tile_flags = proto_tiles[proto_i];
@@ -1333,18 +1343,22 @@ fn to_one_thick(
             let tile_xy = proto_i_to_tile_xy(proto_width, ProtoTilesIndex(proto_i));
 
             if let Ok(tile_i) = xy_to_i(width, tile_xy) {
-                if let Some(el) = tiles.get_mut(tile_i) { *el = F; }
+                if let Some(tile) = tiles.get_mut(tile_i) { 
+                    tile.sprite_index = F;
+
+                    tile.flags = to_tile_flags(proto_tile_flags);
+                }   
             }
 
             if proto_tile_flags & Dir::Right.flag() != 0 {
                 if let Ok(tile_right_i) = xy_to_i(width, tile_xy + W::ONE) {
-                    if let Some(el) = tiles.get_mut(tile_right_i) { *el = F; }
+                    if let Some(el) = tiles.get_mut(tile_right_i).map(|t| &mut t.sprite_index) { *el = F; }
                 }
             }
 
             if proto_tile_flags & Dir::Down.flag() != 0 {
                 if let Ok(tile_down_i) = xy_to_i(width, tile_xy + H::ONE) {
-                    if let Some(el) = tiles.get_mut(tile_down_i) { *el = F; }
+                    if let Some(el) = tiles.get_mut(tile_down_i).map(|t| &mut t.sprite_index) { *el = F; }
                 }
             }
         }
@@ -1395,7 +1409,7 @@ fn print_tiles_options(
 
             let tile = tiles[i];
 
-            if let TileIndex::Wall(index) = tile {
+            if let TileIndex::Wall(index) = tile.sprite_index {
                 // default (space_count = 1)
                 //'#'
 
@@ -1544,7 +1558,7 @@ mod to_one_thick_connects_all_cells_on {
 /// Set the indexes from the surrounding tiles.
 fn set_indexes(tiles: &mut [Tile], width: TilesWidth) {
     for index in 0..tiles.len() {
-        if tiles[index].is_floor_mask() == 0 {
+        if tiles[index].sprite_index.is_floor_mask() == 0 {
             let width = usize::from(width.get());
 
             // Assume everything not set is a wall, for maximum merging.
@@ -1553,7 +1567,7 @@ fn set_indexes(tiles: &mut [Tile], width: TilesWidth) {
             macro_rules! set {
                 (-, $subtrahend: expr, $mask: ident) => {
                     if let Some(tile) = index.checked_sub($subtrahend)
-                        .and_then(|i| tiles.get(i)) {
+                        .and_then(|i| tiles.get(i).map(|t| t.sprite_index)) {
 
                         // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
                         // we can use highest_one instead.
@@ -1564,7 +1578,7 @@ fn set_indexes(tiles: &mut [Tile], width: TilesWidth) {
                 };
                 (+, $addend: expr, $mask: ident) => {
                     if let Some(tile) = index.checked_add($addend)
-                        .and_then(|i| tiles.get(i)) {
+                        .and_then(|i| tiles.get(i).map(|t| t.sprite_index)) {
 
                         // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
                         // we can use highest_one instead.
@@ -1585,7 +1599,7 @@ fn set_indexes(tiles: &mut [Tile], width: TilesWidth) {
             set!(+, width, LOWER_MIDDLE);
             set!(+, width + 1, LOWER_RIGHT);
 
-            if let Tile::Wall(mask_ref) = &mut tiles[index] {
+            if let TileIndex::Wall(mask_ref) = &mut tiles[index].sprite_index {
                 *mask_ref = output_mask
             } else {
                 unreachable!("Tile changed while we were looking at it?!");
@@ -1600,8 +1614,8 @@ mod set_indexes_works_on {
 
     /// Only returns walls with unset (zero) indexes.
     fn three_by_three_walls_from_index(index: u8) -> Vec1<Tile> {
-        const W: Tile = Tile::Wall(0);
-        const F: Tile = Tile::Floor;
+        const W: Tile = TileIndex::Wall(0);
+        const F: Tile = TileIndex::Floor;
 
         let mut output = vec1![
             W, W, W,
@@ -1631,7 +1645,7 @@ mod set_indexes_works_on {
             set_indexes(&mut tiles, width);
 
             // The middle tile
-            assert_eq!(tiles[4], Tile::Wall(index), "i = {i}, tiles = {tiles:?}");
+            assert_eq!(tiles[4], TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
         }
     }
 
@@ -1646,7 +1660,7 @@ mod set_indexes_works_on {
             set_indexes(&mut tiles, width);
 
             // The middle tile
-            assert_eq!(tiles[4], Tile::Wall(index), "i = {i}, tiles = {tiles:?}");
+            assert_eq!(tiles[4], TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
         }
     }
 
@@ -1661,7 +1675,7 @@ mod set_indexes_works_on {
             set_indexes(&mut tiles, width);
 
             // The middle tile
-            assert_eq!(tiles[4], Tile::Wall(index), "i = {i}, tiles = {tiles:?}");
+            assert_eq!(tiles[4], TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
         }
     }
 }
@@ -1774,8 +1788,8 @@ impl State {
 
             let (proto_exit_index, exit_facing) = generate_maze(&mut rng, &mut proto_tiles, sizes.proto_width);
 
-            const W: Tile = Wall(0);
-            const F: Tile = Floor;
+            const W: TileIndex = Wall(0);
+            const F: TileIndex = Floor;
 
             let mut tiles = to_one_thick(&proto_tiles, sizes.proto_width, sizes.tiles_length, sizes.tiles_width);
 
@@ -1795,7 +1809,7 @@ impl State {
                     start_index -= tiles.len();
                 }
 
-                while tiles[start_index] != F {
+                while tiles[start_index].sprite_index != F {
                     start_index += 1;
 
                     while start_index >= tiles.len() {
@@ -1823,7 +1837,7 @@ impl State {
             ) {
                 if let Ok(current_i) = xy_to_i(width, current_xy)
                 && !current_path.contains(&current_i)
-                && let Some(Floor) = tiles.get(current_i) {
+                && let Some(Floor) = tiles.get(current_i).map(|t| t.sprite_index) {
                     current_path.push(current_i);
 
                     if current_xy == exit_xy {
@@ -1933,10 +1947,11 @@ impl State {
             for i in 0..tiles.len() {
                 let tile = &mut tiles[i];
 
-                if *tile == Floor
+                if tile.sprite_index == Floor
+                && tile.flags & TILE_REQUIRED == 0
                 && !path.contains(&i) {
                     // The indexes are set later
-                    *tile = Wall(0);
+                    tile.sprite_index = Wall(0);
                 }
             }
 
@@ -1964,7 +1979,7 @@ impl State {
 
             let mut offset = 0;
             for index in exit_indexes {
-                tiles[index] = F;
+                tiles[index].sprite_index = F;
                 if !floor_indexes.contains(&index) {
                     floor_indexes.push(index);
                 } else {
@@ -2024,8 +2039,8 @@ impl State {
                         door_indexes[PEI_2] = door_indexes[PEI_1].saturating_add(1);
 
                         match (
-                            tiles.get(door_indexes[PEI_0]),
-                            tiles.get(door_indexes[PEI_2])
+                            tiles.get(door_indexes[PEI_0]).map(|t| t.sprite_index),
+                            tiles.get(door_indexes[PEI_2]).map(|t| t.sprite_index)
                         ) {
                             (Some(Wall(_)), Some(Wall(_))) => { /* keep these */ }
                             _ => {
@@ -2034,8 +2049,8 @@ impl State {
                                 door_indexes[PEI_2] = door_indexes[PEI_1].saturating_add(width_usize);
 
                                 match (
-                                    tiles.get(door_indexes[PEI_0]),
-                                    tiles.get(door_indexes[PEI_2])
+                                    tiles.get(door_indexes[PEI_0]).map(|t| t.sprite_index),
+                                    tiles.get(door_indexes[PEI_2]).map(|t| t.sprite_index)
                                 ) {
                                     (Some(Wall(_)), Some(Wall(_))) => { /* keep these */ }
                                     _ => {
@@ -2067,8 +2082,8 @@ impl State {
                         let switch_on_path_i_plus_1: TilesIndex = switch_on_path_i.saturating_add(1);
 
                         let mut switch_i: TilesIndex = match (
-                            tiles.get(switch_on_path_i_minus_1),
-                            tiles.get(switch_on_path_i_plus_1)
+                            tiles.get(switch_on_path_i_minus_1).map(|t| t.sprite_index),
+                            tiles.get(switch_on_path_i_plus_1).map(|t| t.sprite_index)
                         ) {
                             (Some(Wall(_)), _) => switch_on_path_i_minus_1,
                             (None, Some(Wall(_))) => switch_on_path_i_plus_1,
@@ -2077,8 +2092,8 @@ impl State {
                                 let switch_on_path_i_plus_w: TilesIndex = switch_on_path_i.saturating_add(width_usize);
 
                                 match (
-                                    tiles.get(switch_on_path_i_minus_w),
-                                    tiles.get(switch_on_path_i_plus_w)
+                                    tiles.get(switch_on_path_i_minus_w).map(|t| t.sprite_index),
+                                    tiles.get(switch_on_path_i_plus_w).map(|t| t.sprite_index)
                                 ) {
                                     (Some(Wall(_)), _) => switch_on_path_i_minus_w,
                                     (None, Some(Wall(_))) => switch_on_path_i_plus_w,
@@ -2093,8 +2108,8 @@ impl State {
                         // TODO Attempt to drill a hallway into the wall to make the switch farther away.
                         // (And maybe recurse this switch placement onto the resulting path, if it seems long enough!)
 
-                        assert_eq!(tiles[switch_i].is_floor_mask(), 0);
-                        tiles[switch_i] = F;
+                        assert_eq!(tiles[switch_i].sprite_index.is_floor_mask(), 0);
+                        tiles[switch_i].sprite_index = F;
 
                         struct Targeting {
                             source: TilesIndex,
@@ -2106,17 +2121,23 @@ impl State {
 
                         macro_rules! is_wall_or_source {
                             ($source: ident, $index_opt: expr) => {
+                                // Note: We mus accept invalid indexes here without crashing, 
+                                // but while returning false, because it simplies the rest 
+                                // of the relevant code.
                                 $index_opt
-                                    .map(|i| i == $source || matches!(tiles[i], Wall(_)))
+                                    .map(|i| i == $source || matches!(tiles.get(i).map(|t| t.sprite_index), Some(Wall(_))))
                                     .unwrap_or(false)
                             };
                         }
 
                         macro_rules! is_acceptable_to_drill_from {
                             ($targeting: expr) => ({
+                                // Note: We mus accept invalid indexes here without crashing, 
+                                // but while returning false, because it simplies the rest 
+                                // of the relevant code.
                                 let Targeting{ source, target, width } = $targeting;
 
-                                if let Some(Wall(_)) = tiles.get(target)
+                                if let Some(Wall(_)) = tiles.get(target).map(|t| t.sprite_index)
                                 && is_wall_or_source!(source, target.checked_sub(width_usize))
                                 && is_wall_or_source!(source, target.checked_add(width_usize))
                                 && is_wall_or_source!(source, target.checked_sub(1))
@@ -2147,8 +2168,8 @@ impl State {
                             }
                         }
 
-                        while let Wall(_) = tiles[possible_new_switch_i] {
-                            tiles[possible_new_switch_i] = F;
+                        while let Wall(_) = tiles[possible_new_switch_i].sprite_index {
+                            tiles[possible_new_switch_i].sprite_index = F;
                             if xs::zero_to_one(&mut rng) < 0.125 {
                                 // Even if we break here, `tiles[possible_new_switch_i] == F`
                                 break
@@ -2170,7 +2191,7 @@ impl State {
                                 possible_new_switch_i = i;
                             }
                         }
-                        assert_eq!(tiles[possible_new_switch_i], F);
+                        assert_eq!(tiles[possible_new_switch_i].sprite_index, F);
                         switch_i = possible_new_switch_i;
 
                         // * Place the door
@@ -2187,8 +2208,8 @@ impl State {
 
                             macro_rules! set {
                                 (-, $subtrahend: expr, $mask: ident) => {
-                                    if let Some(&tile) = index.checked_sub($subtrahend)
-                                        .and_then(|i| tiles.get(i)) {
+                                    if let Some(tile) = index.checked_sub($subtrahend)
+                                        .and_then(|i| tiles.get(i).map(|t| t.sprite_index)) {
 
                                         // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
                                         // we can use highest_one instead.
@@ -2200,8 +2221,8 @@ impl State {
                                     }
                                 };
                                 (+, $addend: expr, $mask: ident) => {
-                                    if let Some(&tile) = index.checked_add($addend)
-                                        .and_then(|i| tiles.get(i)) {
+                                    if let Some(tile) = index.checked_add($addend)
+                                        .and_then(|i| tiles.get(i).map(|t| t.sprite_index)) {
 
                                         // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
                                         // we can use highest_one instead.
@@ -2439,7 +2460,7 @@ impl State {
             use TileIndex::*;
             let tile = self.tiles.tiles[i];
 
-            let spec_tile = match tile {
+            let spec_tile = match tile.sprite_index {
                 Wall(..) => wall_spec.tile(),
                 Floor => floor_spec.tile(),
             };
@@ -2454,7 +2475,7 @@ impl State {
                 y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
             };
 
-            let (rect, s_xy) = match tile {
+            let (rect, s_xy) = match tile.sprite_index {
                 Wall(index) => (
                     wall_spec.rect(base_xy),
                     wall_spec.xy_from_tile_sprite(index),
