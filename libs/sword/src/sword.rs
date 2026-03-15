@@ -962,7 +962,11 @@ mod random {
         }
     }
 
-    pub fn non_edge_index(width: TilesWidth, tiles_len: Index, rng: &mut Xs) -> Result<Index, NonEdgeError> {
+    // `(min_corner_xy, max_corner_xy)` Inclusive in both cases.
+    // TODO? Is there a struct we already have in this project that would work here?
+    pub type Rect = (XY, XY);
+
+    pub fn non_edge_rect(width: TilesWidth, tiles_len: Index) -> Result<Rect, NonEdgeError> {
         if width.get() < 3 {
             return Err(NonEdgeError::WidthTooSmall);
         }
@@ -976,6 +980,33 @@ mod random {
 
         // -2 because -1 to get to the last index, then another to go to the second last index.
         let max_corner_xy = xy::XY { x: xy::x(width.get() - 2), y: xy::y(height - 2) };
+
+        Ok((min_corner_xy, max_corner_xy))
+    }
+
+    // TODO use this where we can
+    pub struct TilesSpec {
+        pub width: TilesWidth,
+        pub len: Index,
+    }
+
+    // Written for an assert
+    #[allow(unused)]
+    pub fn is_non_edge_index(TilesSpec { width, len }: TilesSpec, index_to_check: Index) -> bool {
+        non_edge_rect(width, len)
+            .map(|(min_corner_xy, max_corner_xy)| {
+                let xy = i_to_xy(width, index_to_check);
+                
+                xy.x >= min_corner_xy.x
+                && xy.y >= min_corner_xy.y
+                && xy.x <= max_corner_xy.x
+                && xy.y <= max_corner_xy.y
+            })
+            .unwrap_or(false)
+    }
+
+    pub fn non_edge_index(width: TilesWidth, len: Index, rng: &mut Xs) -> Result<Index, NonEdgeError> {
+        let (min_corner_xy, max_corner_xy) = non_edge_rect(width, len)?;
 
         let selected_xy = xy::XY {
             x: xy::x(xs::range(rng, min_corner_xy.x.u32()..max_corner_xy.x.u32() + 1) as xy::Inner),
@@ -1056,6 +1087,22 @@ fn generate_maze(
         unreachable!()
     };
 
+    generate_selected_exit(rng, proto_tiles, proto_width, exit_index, exit_facing);
+
+    (ProtoTilesIndex(exit_index), exit_facing)
+}
+
+fn generate_selected_exit(
+    rng: &mut Xs,
+    proto_tiles: &mut [ProtoTileFlags],
+    proto_width: ProtoTilesWidth,
+    exit_index: Index,
+    exit_facing: Dir,
+) {
+    assert!(
+        random::is_non_edge_index(random::TilesSpec { width: proto_width.into(), len: proto_tiles.len() }, exit_index)
+    );
+
     let (exit_hallway_index, fix_flags) = set_flags_for_exit(
         proto_tiles,
         proto_width,
@@ -1073,10 +1120,103 @@ fn generate_maze(
     //
     // Hook up the maze to the blocked out exit
     //
+    
     proto_tiles[exit_hallway_index] |= fix_flags;
     print_proto_tiles(&proto_tiles, proto_width);
+}
 
-    (ProtoTilesIndex(exit_index), exit_facing)
+#[cfg(test)]
+mod generate_selected_exit_generates_reachable_rooms_on {
+    use super::*;
+
+    // Short for assert. We can be this terse because the scope here is limited.
+    macro_rules! a {
+        ($proto_tiles: expr, $width: expr, $exit_index: expr $(,)?) => ({
+            let proto_tiles = $proto_tiles;
+            let width = $width;
+
+            fn is_open(flags: ProtoTileFlags) -> true {
+                // 0b1111 are the dir flags.
+                // TODO? Add constant for that?
+                flags & 0b1111 != 0
+            }
+
+            let mut open_tiles_count = 0;
+            for tile in &proto_tiles {
+                if is_open(tile) {
+                    open_tiles_count += 1;
+                }
+            }
+
+            fn get_reachable_from(
+                proto_tiles: &[ProtoTilesFlags],
+                width: ProtoTilesWidth,
+                start_index: Index,
+            ) -> HashSet<Index> {
+                use std::collections::HashSet;
+                let mut seen = HashSet::with_capacity(tiles.len() / 2 /* was not thought about too hard */);
+        
+                let mut to_see = vec![i_to_xy(width, start_index)];
+        
+                while let Some(xy) = to_see.pop() {
+                    if let Ok(i) = xy_to_i(width, xy) {
+                        let tile = tiles[i];
+        
+                        if tile != Floor { continue }
+        
+                        seen.insert(i);
+        
+                        for dir in Dir::ALL {
+                            if let Some(new_xy) = xy.checked_push(dir)
+                            && let Ok(new_i) = xy_to_i(width, new_xy)
+                            && !seen.contains(&new_i) {
+                                to_see.push(new_xy);
+                            }
+                        }
+                    }
+                }
+
+                seen
+            }
+
+            let seen = get_reachable_from_exit_count(
+                proto_tiles,
+                width,
+                $exit_index
+            );
+
+            let reachable_from_exit_count = seen.len();
+
+            assert_eq!(reachable_from_exit_count, open_tiles_count);
+        })
+    }
+
+    #[test]
+    fn this_near_minimal_up_case() {
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        // A 3 x 4 room
+        let mut proto_tiles = vec1![0; 12usize];
+        let exit_index = 7; // The center of the bottom 3 x 3
+
+        generate_selected_exit(&mut rng, &mut proto_tiles, proto_width, exit_index, Dir::Up);
+
+        a!(
+            proto_tiles,
+            vec1![
+                S | R | D,     L | R | D, S | L | D,
+                S | R | U, S | L | R | U, S | L | U,
+                        S,             S,         S,
+            ],
+            proto_width,
+        );
+    }
 }
 
 /// Relies on the exit_index being an non-edge tile!
