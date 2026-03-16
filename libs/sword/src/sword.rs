@@ -62,10 +62,10 @@ impl Default for TileIndex {
 }
 
 impl TileIndex {
-    pub fn is_floor_mask(self) -> NeighborMask {
+    pub fn is_floor(self) -> bool {
         match self {
-            TileIndex::Wall(..) => 0,
-            TileIndex::Floor => 1,
+            TileIndex::Wall(..) => false,
+            TileIndex::Floor => true,
         }
     }
 }
@@ -374,6 +374,11 @@ pub struct Tile {
     pub flags: TileFlags,
 }
 
+impl Tile {
+    pub fn is_floor(&self) -> bool {
+        self.sprite_index.is_floor()
+    }
+}
 
 mod position {
     use super::XY;
@@ -634,7 +639,7 @@ fn can_walk_onto_tile(tiles: &Tiles, xy: XY) -> bool {
     };
 
     tiles.tiles.get(i)
-        .map(|t| t.sprite_index.is_floor_mask() == 1)
+        .map(|t| t.is_floor())
         .unwrap_or(false)
 }
 
@@ -1128,6 +1133,7 @@ fn generate_selected_exit(
 #[cfg(test)]
 mod generate_selected_exit_generates_reachable_rooms_on {
     use super::*;
+    use std::collections::HashSet;
 
     // Short for assert. We can be this terse because the scope here is limited.
     macro_rules! a {
@@ -1135,34 +1141,34 @@ mod generate_selected_exit_generates_reachable_rooms_on {
             let proto_tiles = $proto_tiles;
             let width = $width;
 
-            fn is_open(flags: ProtoTileFlags) -> true {
+            fn is_open(flags: ProtoTileFlags) -> bool {
                 // 0b1111 are the dir flags.
                 // TODO? Add constant for that?
                 flags & 0b1111 != 0
             }
 
             let mut open_tiles_count = 0;
-            for tile in &proto_tiles {
+            for &tile in &proto_tiles {
                 if is_open(tile) {
                     open_tiles_count += 1;
                 }
             }
 
             fn get_reachable_from(
-                proto_tiles: &[ProtoTilesFlags],
+                proto_tiles: &[ProtoTileFlags],
                 width: ProtoTilesWidth,
                 start_index: Index,
             ) -> HashSet<Index> {
                 use std::collections::HashSet;
-                let mut seen = HashSet::with_capacity(tiles.len() / 2 /* was not thought about too hard */);
+                let mut seen = HashSet::with_capacity(proto_tiles.len() / 2 /* was not thought about too hard */);
         
                 let mut to_see = vec![i_to_xy(width, start_index)];
         
                 while let Some(xy) = to_see.pop() {
                     if let Ok(i) = xy_to_i(width, xy) {
-                        let tile = tiles[i];
+                        let proto_tile = proto_tiles[i];
         
-                        if tile != Floor { continue }
+                        if !is_open(proto_tile) { continue }
         
                         seen.insert(i);
         
@@ -1179,8 +1185,8 @@ mod generate_selected_exit_generates_reachable_rooms_on {
                 seen
             }
 
-            let seen = get_reachable_from_exit_count(
-                proto_tiles,
+            let seen = get_reachable_from(
+                &proto_tiles,
                 width,
                 $exit_index
             );
@@ -1209,12 +1215,8 @@ mod generate_selected_exit_generates_reachable_rooms_on {
 
         a!(
             proto_tiles,
-            vec1![
-                S | R | D,     L | R | D, S | L | D,
-                S | R | U, S | L | R | U, S | L | U,
-                        S,             S,         S,
-            ],
             proto_width,
+            exit_index
         );
     }
 }
@@ -1597,7 +1599,7 @@ mod to_one_thick_connects_all_cells_on {
         let mut start_floor_i = None;
 
         for i in 0..tiles.len() {
-            if tiles[i] == Floor {
+            if tiles[i].sprite_index == Floor {
                 expected += 1;
 
                 if start_floor_i.is_none() {
@@ -1621,7 +1623,7 @@ mod to_one_thick_connects_all_cells_on {
             if let Ok(i) = xy_to_i(width, xy) {
                 let tile = tiles[i];
 
-                if tile != Floor { continue }
+                if tile.sprite_index != Floor { continue }
 
                 seen.insert(i);
 
@@ -1698,7 +1700,7 @@ mod to_one_thick_connects_all_cells_on {
 /// Set the indexes from the surrounding tiles.
 fn set_indexes(tiles: &mut [Tile], width: TilesWidth) {
     for index in 0..tiles.len() {
-        if tiles[index].sprite_index.is_floor_mask() == 0 {
+        if !tiles[index].sprite_index.is_floor() {
             let width = usize::from(width.get());
 
             // Assume everything not set is a wall, for maximum merging.
@@ -1713,7 +1715,7 @@ fn set_indexes(tiles: &mut [Tile], width: TilesWidth) {
                         // we can use highest_one instead.
                         let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
 
-                        output_mask |= tile.is_floor_mask() << shift;
+                        output_mask |= (tile.is_floor() as NeighborMask) << shift;
                     }
                 };
                 (+, $addend: expr, $mask: ident) => {
@@ -1724,7 +1726,7 @@ fn set_indexes(tiles: &mut [Tile], width: TilesWidth) {
                         // we can use highest_one instead.
                         let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
 
-                        output_mask |= tile.is_floor_mask() << shift;
+                        output_mask |= (tile.is_floor() as NeighborMask) << shift;
                     }
                 };
             }
@@ -1754,20 +1756,26 @@ mod set_indexes_works_on {
 
     /// Only returns walls with unset (zero) indexes.
     fn three_by_three_walls_from_index(index: u8) -> Vec1<Tile> {
-        const W: Tile = TileIndex::Wall(0);
-        const F: Tile = TileIndex::Floor;
+        let w: Tile = Tile {
+            sprite_index: TileIndex::Wall(0),
+            ..Tile::default()
+        };
+        let f: Tile = Tile {
+            sprite_index: TileIndex::Floor,
+            ..Tile::default()
+        };
 
         let mut output = vec1![
-            W, W, W,
-            W, W, W,
-            W, W, W,
+            w, w, w,
+            w, w, w,
+            w, w, w,
         ];
 
         for i in 0..8 {
             let mask = 1 << i;
 
             if index & mask != 0 {
-                output[if i < 4 { i } else { i + 1 } as usize] = F;
+                output[if i < 4 { i } else { i + 1 } as usize] = f;
             }
         }
 
@@ -1785,7 +1793,7 @@ mod set_indexes_works_on {
             set_indexes(&mut tiles, width);
 
             // The middle tile
-            assert_eq!(tiles[4], TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
+            assert_eq!(tiles[4].sprite_index, TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
         }
     }
 
@@ -1800,7 +1808,7 @@ mod set_indexes_works_on {
             set_indexes(&mut tiles, width);
 
             // The middle tile
-            assert_eq!(tiles[4], TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
+            assert_eq!(tiles[4].sprite_index, TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
         }
     }
 
@@ -1815,7 +1823,7 @@ mod set_indexes_works_on {
             set_indexes(&mut tiles, width);
 
             // The middle tile
-            assert_eq!(tiles[4], TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
+            assert_eq!(tiles[4].sprite_index, TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
         }
     }
 }
@@ -2248,7 +2256,7 @@ impl State {
                         // TODO Attempt to drill a hallway into the wall to make the switch farther away.
                         // (And maybe recurse this switch placement onto the resulting path, if it seems long enough!)
 
-                        assert_eq!(tiles[switch_i].sprite_index.is_floor_mask(), 0);
+                        assert_eq!(tiles[switch_i].is_floor(), false);
                         tiles[switch_i].sprite_index = F;
 
                         struct Targeting {
@@ -2355,7 +2363,7 @@ impl State {
                                         // we can use highest_one instead.
                                         let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
 
-                                        if tile.is_floor_mask() == 0 {
+                                        if !tile.is_floor() {
                                             output_mask &= !(1 << shift);
                                         }
                                     }
@@ -2368,7 +2376,7 @@ impl State {
                                         // we can use highest_one instead.
                                         let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
 
-                                        if tile.is_floor_mask() == 0 {
+                                        if !tile.is_floor() {
                                             output_mask &= !(1 << shift);
                                         }
                                     }
