@@ -368,6 +368,21 @@ fn to_tile_flags(proto_tile_flags: ProtoTileFlags) -> TileFlags {
     TileFlags::from(proto_tile_flags >> 4)
 }
 
+#[test]
+fn to_tile_flags_maps_skip_to_tile_required() {
+    assert_eq!(to_tile_flags(SKIP), TILE_REQUIRED);
+}
+
+#[test]
+fn to_tile_flags_maps_all_dir_flags_to_0() {
+    let mut all_dir_flags = 0;
+    for dir in Dir::ALL {
+        all_dir_flags |= dir.flag();
+    }
+
+    assert_eq!(to_tile_flags(all_dir_flags), 0);
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Tile {
     pub sprite_index: TileIndex,
@@ -716,7 +731,7 @@ type ProtoTileFlags = u8;
 
 /// A flag that is outside the range of the Dir flags, which is meant to indicate that the given cell
 /// should not be filled at all.
-const SKIP: ProtoTileFlags = 1 << (Dir::ALL.len() + 1);
+const SKIP: ProtoTileFlags = 1 << (Dir::ALL.len());
 
 fn maze_via_backtracking(
     proto_tiles: &mut [ProtoTileFlags],
@@ -1099,7 +1114,7 @@ fn generate_with_exit_at_index(
             if exit_xy.x >= xy::x(2) { Some(Dir::Left) } else { None },
             if exit_xy.x < xy::x(proto_width.get().saturating_sub(2).into()) { Some(Dir::Right) } else { None },
         ];
-        dbg!(exit_xy, height, available_dirs);
+
         xs::shuffle(rng, &mut available_dirs);
 
         for dir_opt in available_dirs {
@@ -2046,7 +2061,9 @@ impl State {
                     start_index -= tiles.len();
                 }
 
-                while tiles[start_index].sprite_index != F {
+                while tiles[start_index].sprite_index != F
+                || tiles[start_index].flags & TILE_REQUIRED != 0
+                {
                     start_index += 1;
 
                     while start_index >= tiles.len() {
@@ -2184,9 +2201,10 @@ impl State {
             for i in 0..tiles.len() {
                 let tile = &mut tiles[i];
 
-                if tile.sprite_index == Floor
-                && tile.flags & TILE_REQUIRED == 0
-                && !path.contains(&i) {
+                if (
+                    tile.sprite_index == Floor
+                    || tile.flags & TILE_REQUIRED == 0
+                ) && !path.contains(&i) {
                     // The indexes are set later
                     tile.sprite_index = Wall(0);
                 }
@@ -2236,6 +2254,17 @@ impl State {
                 offset += 1;
             }
 
+            let exit_front_indexes = match exit_facing {
+                Dir::Up => [exit_index - width_usize - 1, exit_index - width_usize, exit_index - width_usize + 1],
+                Dir::Down => [exit_index + width_usize - 1, exit_index + width_usize, exit_index + width_usize + 1],
+                Dir::Left => [exit_index - width_usize - 1, exit_index - 1, exit_index + width_usize - 1],
+                Dir::Right => [exit_index - width_usize + 1, exit_index + 1, exit_index + width_usize + 1],
+            };
+
+            for index in exit_front_indexes {
+                tiles[index].sprite_index = F;
+            }
+
             //
             // Perform random complication actions that preserve the solvabilty.
             //
@@ -2267,8 +2296,12 @@ impl State {
 
                         let mut door_indexes = PathEdgeIndexes::default();
 
-                        assert!(path.len() > 3 + 3);
-                        door_indexes[PEI_1] = path[PathI(xs::index(&mut rng, 3..(path.len() - 3)))];
+                        const SLICED_OFF_START: usize = 3;
+                        const SLICED_OFF_END: usize = 3;
+                        assert!(path.len() > SLICED_OFF_START + SLICED_OFF_END);
+                        door_indexes[PEI_1] = path[PathI(
+                            xs::index(&mut rng, SLICED_OFF_START..(path.len() - SLICED_OFF_END))
+                        )];
 
                         // Look for the adjacent walls
                         // Try x first
