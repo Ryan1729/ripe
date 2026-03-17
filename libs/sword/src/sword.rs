@@ -989,7 +989,8 @@ mod random {
         Ok((min_corner_xy, max_corner_xy))
     }
 
-    // TODO use this where we can
+    // TODO use this where we can.
+    #[derive(Debug)]
     pub struct TilesSpec {
         pub width: TilesWidth,
         pub len: Index,
@@ -1069,18 +1070,36 @@ fn generate_maze(
     // Default to the first non-edge tile
     let exit_index = exit_index_result.unwrap_or(width_usize + 2);
 
-    let exit_xy = i_to_xy(width, exit_index);
+    let exit_facing = generate_with_exit_at_index(rng, proto_tiles, proto_width, exit_index);
 
-    let height = calc_height(width, proto_tiles);
+    (ProtoTilesIndex(exit_index), exit_facing)
+}
+
+fn generate_with_exit_at_index(
+    rng: &mut Xs,
+    proto_tiles: &mut [ProtoTileFlags],
+    proto_width: ProtoTilesWidth,
+    exit_index: Index,
+) -> Dir {
+    assert!(
+        random::is_non_edge_index(random::TilesSpec { width: proto_width.into(), len: proto_tiles.len() }, exit_index),
+        "{:?} {:?}",
+        random::TilesSpec { width: proto_width.into(), len: proto_tiles.len() },
+        exit_index,
+    );
+
+    let exit_xy = i_to_xy(proto_width, exit_index);
+
+    let height = calc_height(proto_width.into(), proto_tiles);
 
     let exit_facing = 'exit_facing: {
         let mut available_dirs = [
             if exit_xy.y >= xy::y(2) { Some(Dir::Up) } else { None },
-            if exit_xy.y <= xy::y(height.saturating_sub(2).into()) { Some(Dir::Down) } else { None },
+            if exit_xy.y < xy::y(height.saturating_sub(2).into()) { Some(Dir::Down) } else { None },
             if exit_xy.x >= xy::x(2) { Some(Dir::Left) } else { None },
-            if exit_xy.x <= xy::x(width.get().saturating_sub(2).into()) { Some(Dir::Up) } else { None },
+            if exit_xy.x < xy::x(proto_width.get().saturating_sub(2).into()) { Some(Dir::Right) } else { None },
         ];
-
+        dbg!(exit_xy, height, available_dirs);
         xs::shuffle(rng, &mut available_dirs);
 
         for dir_opt in available_dirs {
@@ -1091,22 +1110,6 @@ fn generate_maze(
 
         unreachable!()
     };
-
-    generate_selected_exit(rng, proto_tiles, proto_width, exit_index, exit_facing);
-
-    (ProtoTilesIndex(exit_index), exit_facing)
-}
-
-fn generate_selected_exit(
-    rng: &mut Xs,
-    proto_tiles: &mut [ProtoTileFlags],
-    proto_width: ProtoTilesWidth,
-    exit_index: Index,
-    exit_facing: Dir,
-) {
-    assert!(
-        random::is_non_edge_index(random::TilesSpec { width: proto_width.into(), len: proto_tiles.len() }, exit_index)
-    );
 
     let (exit_hallway_index, fix_flags) = set_flags_for_exit(
         proto_tiles,
@@ -1128,10 +1131,12 @@ fn generate_selected_exit(
     
     proto_tiles[exit_hallway_index] |= fix_flags;
     print_proto_tiles(&proto_tiles, proto_width);
+
+    exit_facing
 }
 
 #[cfg(test)]
-mod generate_selected_exit_generates_reachable_rooms_on {
+mod generate_with_exit_at_index_generates_reachable_rooms_on {
     use super::*;
     use std::collections::HashSet;
 
@@ -1165,9 +1170,8 @@ mod generate_selected_exit_generates_reachable_rooms_on {
                 let mut to_see = vec![i_to_xy(width, start_index)];
         
                 while let Some(xy) = to_see.pop() {
-                    if let Ok(i) = xy_to_i(width, xy) {
-                        let proto_tile = proto_tiles[i];
-        
+                    if let Ok(i) = xy_to_i(width, xy)
+                    && let Some(&proto_tile) = proto_tiles.get(i) {
                         if !is_open(proto_tile) { continue }
         
                         seen.insert(i);
@@ -1198,7 +1202,7 @@ mod generate_selected_exit_generates_reachable_rooms_on {
     }
 
     #[test]
-    fn this_near_minimal_up_case() {
+    fn these_random_examples_in_the_top_of_a_small_vertical_maze() {
         let mut rng = xs::from_seed([
             0x0, 0x1, 0x2, 0x3,
             0x4, 0x5, 0x6, 0x7,
@@ -1207,17 +1211,102 @@ mod generate_selected_exit_generates_reachable_rooms_on {
         ]);
 
         let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        let exit_index = 4; // The center of the top 3 x 3
         // A 3 x 4 room
-        let mut proto_tiles = vec1![0; 12usize];
+        let mut proto_tiles;
+        
+        for _ in 0..16 {
+            proto_tiles = vec1![0; 12usize];
+    
+            generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
+    
+            a!(
+                proto_tiles,
+                proto_width,
+                exit_index
+            );
+        }
+    }
+
+    #[test]
+    fn these_random_examples_in_the_bottom_of_a_small_vertical_maze() {
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
         let exit_index = 7; // The center of the bottom 3 x 3
+        // A 3 x 4 room
+        let mut proto_tiles;
+        
+        for _ in 0..16 {
+            proto_tiles = vec1![0; 12usize];
+    
+            generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
+    
+            a!(
+                proto_tiles,
+                proto_width,
+                exit_index
+            );
+        }
+    }
 
-        generate_selected_exit(&mut rng, &mut proto_tiles, proto_width, exit_index, Dir::Up);
+    #[test]
+    fn these_random_examples_in_the_left_of_a_small_horizontal_maze() {
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
 
-        a!(
-            proto_tiles,
-            proto_width,
-            exit_index
-        );
+        let proto_width = ProtoTilesWidth(TilesWidth::new(4).unwrap());
+        let exit_index = 5; // The center of the left 3 x 3
+        // A 4 x 3 room
+        let mut proto_tiles;
+        
+        for _ in 0..16 {
+            proto_tiles = vec1![0; 12usize];
+    
+            generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
+    
+            a!(
+                proto_tiles,
+                proto_width,
+                exit_index
+            );
+        }
+    }
+
+    #[test]
+    fn these_random_examples_in_the_right_of_a_small_horizontal_maze() {
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        let proto_width = ProtoTilesWidth(TilesWidth::new(4).unwrap());
+        let exit_index = 6; // The center of the right 3 x 3
+        // A 4 x 3 room
+        let mut proto_tiles;
+        
+        for _ in 0..16 {
+            proto_tiles = vec1![0; 12usize];
+    
+            generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
+    
+            a!(
+                proto_tiles,
+                proto_width,
+                exit_index
+            );
+        }
     }
 }
 
@@ -1342,10 +1431,10 @@ mod set_flags_for_exit_produces_the_exact_result_on {
 
         a!(
             proto_tiles, 
-            // One cell intentionally leaves out the S
+            // One cell intentionally leaves out the flags
             // to give a place to hook the maze onto.
             vec1![
-                S | R | D,     L | R | D, S | L | D,
+                S | R | D,             0, S | L | D,
                 S | R | U, S | L | R | U, S | L | U,
                         S,             S,         S,
             ],
@@ -1368,7 +1457,7 @@ mod set_flags_for_exit_produces_the_exact_result_on {
             vec1![
                         S,             S,         S,
                 S | R | D, S | L | R | D, S | L | D,
-                S | R | U,     L | R | U, S | L | U,
+                S | R | U,             0, S | L | U,
             ],
             proto_width,
         );
@@ -1388,7 +1477,7 @@ mod set_flags_for_exit_produces_the_exact_result_on {
             // to give a place to hook the maze onto.
             vec1![
                     S | R | D,     S | L | D, S,
-                    R | U | D, S | L | U | D, S,
+                            0, S | L | U | D, S,
                     S | R | U,     S | L | U, S,
             ],
             proto_width,
@@ -1409,7 +1498,7 @@ mod set_flags_for_exit_produces_the_exact_result_on {
             // to give a place to hook the maze onto.
             vec1![
                         S,     S | R | D, S | L | D,
-                        S, S | R | U | D, L | U | D,
+                        S, S | R | U | D,         0,
                         S,     S | R | U, S | L | U,
             ],
             proto_width,
