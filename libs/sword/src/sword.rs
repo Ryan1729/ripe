@@ -342,7 +342,7 @@ const EXIT_SPRITES: [TileSprite; 12] = [
     UP_STAIRS_TOP_LEFT_EDGE,
     UP_STAIRS_TOP_EDGE,
     UP_STAIRS_TOP_RIGHT_EDGE,
-    
+
     DOWN_STAIRS_TOP_LEFT_EDGE,
     DOWN_STAIRS_TOP_EDGE,
     DOWN_STAIRS_TOP_RIGHT_EDGE,
@@ -1017,7 +1017,7 @@ mod random {
         non_edge_rect(width, len)
             .map(|(min_corner_xy, max_corner_xy)| {
                 let xy = i_to_xy(width, index_to_check);
-                
+
                 xy.x >= min_corner_xy.x
                 && xy.y >= min_corner_xy.y
                 && xy.x <= max_corner_xy.x
@@ -1143,7 +1143,7 @@ fn generate_with_exit_at_index(
     //
     // Hook up the maze to the blocked out exit
     //
-    
+
     proto_tiles[exit_hallway_index] |= fix_flags;
     print_proto_tiles(&proto_tiles, proto_width);
 
@@ -1181,16 +1181,16 @@ mod generate_with_exit_at_index_generates_reachable_rooms_on {
             ) -> HashSet<Index> {
                 use std::collections::HashSet;
                 let mut seen = HashSet::with_capacity(proto_tiles.len() / 2 /* was not thought about too hard */);
-        
+
                 let mut to_see = vec![i_to_xy(width, start_index)];
-        
+
                 while let Some(xy) = to_see.pop() {
                     if let Ok(i) = xy_to_i(width, xy)
                     && let Some(&proto_tile) = proto_tiles.get(i) {
                         if !is_open(proto_tile) { continue }
-        
+
                         seen.insert(i);
-        
+
                         for dir in Dir::ALL {
                             if let Some(new_xy) = xy.checked_push(dir)
                             && let Ok(new_i) = xy_to_i(width, new_xy)
@@ -1229,12 +1229,12 @@ mod generate_with_exit_at_index_generates_reachable_rooms_on {
         let exit_index = 4; // The center of the top 3 x 3
         // A 3 x 4 room
         let mut proto_tiles;
-        
+
         for _ in 0..16 {
             proto_tiles = vec1![0; 12usize];
-    
+
             generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
-    
+
             a!(
                 proto_tiles,
                 proto_width,
@@ -1256,12 +1256,12 @@ mod generate_with_exit_at_index_generates_reachable_rooms_on {
         let exit_index = 7; // The center of the bottom 3 x 3
         // A 3 x 4 room
         let mut proto_tiles;
-        
+
         for _ in 0..16 {
             proto_tiles = vec1![0; 12usize];
-    
+
             generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
-    
+
             a!(
                 proto_tiles,
                 proto_width,
@@ -1283,12 +1283,12 @@ mod generate_with_exit_at_index_generates_reachable_rooms_on {
         let exit_index = 5; // The center of the left 3 x 3
         // A 4 x 3 room
         let mut proto_tiles;
-        
+
         for _ in 0..16 {
             proto_tiles = vec1![0; 12usize];
-    
+
             generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
-    
+
             a!(
                 proto_tiles,
                 proto_width,
@@ -1310,12 +1310,12 @@ mod generate_with_exit_at_index_generates_reachable_rooms_on {
         let exit_index = 6; // The center of the right 3 x 3
         // A 4 x 3 room
         let mut proto_tiles;
-        
+
         for _ in 0..16 {
             proto_tiles = vec1![0; 12usize];
-    
+
             generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
-    
+
             a!(
                 proto_tiles,
                 proto_width,
@@ -1392,7 +1392,7 @@ fn set_flags_for_exit(
 
             (exit_hallway_index, u | d | opposite_flag)
         },
-    };    
+    };
 
     (exit_hallway_index, fix_flags)
 }
@@ -1445,7 +1445,7 @@ mod set_flags_for_exit_produces_the_exact_result_on {
         set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Up);
 
         a!(
-            proto_tiles, 
+            proto_tiles,
             // One cell intentionally leaves out the flags
             // to give a place to hook the maze onto.
             vec1![
@@ -1466,7 +1466,7 @@ mod set_flags_for_exit_produces_the_exact_result_on {
         set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Down);
 
         a!(
-            proto_tiles, 
+            proto_tiles,
             // One cell intentionally leaves out the S
             // to give a place to hook the maze onto.
             vec1![
@@ -1487,7 +1487,7 @@ mod set_flags_for_exit_produces_the_exact_result_on {
         set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Left);
 
         a!(
-            proto_tiles, 
+            proto_tiles,
             // One cell intentionally leaves out the S
             // to give a place to hook the maze onto.
             vec1![
@@ -1508,7 +1508,7 @@ mod set_flags_for_exit_produces_the_exact_result_on {
         set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Right);
 
         a!(
-            proto_tiles, 
+            proto_tiles,
             // One cell intentionally leaves out the S
             // to give a place to hook the maze onto.
             vec1![
@@ -1589,11 +1589,11 @@ fn to_one_thick(
             let tile_xy = proto_i_to_tile_xy(proto_width, ProtoTilesIndex(proto_i));
 
             if let Ok(tile_i) = xy_to_i(width, tile_xy) {
-                if let Some(tile) = tiles.get_mut(tile_i) { 
+                if let Some(tile) = tiles.get_mut(tile_i) {
                     tile.sprite_index = F;
 
                     tile.flags = to_tile_flags(proto_tile_flags);
-                }   
+                }
             }
 
             if proto_tile_flags & Dir::Right.flag() != 0 {
@@ -2391,8 +2391,8 @@ impl State {
 
                         macro_rules! is_wall_or_source {
                             ($source: ident, $index_opt: expr) => {
-                                // Note: We mus accept invalid indexes here without crashing, 
-                                // but while returning false, because it simplies the rest 
+                                // Note: We mus accept invalid indexes here without crashing,
+                                // but while returning false, because it simplies the rest
                                 // of the relevant code.
                                 $index_opt
                                     .map(|i| i == $source || matches!(tiles.get(i).map(|t| t.sprite_index), Some(Wall(_))))
@@ -2402,8 +2402,8 @@ impl State {
 
                         macro_rules! is_acceptable_to_drill_from {
                             ($targeting: expr) => ({
-                                // Note: We mus accept invalid indexes here without crashing, 
-                                // but while returning false, because it simplies the rest 
+                                // Note: We mus accept invalid indexes here without crashing,
+                                // but while returning false, because it simplies the rest
                                 // of the relevant code.
                                 let Targeting{ source, target, width } = $targeting;
 
@@ -2476,29 +2476,26 @@ impl State {
                             // with the tile walls.
                             let mut output_mask = 0b1111_1111;
 
+                            // Check if the id is a door index and use that to decide the mask
                             macro_rules! set {
                                 (-, $subtrahend: expr, $mask: ident) => {
-                                    if let Some(tile) = index.checked_sub($subtrahend)
-                                        .and_then(|i| tiles.get(i).map(|t| t.sprite_index)) {
+                                    if let Some(i) = index.checked_sub($subtrahend) {
+                                        if door_indexes.contains(&i) {
+                                            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                                            // we can use highest_one instead.
+                                            let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
 
-                                        // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                                        // we can use highest_one instead.
-                                        let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-
-                                        if !tile.is_floor() {
                                             output_mask &= !(1 << shift);
                                         }
                                     }
                                 };
                                 (+, $addend: expr, $mask: ident) => {
-                                    if let Some(tile) = index.checked_add($addend)
-                                        .and_then(|i| tiles.get(i).map(|t| t.sprite_index)) {
+                                    if let Some(i) = index.checked_add($addend) {
+                                        if door_indexes.contains(&i) {
+                                            // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
+                                            // we can use highest_one instead.
+                                            let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
 
-                                        // TODO once https://github.com/rust-lang/rust/issues/145203 is avilable on stable
-                                        // we can use highest_one instead.
-                                        let shift = NeighborFlag::BITS - 1 - $mask.leading_zeros();
-
-                                        if !tile.is_floor() {
                                             output_mask &= !(1 << shift);
                                         }
                                     }
