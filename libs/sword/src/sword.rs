@@ -327,6 +327,8 @@ const UP_STAIRS_TOP_LEFT_EDGE: TileSprite = TileSprite::Sword(7);
 const UP_STAIRS_TOP_EDGE: TileSprite = TileSprite::Sword(UP_STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + 1);
 const UP_STAIRS_TOP_RIGHT_EDGE: TileSprite = TileSprite::Sword(UP_STAIRS_TOP_LEFT_EDGE.sword_inner_or_0() + 2);
 
+const ROACH_BASE: TileSprite = TileSprite::Sword(12);
+
 const RIGHT_STAIRS_TOP_EDGE: TileSprite = TileSprite::Sword(45);
 const RIGHT_STAIRS_MIDDLE_EDGE: TileSprite = TileSprite::Sword(50);
 const RIGHT_STAIRS_BOTTOM_EDGE: TileSprite = TileSprite::Sword(55);
@@ -458,6 +460,7 @@ const FIRST_GROUP: ToggleGroupId = 1;
 pub type EntityFlags = u8;
 
 const GONE: EntityFlags = 1 << 0;
+const RENDER_FACING: EntityFlags = 1 << 1;
 
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
@@ -465,6 +468,7 @@ pub struct Entity {
     pub tile_sprite: TileSprite,
     pub toggle_group_id: ToggleGroupId,
     pub flags: EntityFlags,
+    pub facing: Dir8,
 }
 
 impl Entity {
@@ -1936,7 +1940,6 @@ mod set_indexes_works_on {
 pub struct State {
     pub rng: Xs,
     pub player: Entity,
-    pub facing: Dir8,
     pub mobs: Entities,
     pub tiles: Tiles,
     pub animations: Animations,
@@ -1949,7 +1952,8 @@ impl State {
         let mut rng = xs::from_seed(seed);
 
         let mut player = Entity::default();
-        player.tile_sprite = PLAYER_BASE;
+        player.tile_sprite = PLAYER_BASE;        
+        player.flags |= RENDER_FACING;
 
         let mut mobs = Entities::default();
 
@@ -1978,6 +1982,9 @@ impl State {
         if max_tile_h == 0 {
             max_tile_h = 1;
         }
+
+        assert_eq!(player.flags & GONE, 0, "The player should never be gone!");
+        assert_eq!(player.flags & RENDER_FACING, RENDER_FACING, "The player should always be rendered taking facing into account!");
 
         let width = TilesWidth::new(max_tile_w).expect("Don't set a 0 width!");
         let mut tiles = {
@@ -2273,6 +2280,20 @@ impl State {
 
             let target_complication_count = 3;
             let mut current_complication_count = 0;
+            let max_bad_complication_count = 16;
+            let mut bad_complication_attempts_count = 0;
+
+            macro_rules! abort_complication_attempt {
+                () => {
+                    bad_complication_attempts_count += 1;
+                    if bad_complication_attempts_count >= max_bad_complication_count {
+                        // Just move on and live without a complication
+                        current_complication_count += 1;
+                    }
+
+                    continue
+                }
+            }
 
             enum Complication {
                 // Can we extend the path in an intereting way? Perhaps from the middle?
@@ -2281,6 +2302,8 @@ impl State {
                 //MoveSwitch,
                 //MoveDoor,
             }
+
+            dbg!("pre-complications");
 
             while current_complication_count < target_complication_count {
                 // TODO define multiple and pick randomly
@@ -2325,12 +2348,11 @@ impl State {
                                     (Some(Wall(_)), Some(Wall(_))) => { /* keep these */ }
                                     _ => {
                                         // Probably got unlucky and picked a spot a hallway had already spread from
-                                        continue
+                                        abort_complication_attempt!();
                                     }
                                 }
                             }
                         }
-
                         // * Pick a point between the door and the starting spot for the switch
 
                         let switch_range =
@@ -2338,9 +2360,8 @@ impl State {
                                 path.iter().position(|&i| i == door_indexes[PEI_1]).expect("Door index not found in path?!")
                             );
                         if switch_range.is_empty() {
-                            continue
+                            abort_complication_attempt!();
                         }
-
                         // The index on the path relating to where the switch will be
                         let switch_on_path_i: TilesIndex = path[
                             PathI(xs::index(&mut rng, switch_range.start.into()..switch_range.end.into()))
@@ -2369,7 +2390,7 @@ impl State {
                                     (None, Some(Wall(_))) => switch_on_path_i_plus_w,
                                     _ => {
                                         // Probably got unlucky and picked a spot a hallway had already spread from
-                                        continue
+                                        abort_complication_attempt!();
                                     }
                                 }
                             },
@@ -2378,7 +2399,6 @@ impl State {
                         // TODO Attempt to drill a hallway into the wall to make the switch farther away.
                         // (And maybe recurse this switch placement onto the resulting path, if it seems long enough!)
 
-                        assert_eq!(tiles[switch_i].is_floor(), false);
                         tiles[switch_i].sprite_index = F;
 
                         struct Targeting {
@@ -2470,7 +2490,7 @@ impl State {
 
                         // End of section where indexing bugs are relevant.
                         let door_indexes = door_indexes._indexes;
-
+                        
                         for index in door_indexes {
                             // Assume everything not set is a floor, to avoid merging
                             // with the tile walls.
@@ -2534,7 +2554,37 @@ impl State {
 
                         free_group_id += 1;
                         current_complication_count += 1;
+                        // Count attempts per current_complication_count.
+                        bad_complication_attempts_count = 0;
                     }
+                }
+            }
+
+            //
+            // Place enemy mobs
+            //
+
+            for i in 0..tiles.len() {
+                if tiles[i].is_floor()
+                && xs::range(&mut rng, 0..8) == 0
+                {
+                    let enemy_xy = i_to_xy(width, i);
+
+                    // Don't replace other mobs
+                    if let Some(_) = mobs.get(
+                        &Key {
+                            xy: enemy_xy,
+                        }
+                    ) {
+                        continue
+                    }
+
+                    insert_entity!(Entity {
+                        position: Position::from(enemy_xy),
+                        tile_sprite: ROACH_BASE,
+                        flags: RENDER_FACING,
+                        ..<_>::default()
+                    });
                 }
             }
 
@@ -2547,10 +2597,12 @@ impl State {
 
         print_tiles(&tiles, width);
 
+        assert_eq!(player.flags & GONE, 0, "The player should never be gone!");
+        assert_eq!(player.flags & RENDER_FACING, RENDER_FACING, "The player should always be rendered taking facing into account!");
+
         Self {
             rng,
             player,
-            facing: <_>::default(),
             mobs,
             tiles: Tiles {
                 width,
@@ -2576,7 +2628,7 @@ impl State {
     }
 
     fn staff_xy_pair(&self) -> (XY, EdgeHitKind) {
-        xy_in_dir(self.player.position.xy(), self.facing)
+        xy_in_dir(self.player.position.xy(), self.player.facing)
     }
 
     fn tick(&mut self) {
@@ -2664,9 +2716,9 @@ impl State {
                 self.player.position.set_xy(new_xy);
             }
         } else if input.pressed_this_frame(Button::A) {
-            self.facing = self.facing.counter_clockwise();
+            self.player.facing = self.player.facing.counter_clockwise();
         } else if input.pressed_this_frame(Button::B) {
-            self.facing = self.facing.clockwise();
+            self.player.facing = self.player.facing.clockwise();
         }
 
         let staff_xy_pair = self.staff_xy_pair();
@@ -2695,14 +2747,20 @@ impl State {
                     if hit_mob.toggle_group_id != NULL_GROUP {
                         effect = Toggle(hit_mob.toggle_group_id);
                     }
-                }
+                },
+                Some(hit_mob) if hit_mob.tile_sprite == ROACH_BASE => {
+                    // TODO Good place for SFX
+
+                    // TODO? Put a splat on the ground in this spot instead?
+                    self.mobs.remove(&key);
+                },
                 Some(_) | None => {}
             }
 
             match effect {
                 NoOp => {},
                 Toggle(group_id) => {
-                    // TODO? Is it worth building an acceleration structure for this loopup?
+                    // TODO? Is it worth building an acceleration structure for this lookup?
                     for mob in self.mobs.values_mut() {
                         if mob.toggle_group_id == group_id {
                             match mob.tile_sprite {
@@ -2793,31 +2851,40 @@ impl State {
             draw_at_position_pieces(position.xy(), position.offset(), tile_sprite)
         };
 
+        macro_rules! sprite_with_facing {
+            ($base: expr, $facing: expr) => {
+                TileSprite::Sword(
+                    $base.sword_inner_or_0() + tiles_per_row as SwordTileSpriteInner * $facing.index() as SwordTileSpriteInner
+                )
+            }
+        }
+
         for entity in self.mobs.values() {
             // Don't draw things that are gone.
             if entity.flags & GONE == GONE { continue }
 
-            draw_at_position(entity.position, entity.tile_sprite);
+            let sprite = if entity.flags & RENDER_FACING == RENDER_FACING {
+                sprite_with_facing!(entity.tile_sprite, entity.facing)
+            } else {
+                entity.tile_sprite
+            };
+
+            draw_at_position(entity.position, sprite);
         }
 
-        let facing_index = self.facing.index();
-
         assert_eq!(self.player.flags & GONE, 0, "The player should never be gone!");
+        assert_eq!(self.player.flags & RENDER_FACING, RENDER_FACING, "The player should always be rendered taking facing into account!");
 
         draw_at_position(
             self.player.position,
-            TileSprite::Sword(
-                self.player.tile_sprite.sword_inner_or_0() + tiles_per_row as SwordTileSpriteInner * facing_index as SwordTileSpriteInner
-            ),
+            sprite_with_facing!(self.player.tile_sprite, self.player.facing),
         );
 
         if let (staff_xy, EdgeHitKind::Neither) = staff_xy_pair {
             draw_at_position_pieces(
                 staff_xy,
                 self.player.position.offset(),
-                TileSprite::Sword(
-                    STAFF_BASE.sword_inner_or_0() + tiles_per_row as SwordTileSpriteInner * facing_index as SwordTileSpriteInner
-                ),
+                sprite_with_facing!(STAFF_BASE, self.player.facing),
             );
         }
     }

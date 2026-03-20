@@ -59,6 +59,7 @@ impl State {
         }
 
         let seed = params.seed;
+        let seed = [243, 0, 200, 201, 138, 109, 218, 65, 187, 88, 36, 118, 155, 95, 3, 62];
 
         // We always want to log the seed, if there is a logger available, so use the function,
         // not the macro.
