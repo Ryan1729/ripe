@@ -99,6 +99,9 @@ pub const LOWER_RIGHT: NeighborFlag = unsafe { NeighborFlag::new_unchecked(1 << 
 
 pub mod xy {
     pub type Inner = u16;
+    /// A signed type large enough to hold the difference between two Inner
+    /// values.
+    pub type Diff = i32;
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct X(pub Inner);
@@ -144,6 +147,16 @@ pub mod xy {
 
                     pub fn usize(self) -> usize {
                         usize::from(self.0)
+                    }
+
+                    pub fn diff(self) -> Diff {
+                        Diff::from(self.0)
+                    }
+                }
+
+                impl From<$name> for Diff {
+                    fn from(value: $name) -> Diff {
+                        Diff::from(value.0)
                     }
                 }
             )+
@@ -283,6 +296,30 @@ pub mod xy {
 }
 #[allow(unused_imports)]
 use xy::{X, Y, XY, W, H, WH};
+
+struct FromTo<A> {
+    from: A,
+    to: A,
+}
+
+fn dir_to(FromTo { from, to }: FromTo<XY>) -> Option<Dir8> {
+    let x_diff: xy::Diff = xy::Diff::from(from.x) - xy::Diff::from(to.x);
+    let y_diff: xy::Diff = xy::Diff::from(from.y) - xy::Diff::from(to.y);
+
+    use std::cmp::Ordering::*;
+
+    match (x_diff.cmp(&0), y_diff.cmp(&0)) {
+        (Less, Less) => Some(Dir8::UpLeft),
+        (Less, Equal) => Some(Dir8::Left),
+        (Less, Greater) => Some(Dir8::DownLeft),
+        (Equal, Less) => Some(Dir8::Up),
+        (Equal, Equal) => None,
+        (Equal, Greater) => Some(Dir8::Down),
+        (Greater, Less) => Some(Dir8::UpRight),
+        (Greater, Equal) => Some(Dir8::Right),
+        (Greater, Greater) => Some(Dir8::DownRight),
+    }
+}
 
 type SwordTileSpriteInner = u8;
 
@@ -2714,6 +2751,41 @@ impl State {
 
             if can_walk_onto(&self.mobs, &self.tiles, Key { xy: new_xy }) {
                 self.player.position.set_xy(new_xy);
+
+                // Each mob takes their turn to move
+                for mob in self.mobs.values_mut() {
+                    match mob.tile_sprite {
+                        ROACH_BASE => {
+                            assert_eq!(mob.flags & RENDER_FACING, RENDER_FACING);
+
+                            let mob_xy = mob.position.xy();
+
+                            fn manhattan_distance(a: XY, b: XY) -> xy::Diff {
+                                (xy::Diff::from(a.x) - xy::Diff::from(b.x)).abs() + (xy::Diff::from(a.y) - xy::Diff::from(b.y)).abs()
+                            }
+                         
+                            let open_adjacent_spots = Dir::ALL
+                                .into_iter()
+                                .filter_map(|dir| {
+                                    if let (xy, EdgeHitKind::Neither) = xy_in_dir(mob_xy, dir.into()) {
+                                        Some(xy)
+                                    } else {
+                                        None
+                                    }
+                                });
+
+                            if let Some(target_xy) = open_adjacent_spots.min_by_key(|target_xy|
+                                manhattan_distance(*target_xy, self.player.position.xy())
+                            ) 
+                            && let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
+                                mob.facing = facing;
+                                mob.position.set_xy(target_xy);
+                            }
+                            
+                        }
+                        _ => {} // This type of mob doesn't move
+                    }
+                }
             }
         } else if input.pressed_this_frame(Button::A) {
             self.player.facing = self.player.facing.counter_clockwise();
