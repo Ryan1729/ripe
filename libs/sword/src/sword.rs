@@ -303,8 +303,8 @@ struct FromTo<A> {
 }
 
 fn dir_to(FromTo { from, to }: FromTo<XY>) -> Option<Dir8> {
-    let x_diff: xy::Diff = xy::Diff::from(from.x) - xy::Diff::from(to.x);
-    let y_diff: xy::Diff = xy::Diff::from(from.y) - xy::Diff::from(to.y);
+    let x_diff: xy::Diff = xy::Diff::from(to.x) - xy::Diff::from(from.x);
+    let y_diff: xy::Diff = xy::Diff::from(to.y) - xy::Diff::from(from.y);
 
     use std::cmp::Ordering::*;
 
@@ -2745,52 +2745,21 @@ impl State {
 
         self.tick();
 
+        let mut player_moved = false;
         if let Some(dir) = input.dir_pressed_this_frame() {
             // Walk
             let (new_xy, _) = xy_in_dir(self.player.position.xy(), dir.into());
 
             if can_walk_onto(&self.mobs, &self.tiles, Key { xy: new_xy }) {
                 self.player.position.set_xy(new_xy);
-
-                // Each mob takes their turn to move
-                for mob in self.mobs.values_mut() {
-                    match mob.tile_sprite {
-                        ROACH_BASE => {
-                            assert_eq!(mob.flags & RENDER_FACING, RENDER_FACING);
-
-                            let mob_xy = mob.position.xy();
-
-                            fn manhattan_distance(a: XY, b: XY) -> xy::Diff {
-                                (xy::Diff::from(a.x) - xy::Diff::from(b.x)).abs() + (xy::Diff::from(a.y) - xy::Diff::from(b.y)).abs()
-                            }
-                         
-                            let open_adjacent_spots = Dir::ALL
-                                .into_iter()
-                                .filter_map(|dir| {
-                                    if let (xy, EdgeHitKind::Neither) = xy_in_dir(mob_xy, dir.into()) {
-                                        Some(xy)
-                                    } else {
-                                        None
-                                    }
-                                });
-
-                            if let Some(target_xy) = open_adjacent_spots.min_by_key(|target_xy|
-                                manhattan_distance(*target_xy, self.player.position.xy())
-                            ) 
-                            && let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
-                                mob.facing = facing;
-                                mob.position.set_xy(target_xy);
-                            }
-                            
-                        }
-                        _ => {} // This type of mob doesn't move
-                    }
-                }
+                player_moved = true;
             }
         } else if input.pressed_this_frame(Button::A) {
             self.player.facing = self.player.facing.counter_clockwise();
+            player_moved = true;
         } else if input.pressed_this_frame(Button::B) {
             self.player.facing = self.player.facing.clockwise();
+            player_moved = true;
         }
 
         let staff_xy_pair = self.staff_xy_pair();
@@ -2822,7 +2791,11 @@ impl State {
                 },
                 Some(hit_mob) if hit_mob.tile_sprite == ROACH_BASE => {
                     // TODO Good place for SFX
-
+// Idea for further debugging: wrap this collision checking into a function, and write unit tests for it
+// Yes, it might just prove that it works properly, but then that points to use looking at the next most likely spot.
+// Be sure to include cases where the Position value has a non-zero offset.
+//    Hypothesis of what the issue is: When Position.offset is non-zero, we should be checking the previous xy value?
+dbg!("self.mobs.remove", staff_xy);
                     // TODO? Put a splat on the ground in this spot instead?
                     self.mobs.remove(&key);
                 },
@@ -2843,6 +2816,75 @@ impl State {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        if player_moved {
+            struct MobMutation {
+                key: Key,
+                facing: Dir8,
+                target_xy: XY,
+            }
+
+            // Each mob takes their turn to move
+            let mut mob_mutations = Vec::with_capacity(16);
+
+            for (key, mob) in &self.mobs {
+                if mob.flags & GONE == GONE {
+                    continue
+                }
+
+                match mob.tile_sprite {
+                    ROACH_BASE => {
+                        assert_eq!(mob.flags & RENDER_FACING, RENDER_FACING);
+
+                        let mob_xy = mob.position.xy();
+
+                        fn manhattan_distance(a: XY, b: XY) -> xy::Diff {
+                            (xy::Diff::from(a.x) - xy::Diff::from(b.x)).abs() + (xy::Diff::from(a.y) - xy::Diff::from(b.y)).abs()
+                        }
+                     
+                        let open_adjacent_spots = Dir::ALL
+                            .into_iter()
+                            .filter_map(|dir| {
+                                if let (xy, EdgeHitKind::Neither) = xy_in_dir(mob_xy, dir.into()) {
+                                    Some(xy)
+                                } else {
+                                    None
+                                }
+                            }).filter_map(|xy| {
+                                let target_key = Key { xy };
+                                if self.mobs.get(&target_key).is_none()
+                                && let Ok(tile_i) = xy_to_i(self.tiles.width, xy)
+                                && self.tiles.tiles.get(tile_i).map(|t| t.is_floor()).unwrap_or(false) {
+                                    Some(xy)
+                                } else {
+                                    None
+                                }
+                            });
+
+                        if let Some(target_xy) = open_adjacent_spots.min_by_key(|target_xy|
+                            manhattan_distance(*target_xy, self.player.position.xy())
+                        ) 
+                        && let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
+                            mob_mutations.push(MobMutation{
+                                key: *key,
+                                facing,
+                                target_xy,
+                            });
+                        }
+                    },
+                    _ => {} // This type of mob doesn't move
+                }
+            }
+
+            for mutation in mob_mutations {
+                if let Some(mob) = self.mobs.get_mut(&mutation.key) {
+                    mob.facing = mutation.facing;
+                    mob.position.set_xy(mutation.target_xy);
+                } else {
+                    assert!(false, "fresh mutation was invalid!");
                 }
             }
         }
