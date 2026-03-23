@@ -1973,6 +1973,79 @@ mod set_indexes_works_on {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HitEffect {
+    NoOp,
+    Toggle(ToggleGroupId),
+    RemoveRoach,
+}
+
+fn get_hit_effect(key: Key, mobs: &Mobs) -> HitEffect {
+    use HitEffect::*;
+    let mut effect = HitEffect::NoOp;
+
+    match mobs.get(&key) {
+        Some(hit_mob) if hit_mob.tile_sprite == SWITCH_BASE => {
+            // Toggle relevant mobs
+            if hit_mob.toggle_group_id != NULL_GROUP {
+                effect = Toggle(hit_mob.toggle_group_id);
+            }
+        },
+        Some(hit_mob) if hit_mob.tile_sprite == ROACH_BASE => {
+            effect = RemoveRoach;
+        },
+        Some(_) | None => {}
+    }
+
+    effect
+}
+
+#[cfg(test)]
+mod get_hit_effect_works_on {
+    use super::*;
+
+    #[test]
+    fn these_roach_examples() {
+        use HitEffect::*;
+
+        let key_1 = Key { xy: <_>::default() };
+        let key_2 = Key { xy: XY { x: xy::x(1), y: xy::y(1), } };
+
+        let mut mobs: Mobs = <_>::default();
+
+        mobs.insert(key_1, Entity {
+            tile_sprite: ROACH_BASE,
+            position: key_1.xy.into(),
+            ..<_>::default()
+        });
+
+        let mut position_in_motion = Position::from(XY { x: xy::x(0), y: xy::y(1), });
+
+        position_in_motion.set_xy(key_2.xy);
+        position_in_motion.decay();
+
+        // Oh wait, I bet we messed up mutating mobs, and the key and positions don't match.
+        // Get this building, then prevent that from happening with a module.
+        mobs.insert(key_2, Entity {
+            tile_sprite: ROACH_BASE,
+            position: position_in_motion,
+            ..<_>::default()
+        });
+
+        assert_eq!(
+            RemoveRoach,
+            get_hit_effect(key_1, &mobs),
+        );
+
+        assert_eq!(
+            RemoveRoach,
+            get_hit_effect(key_2, &mobs),
+        );
+    }
+}
+
+type Mobs = Entities;
+
 #[derive(Clone, Debug)]
 pub struct State {
     pub rng: Xs,
@@ -1989,7 +2062,7 @@ impl State {
         let mut rng = xs::from_seed(seed);
 
         let mut player = Entity::default();
-        player.tile_sprite = PLAYER_BASE;        
+        player.tile_sprite = PLAYER_BASE;
         player.flags |= RENDER_FACING;
 
         let mut mobs = Entities::default();
@@ -2527,7 +2600,7 @@ impl State {
 
                         // End of section where indexing bugs are relevant.
                         let door_indexes = door_indexes._indexes;
-                        
+
                         for index in door_indexes {
                             // Assume everything not set is a floor, to avoid merging
                             // with the tile walls.
@@ -2767,44 +2840,20 @@ impl State {
         if let &(staff_xy, EdgeHitKind::Neither) = &staff_xy_pair {
             let key = Key { xy: staff_xy };
 
-            enum PostEffect {
-                NoOp,
-                Toggle(ToggleGroupId),
-            }
-            use PostEffect::*;
-            let mut effect = PostEffect::NoOp;
+            use HitEffect::*;
 
-            match self.mobs.get_mut(&key) {
-                Some(hit_mob) if hit_mob.tile_sprite == SWITCH_BASE => {
-                    hit_mob.tile_sprite = SWITCH_HIT;
-
-                    // Start animation timer
-                    self.animations.push(Animation::reset(key));
-
-                    // TODO Good place for SFX
-
-
-                    // Toggle relevant mobs
-                    if hit_mob.toggle_group_id != NULL_GROUP {
-                        effect = Toggle(hit_mob.toggle_group_id);
-                    }
-                },
-                Some(hit_mob) if hit_mob.tile_sprite == ROACH_BASE => {
-                    // TODO Good place for SFX
-// Idea for further debugging: wrap this collision checking into a function, and write unit tests for it
-// Yes, it might just prove that it works properly, but then that points to use looking at the next most likely spot.
-// Be sure to include cases where the Position value has a non-zero offset.
-//    Hypothesis of what the issue is: When Position.offset is non-zero, we should be checking the previous xy value?
-dbg!("self.mobs.remove", staff_xy);
-                    // TODO? Put a splat on the ground in this spot instead?
-                    self.mobs.remove(&key);
-                },
-                Some(_) | None => {}
-            }
-
-            match effect {
+            match get_hit_effect(key, &self.mobs) {
                 NoOp => {},
                 Toggle(group_id) => {
+                    if let Some(hit_mob) = self.mobs.get_mut(&key) {
+                        hit_mob.tile_sprite = SWITCH_HIT;
+
+                        // Start animation timer
+                        self.animations.push(Animation::reset(key));
+
+                        // TODO Good place for SFX
+                    }
+
                     // TODO? Is it worth building an acceleration structure for this lookup?
                     for mob in self.mobs.values_mut() {
                         if mob.toggle_group_id == group_id {
@@ -2816,6 +2865,11 @@ dbg!("self.mobs.remove", staff_xy);
                             }
                         }
                     }
+                }
+                RemoveRoach => {
+                    // TODO Good place for SFX
+                    // TODO? Put a splat on the ground in this spot instead?
+                    self.mobs.remove(&key);
                 }
             }
         }
@@ -2844,7 +2898,7 @@ dbg!("self.mobs.remove", staff_xy);
                         fn manhattan_distance(a: XY, b: XY) -> xy::Diff {
                             (xy::Diff::from(a.x) - xy::Diff::from(b.x)).abs() + (xy::Diff::from(a.y) - xy::Diff::from(b.y)).abs()
                         }
-                     
+
                         let open_adjacent_spots = Dir::ALL
                             .into_iter()
                             .filter_map(|dir| {
@@ -2866,7 +2920,7 @@ dbg!("self.mobs.remove", staff_xy);
 
                         if let Some(target_xy) = open_adjacent_spots.min_by_key(|target_xy|
                             manhattan_distance(*target_xy, self.player.position.xy())
-                        ) 
+                        )
                         && let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
                             mob_mutations.push(MobMutation{
                                 key: *key,
