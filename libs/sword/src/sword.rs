@@ -453,6 +453,16 @@ mod position {
     }
 
     impl Position {
+        pub fn new(
+            xy: XY,
+            offset: offset::XY,
+        ) -> Self {
+            Self {
+                xy,
+                offset,
+            }
+        }
+
         pub fn xy(&self) -> XY {
             self.xy
         }
@@ -501,19 +511,10 @@ const RENDER_FACING: EntityFlags = 1 << 1;
 
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
-    pub position: Position,
     pub tile_sprite: TileSprite,
     pub toggle_group_id: ToggleGroupId,
     pub flags: EntityFlags,
     pub facing: Dir8,
-}
-
-impl Entity {
-    pub fn key(&self) -> Key {
-        Key {
-            xy: self.position.xy(),
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -521,7 +522,92 @@ pub struct Key {
     pub xy: XY,
 }
 
-pub type Entities = BTreeMap<Key, Entity>;
+mod entities {
+    use super::*;
+
+    pub struct Mutation {
+        pub key: Key,
+        pub facing: Dir8,
+        pub target_xy: XY,
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct Entry {
+        offset: offset::XY,
+        entity: Entity,
+    }
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Entities {
+        entities: BTreeMap<Key, Entry>,
+    }
+
+    impl Entities {
+        pub fn get(&self, key: Key) -> Option<&Entity> {
+            self.entities.get(&key).map(|entry| &entry.entity)
+        }
+
+        pub fn get_mut(&mut self, key: Key) -> Option<&mut Entity> {
+            self.entities.get_mut(&key).map(|entry| &mut entry.entity)
+        }
+
+        pub fn insert(&mut self, key: Key, entity: Entity) {
+            self.entities.insert(
+                key, 
+                Entry { offset: <_>::default(), entity }
+            );
+        }
+
+        pub fn remove(&mut self, key: Key) {
+            self.entities.remove(&key);
+        }
+
+        pub fn decay_positions(&mut self) {
+            for Entry { offset, .. } in self.entities.values_mut() {
+                offset.decay();
+            }
+        }
+
+        pub fn all(&self) -> impl Iterator<Item = (Position, &Entity)> {
+            self.entities.iter()
+                .map(|(key, Entry { offset, entity })| {
+                    (Position::new(key.xy, *offset), entity)
+                })
+        }
+
+        pub fn entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
+            self.entities.values_mut()
+                .map(|Entry { entity, .. }| {
+                    entity
+                })
+        }
+
+        pub fn apply(&mut self, mutation: Mutation) {
+            if let Some(Entry { entity, .. }) = self.entities.get_mut(&mutation.key) {
+                entity.facing = mutation.facing;
+            }
+
+            let old_key = mutation.key;
+            let new_key = Key { xy: mutation.target_xy };
+            if old_key.xy != new_key.xy {
+                if let None = self.entities.get(&new_key)
+                && let Some(Entry { entity, .. }) = self.entities.remove(&old_key) {
+                    self.entities.insert(
+                        new_key,
+                        Entry {
+                            offset: offset::XY::from_old_and_new(
+                                offset::Point::from(old_key.xy),
+                                offset::Point::from(new_key.xy),
+                            ),
+                            entity
+                        }
+                    );
+                }
+            }
+        }
+    }
+}
+use entities::Entities;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Dir8 {
@@ -701,7 +787,7 @@ fn can_walk_onto_tile(tiles: &Tiles, xy: XY) -> bool {
 
 fn can_walk_onto(mobs: &Entities, tiles: &Tiles, key: Key) -> bool {
     can_walk_onto_tile(tiles, key.xy) && {
-        match mobs.get(&key) {
+        match mobs.get(key) {
             Some(mob) => {
                 // Can walk onto things that are gone.
                 (mob.flags & GONE) == GONE
@@ -1984,7 +2070,7 @@ fn get_hit_effect(key: Key, mobs: &Mobs) -> HitEffect {
     use HitEffect::*;
     let mut effect = HitEffect::NoOp;
 
-    match mobs.get(&key) {
+    match mobs.get(key) {
         Some(hit_mob) if hit_mob.tile_sprite == SWITCH_BASE => {
             // Toggle relevant mobs
             if hit_mob.toggle_group_id != NULL_GROUP {
@@ -2050,7 +2136,8 @@ type Mobs = Entities;
 pub struct State {
     pub rng: Xs,
     pub player: Entity,
-    pub mobs: Entities,
+    pub player_position: Position,
+    pub mobs: Mobs,
     pub tiles: Tiles,
     pub animations: Animations,
 }
@@ -2064,15 +2151,16 @@ impl State {
         let mut player = Entity::default();
         player.tile_sprite = PLAYER_BASE;
         player.flags |= RENDER_FACING;
+        let player_position;
 
-        let mut mobs = Entities::default();
+        let mut mobs = Mobs::default();
 
         macro_rules! insert_entity {
-            ($entity: expr) => ({
+            ($xy: expr, $entity: expr) => ({
                 let entity = $entity;
                 mobs.insert(
                     Key {
-                        xy: entity.position.xy(),
+                        xy: $xy,
                     },
                     entity
                 );
@@ -2361,13 +2449,15 @@ impl State {
 
                 let exit_xy = i_to_xy(width, index);
 
-                insert_entity!(Entity {
-                    position: Position::from(exit_xy),
-                    tile_sprite: TileSprite::Sword(
-                        EXIT_SPRITES[exit_sprites_index + offset].sword_inner_or_0()
-                    ),
-                    ..<_>::default()
-                });
+                insert_entity!(
+                    exit_xy,
+                    Entity {
+                        tile_sprite: TileSprite::Sword(
+                            EXIT_SPRITES[exit_sprites_index + offset].sword_inner_or_0()
+                        ),
+                        ..<_>::default()
+                    }
+                );
                 offset += 1;
             }
 
@@ -2412,8 +2502,6 @@ impl State {
                 //MoveSwitch,
                 //MoveDoor,
             }
-
-            dbg!("pre-complications");
 
             while current_complication_count < target_complication_count {
                 // TODO define multiple and pick randomly
@@ -2644,23 +2732,27 @@ impl State {
 
                             let xy = i_to_xy(width, index);
 
-                            insert_entity!(Entity {
-                                position: Position::from(xy),
-                                tile_sprite: TileSprite::ToggleWall(output_mask),
-                                toggle_group_id: free_group_id,
-                                ..<_>::default()
-                            });
+                            insert_entity!(
+                                xy,
+                                Entity {
+                                    tile_sprite: TileSprite::ToggleWall(output_mask),
+                                    toggle_group_id: free_group_id,
+                                    ..<_>::default()
+                                }
+                            );
                         }
 
                         // * Place the switch
                         let switch_xy = i_to_xy(width, switch_i);
 
-                        insert_entity!(Entity {
-                            position: Position::from(switch_xy),
-                            tile_sprite: SWITCH_BASE,
-                            toggle_group_id: free_group_id,
-                            ..<_>::default()
-                        });
+                        insert_entity!(
+                            switch_xy,
+                            Entity {
+                                tile_sprite: SWITCH_BASE,
+                                toggle_group_id: free_group_id,
+                                ..<_>::default()
+                            }
+                        );
 
                         free_group_id += 1;
                         current_complication_count += 1;
@@ -2682,23 +2774,25 @@ impl State {
 
                     // Don't replace other mobs
                     if let Some(_) = mobs.get(
-                        &Key {
+                        Key {
                             xy: enemy_xy,
                         }
                     ) {
                         continue
                     }
 
-                    insert_entity!(Entity {
-                        position: Position::from(enemy_xy),
-                        tile_sprite: ROACH_BASE,
-                        flags: RENDER_FACING,
-                        ..<_>::default()
-                    });
+                    insert_entity!(
+                        enemy_xy,
+                        Entity {
+                            tile_sprite: ROACH_BASE,
+                            flags: RENDER_FACING,
+                            ..<_>::default()
+                        }
+                    );
                 }
             }
 
-            player.position = start_xy.into();
+            player_position = start_xy.into();
 
             tiles
         };
@@ -2713,6 +2807,7 @@ impl State {
         Self {
             rng,
             player,
+            player_position,
             mobs,
             tiles: Tiles {
                 width,
@@ -2723,22 +2818,16 @@ impl State {
     }
 
     pub fn is_complete(&self) -> bool {
-        if let Some(mob) = self.mobs.get(&self.player.key()) {
+        let key = Key { xy: self.player_position.xy() };
+
+        if let Some(mob) = self.mobs.get(key) {
             return mob.tile_sprite.is_stairs();
         }
         false
     }
 
-    pub fn all_entities(&self) -> impl Iterator<Item=&Entity> {
-        std::iter::once(&self.player).chain(self.mobs.values())
-    }
-
-    pub fn all_entities_mut(&mut self) -> impl Iterator<Item=&mut Entity> {
-        std::iter::once(&mut self.player).chain(self.mobs.values_mut())
-    }
-
     fn staff_xy_pair(&self) -> (XY, EdgeHitKind) {
-        xy_in_dir(self.player.position.xy(), self.player.facing)
+        xy_in_dir(self.player_position.xy(), self.player.facing)
     }
 
     fn tick(&mut self) {
@@ -2748,9 +2837,7 @@ impl State {
         // Advance timers
         //
 
-        for entity in self.all_entities_mut() {
-            entity.position.decay();
-        }
+        self.mobs.decay_positions();
 
         for i in (0..self.animations.len()).rev() {
             let animation = &mut self.animations[i];
@@ -2768,7 +2855,7 @@ impl State {
                         }
                         let mut post_action = PostAction::NoOp;
 
-                        if let Some(mob) = self.mobs.get_mut(&animation.target_key) {
+                        if let Some(mob) = self.mobs.get_mut(animation.target_key) {
                             match mob.tile_sprite {
                                 SWITCH_HIT => {
                                     let should_redo_animation = if let (staff_xy, EdgeHitKind::Neither) = staff_xy_pair {
@@ -2821,10 +2908,10 @@ impl State {
         let mut player_moved = false;
         if let Some(dir) = input.dir_pressed_this_frame() {
             // Walk
-            let (new_xy, _) = xy_in_dir(self.player.position.xy(), dir.into());
+            let (new_xy, _) = xy_in_dir(self.player_position.xy(), dir.into());
 
             if can_walk_onto(&self.mobs, &self.tiles, Key { xy: new_xy }) {
-                self.player.position.set_xy(new_xy);
+                self.player_position.set_xy(new_xy);
                 player_moved = true;
             }
         } else if input.pressed_this_frame(Button::A) {
@@ -2845,7 +2932,7 @@ impl State {
             match get_hit_effect(key, &self.mobs) {
                 NoOp => {},
                 Toggle(group_id) => {
-                    if let Some(hit_mob) = self.mobs.get_mut(&key) {
+                    if let Some(hit_mob) = self.mobs.get_mut(key) {
                         hit_mob.tile_sprite = SWITCH_HIT;
 
                         // Start animation timer
@@ -2855,7 +2942,7 @@ impl State {
                     }
 
                     // TODO? Is it worth building an acceleration structure for this lookup?
-                    for mob in self.mobs.values_mut() {
+                    for mob in self.mobs.entities_mut() {
                         if mob.toggle_group_id == group_id {
                             match mob.tile_sprite {
                                 TileSprite::ToggleWall(..) => {
@@ -2869,22 +2956,16 @@ impl State {
                 RemoveRoach => {
                     // TODO Good place for SFX
                     // TODO? Put a splat on the ground in this spot instead?
-                    self.mobs.remove(&key);
+                    self.mobs.remove(key);
                 }
             }
         }
 
         if player_moved {
-            struct MobMutation {
-                key: Key,
-                facing: Dir8,
-                target_xy: XY,
-            }
-
             // Each mob takes their turn to move
             let mut mob_mutations = Vec::with_capacity(16);
 
-            for (key, mob) in &self.mobs {
+            for (position, mob) in self.mobs.all() {
                 if mob.flags & GONE == GONE {
                     continue
                 }
@@ -2893,7 +2974,7 @@ impl State {
                     ROACH_BASE => {
                         assert_eq!(mob.flags & RENDER_FACING, RENDER_FACING);
 
-                        let mob_xy = mob.position.xy();
+                        let mob_xy = position.xy();
 
                         fn manhattan_distance(a: XY, b: XY) -> xy::Diff {
                             (xy::Diff::from(a.x) - xy::Diff::from(b.x)).abs() + (xy::Diff::from(a.y) - xy::Diff::from(b.y)).abs()
@@ -2909,7 +2990,7 @@ impl State {
                                 }
                             }).filter_map(|xy| {
                                 let target_key = Key { xy };
-                                if self.mobs.get(&target_key).is_none()
+                                if self.mobs.get(target_key).is_none()
                                 && let Ok(tile_i) = xy_to_i(self.tiles.width, xy)
                                 && self.tiles.tiles.get(tile_i).map(|t| t.is_floor()).unwrap_or(false) {
                                     Some(xy)
@@ -2919,11 +3000,11 @@ impl State {
                             });
 
                         if let Some(target_xy) = open_adjacent_spots.min_by_key(|target_xy|
-                            manhattan_distance(*target_xy, self.player.position.xy())
+                            manhattan_distance(*target_xy, self.player_position.xy())
                         )
                         && let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
-                            mob_mutations.push(MobMutation{
-                                key: *key,
+                            mob_mutations.push(entities::Mutation{
+                                key: Key { xy: mob_xy },
                                 facing,
                                 target_xy,
                             });
@@ -2934,12 +3015,7 @@ impl State {
             }
 
             for mutation in mob_mutations {
-                if let Some(mob) = self.mobs.get_mut(&mutation.key) {
-                    mob.facing = mutation.facing;
-                    mob.position.set_xy(mutation.target_xy);
-                } else {
-                    assert!(false, "fresh mutation was invalid!");
-                }
+                self.mobs.apply(mutation);
             }
         }
 
@@ -3027,7 +3103,7 @@ impl State {
             }
         }
 
-        for entity in self.mobs.values() {
+        for (position, entity) in self.mobs.all() {
             // Don't draw things that are gone.
             if entity.flags & GONE == GONE { continue }
 
@@ -3037,21 +3113,21 @@ impl State {
                 entity.tile_sprite
             };
 
-            draw_at_position(entity.position, sprite);
+            draw_at_position(position, sprite);
         }
 
         assert_eq!(self.player.flags & GONE, 0, "The player should never be gone!");
         assert_eq!(self.player.flags & RENDER_FACING, RENDER_FACING, "The player should always be rendered taking facing into account!");
 
         draw_at_position(
-            self.player.position,
+            self.player_position,
             sprite_with_facing!(self.player.tile_sprite, self.player.facing),
         );
 
         if let (staff_xy, EdgeHitKind::Neither) = staff_xy_pair {
             draw_at_position_pieces(
                 staff_xy,
-                self.player.position.offset(),
+                self.player_position.offset(),
                 sprite_with_facing!(STAFF_BASE, self.player.facing),
             );
         }
