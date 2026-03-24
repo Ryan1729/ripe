@@ -525,6 +525,7 @@ pub struct Key {
 mod entities {
     use super::*;
 
+    #[derive(Clone, Copy, Debug)]
     pub struct Mutation {
         pub key: Key,
         pub facing: Dir8,
@@ -589,7 +590,9 @@ mod entities {
 
             let old_key = mutation.key;
             let new_key = Key { xy: mutation.target_xy };
+
             if old_key.xy != new_key.xy {
+                // FIXME we need to allow mobs to be able to walk onto places where GONE mobs are.
                 if let None = self.entities.get(&new_key)
                 && let Some(Entry { entity, .. }) = self.entities.remove(&old_key) {
                     self.entities.insert(
@@ -785,7 +788,7 @@ fn can_walk_onto_tile(tiles: &Tiles, xy: XY) -> bool {
         .unwrap_or(false)
 }
 
-fn can_walk_onto(mobs: &Entities, tiles: &Tiles, key: Key) -> bool {
+fn can_walk_onto(mobs: &Mobs, tiles: &Tiles, key: Key) -> bool {
     can_walk_onto_tile(tiles, key.xy) && {
         match mobs.get(key) {
             Some(mob) => {
@@ -2837,6 +2840,7 @@ impl State {
         // Advance timers
         //
 
+        self.player_position.decay();
         self.mobs.decay_positions();
 
         for i in (0..self.animations.len()).rev() {
@@ -2989,16 +2993,28 @@ impl State {
                                     None
                                 }
                             }).filter_map(|xy| {
-                                let target_key = Key { xy };
-                                if self.mobs.get(target_key).is_none()
-                                && let Ok(tile_i) = xy_to_i(self.tiles.width, xy)
-                                && self.tiles.tiles.get(tile_i).map(|t| t.is_floor()).unwrap_or(false) {
+                                if can_walk_onto(&self.mobs, &self.tiles, Key { xy }) {
                                     Some(xy)
                                 } else {
                                     None
                                 }
                             });
-
+                        dbg!(mob_xy, open_adjacent_spots.collect::<Vec<_>>());
+                        let open_adjacent_spots = Dir::ALL
+                            .into_iter()
+                            .filter_map(|dir| {
+                                if let (xy, EdgeHitKind::Neither) = xy_in_dir(mob_xy, dir.into()) {
+                                    Some(xy)
+                                } else {
+                                    None
+                                }
+                            }).filter_map(|xy| {
+                                if can_walk_onto(&self.mobs, &self.tiles, Key { xy }) {
+                                    Some(xy)
+                                } else {
+                                    None
+                                }
+                            });
                         if let Some(target_xy) = open_adjacent_spots.min_by_key(|target_xy|
                             manhattan_distance(*target_xy, self.player_position.xy())
                         )
@@ -3015,6 +3031,7 @@ impl State {
             }
 
             for mutation in mob_mutations {
+                dbg!(mutation);
                 self.mobs.apply(mutation);
             }
         }
