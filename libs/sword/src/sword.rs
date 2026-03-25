@@ -522,7 +522,7 @@ pub struct Key {
     pub xy: XY,
 }
 
-mod entities {
+mod mobs {
     use super::*;
 
     #[derive(Clone, Copy, Debug)]
@@ -539,52 +539,53 @@ mod entities {
     }
 
     #[derive(Clone, Debug, Default)]
-    pub struct Entities {
-        entities: BTreeMap<Key, Entry>,
+    pub struct Mobs {
+        entries: BTreeMap<Key, Entry>,
     }
 
-    impl Entities {
+    impl Mobs {
         pub fn get(&self, key: Key) -> Option<&Entity> {
-            self.entities.get(&key).map(|entry| &entry.entity)
+            self.entries.get(&key).map(|entry| &entry.entity)
         }
 
         pub fn get_mut(&mut self, key: Key) -> Option<&mut Entity> {
-            self.entities.get_mut(&key).map(|entry| &mut entry.entity)
+            self.entries.get_mut(&key).map(|entry| &mut entry.entity)
         }
 
         pub fn insert(&mut self, key: Key, entity: Entity) {
-            self.entities.insert(
-                key, 
+            self.entries.insert(
+                key,
                 Entry { offset: <_>::default(), entity }
             );
         }
 
         pub fn remove(&mut self, key: Key) {
-            self.entities.remove(&key);
+            self.entries.remove(&key);
         }
 
         pub fn decay_positions(&mut self) {
-            for Entry { offset, .. } in self.entities.values_mut() {
+            for Entry { offset, .. } in self.entries.values_mut() {
                 offset.decay();
             }
         }
 
         pub fn all(&self) -> impl Iterator<Item = (Position, &Entity)> {
-            self.entities.iter()
+            self.entries.iter()
                 .map(|(key, Entry { offset, entity })| {
                     (Position::new(key.xy, *offset), entity)
                 })
         }
 
         pub fn entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
-            self.entities.values_mut()
+            self.entries.values_mut()
                 .map(|Entry { entity, .. }| {
                     entity
                 })
         }
 
+        /// We assume that the mutation has been verified to be legal already.
         pub fn apply(&mut self, mutation: Mutation) {
-            if let Some(Entry { entity, .. }) = self.entities.get_mut(&mutation.key) {
+            if let Some(Entry { entity, .. }) = self.entries.get_mut(&mutation.key) {
                 entity.facing = mutation.facing;
             }
 
@@ -592,10 +593,8 @@ mod entities {
             let new_key = Key { xy: mutation.target_xy };
 
             if old_key.xy != new_key.xy {
-                // FIXME we need to allow mobs to be able to walk onto places where GONE mobs are.
-                if let None = self.entities.get(&new_key)
-                && let Some(Entry { entity, .. }) = self.entities.remove(&old_key) {
-                    self.entities.insert(
+                if let Some(Entry { entity, .. }) = self.entries.remove(&old_key) {
+                    self.entries.insert(
                         new_key,
                         Entry {
                             offset: offset::XY::from_old_and_new(
@@ -610,7 +609,38 @@ mod entities {
         }
     }
 }
-use entities::Entities;
+use mobs::Mobs;
+
+mod mechanisms {
+    use super::*;
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Mechanisms {
+        entities: BTreeMap<Key, Entity>,
+    }
+
+    impl Mechanisms {
+        pub fn get(&self, key: Key) -> Option<&Entity> {
+            self.entities.get(&key)
+        }
+
+        pub fn insert(&mut self, key: Key, entity: Entity) {
+            self.entities.insert(
+                key,
+                entity
+            );
+        }
+
+        pub fn entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
+            self.entities.values_mut()
+        }
+
+        pub fn all(&self) -> impl Iterator<Item = (&Key, &Entity)> {
+            self.entities.iter()
+        }
+    }
+}
+use mechanisms::Mechanisms;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Dir8 {
@@ -788,13 +818,27 @@ fn can_walk_onto_tile(tiles: &Tiles, xy: XY) -> bool {
         .unwrap_or(false)
 }
 
-fn can_walk_onto(mobs: &Mobs, tiles: &Tiles, key: Key) -> bool {
-    can_walk_onto_tile(tiles, key.xy) && {
+fn can_walk_onto(
+    mechanisms: &Mechanisms,
+    mobs: &Mobs,
+    tiles: &Tiles,
+    key: Key
+) -> bool {
+    can_walk_onto_tile(tiles, key.xy)
+    && { // can walk onto mob
         match mobs.get(key) {
             Some(mob) => {
                 // Can walk onto things that are gone.
                 (mob.flags & GONE) == GONE
-                || mob.tile_sprite.is_stairs()
+            },
+            None => true,
+        }
+    } && { // can walk onto mechanism
+        match mechanisms.get(key) {
+            Some(mechanism) => {
+                // Can walk onto things that are gone.
+                (mechanism.flags & GONE) == GONE
+                || mechanism.tile_sprite.is_stairs()
             },
             None => true,
         }
@@ -2133,14 +2177,13 @@ mod get_hit_effect_works_on {
     }
 }
 
-type Mobs = Entities;
-
 #[derive(Clone, Debug)]
 pub struct State {
     pub rng: Xs,
     pub player: Entity,
     pub player_position: Position,
     pub mobs: Mobs,
+    pub mechanisms: Mechanisms,
     pub tiles: Tiles,
     pub animations: Animations,
 }
@@ -2158,7 +2201,7 @@ impl State {
 
         let mut mobs = Mobs::default();
 
-        macro_rules! insert_entity {
+        macro_rules! insert_mob {
             ($xy: expr, $entity: expr) => ({
                 let entity = $entity;
                 mobs.insert(
@@ -2170,12 +2213,23 @@ impl State {
             })
         }
 
+        let mut mechanisms = Mechanisms::default();
+
+        macro_rules! insert_mechanism {
+            ($xy: expr, $entity: expr) => ({
+                let entity = $entity;
+                mechanisms.insert(
+                    Key {
+                        xy: $xy,
+                    },
+                    entity
+                );
+            })
+        }
+
         use TileIndex::*;
 
         let (mut max_tile_w, mut max_tile_h) = wall_spec.max_tile_counts();
-
-        // temp to debug
-        //max_tile_w = max_tile_w.saturating_sub(1);
 
         if max_tile_w == 0 {
             max_tile_w = 1;
@@ -2451,8 +2505,7 @@ impl State {
                 }
 
                 let exit_xy = i_to_xy(width, index);
-
-                insert_entity!(
+                insert_mechanism!(
                     exit_xy,
                     Entity {
                         tile_sprite: TileSprite::Sword(
@@ -2735,7 +2788,7 @@ impl State {
 
                             let xy = i_to_xy(width, index);
 
-                            insert_entity!(
+                            insert_mechanism!(
                                 xy,
                                 Entity {
                                     tile_sprite: TileSprite::ToggleWall(output_mask),
@@ -2748,7 +2801,7 @@ impl State {
                         // * Place the switch
                         let switch_xy = i_to_xy(width, switch_i);
 
-                        insert_entity!(
+                        insert_mob!(
                             switch_xy,
                             Entity {
                                 tile_sprite: SWITCH_BASE,
@@ -2784,7 +2837,7 @@ impl State {
                         continue
                     }
 
-                    insert_entity!(
+                    insert_mob!(
                         enemy_xy,
                         Entity {
                             tile_sprite: ROACH_BASE,
@@ -2811,6 +2864,7 @@ impl State {
             rng,
             player,
             player_position,
+            mechanisms,
             mobs,
             tiles: Tiles {
                 width,
@@ -2823,8 +2877,8 @@ impl State {
     pub fn is_complete(&self) -> bool {
         let key = Key { xy: self.player_position.xy() };
 
-        if let Some(mob) = self.mobs.get(key) {
-            return mob.tile_sprite.is_stairs();
+        if let Some(mechanism) = self.mechanisms.get(key) {
+            return mechanism.tile_sprite.is_stairs();
         }
         false
     }
@@ -2914,7 +2968,12 @@ impl State {
             // Walk
             let (new_xy, _) = xy_in_dir(self.player_position.xy(), dir.into());
 
-            if can_walk_onto(&self.mobs, &self.tiles, Key { xy: new_xy }) {
+            if can_walk_onto(
+                &self.mechanisms,
+                &self.mobs,
+                &self.tiles,
+                Key { xy: new_xy }
+            ) {
                 self.player_position.set_xy(new_xy);
                 player_moved = true;
             }
@@ -2946,11 +3005,11 @@ impl State {
                     }
 
                     // TODO? Is it worth building an acceleration structure for this lookup?
-                    for mob in self.mobs.entities_mut() {
-                        if mob.toggle_group_id == group_id {
-                            match mob.tile_sprite {
+                    for mechanism in self.mechanisms.entities_mut() {
+                        if mechanism.toggle_group_id == group_id {
+                            match mechanism.tile_sprite {
                                 TileSprite::ToggleWall(..) => {
-                                    mob.flags ^= GONE;
+                                    mechanism.flags ^= GONE;
                                 }
                                 _ => {}
                             }
@@ -2993,23 +3052,12 @@ impl State {
                                     None
                                 }
                             }).filter_map(|xy| {
-                                if can_walk_onto(&self.mobs, &self.tiles, Key { xy }) {
-                                    Some(xy)
-                                } else {
-                                    None
-                                }
-                            });
-                        dbg!(mob_xy, open_adjacent_spots.collect::<Vec<_>>());
-                        let open_adjacent_spots = Dir::ALL
-                            .into_iter()
-                            .filter_map(|dir| {
-                                if let (xy, EdgeHitKind::Neither) = xy_in_dir(mob_xy, dir.into()) {
-                                    Some(xy)
-                                } else {
-                                    None
-                                }
-                            }).filter_map(|xy| {
-                                if can_walk_onto(&self.mobs, &self.tiles, Key { xy }) {
+                                if can_walk_onto(
+                                    &self.mechanisms,
+                                    &self.mobs,
+                                    &self.tiles,
+                                    Key { xy }
+                                ) {
                                     Some(xy)
                                 } else {
                                     None
@@ -3019,7 +3067,7 @@ impl State {
                             manhattan_distance(*target_xy, self.player_position.xy())
                         )
                         && let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
-                            mob_mutations.push(entities::Mutation{
+                            mob_mutations.push(mobs::Mutation{
                                 key: Key { xy: mob_xy },
                                 facing,
                                 target_xy,
@@ -3031,7 +3079,6 @@ impl State {
             }
 
             for mutation in mob_mutations {
-                dbg!(mutation);
                 self.mobs.apply(mutation);
             }
         }
@@ -3078,7 +3125,7 @@ impl State {
             );
         }
 
-        // Render mobs
+        // Render entities
 
         let tiles_per_row = sword_spec.tiles_per_row();
 
@@ -3108,10 +3155,6 @@ impl State {
             }
         };
 
-        let mut draw_at_position = |position: Position, tile_sprite| {
-            draw_at_position_pieces(position.xy(), position.offset(), tile_sprite)
-        };
-
         macro_rules! sprite_with_facing {
             ($base: expr, $facing: expr) => {
                 TileSprite::Sword(
@@ -3119,6 +3162,23 @@ impl State {
                 )
             }
         }
+
+        for (Key{ xy }, entity) in self.mechanisms.all() {
+            // Don't draw things that are gone.
+            if entity.flags & GONE == GONE { continue }
+
+            let sprite = if entity.flags & RENDER_FACING == RENDER_FACING {
+                sprite_with_facing!(entity.tile_sprite, entity.facing)
+            } else {
+                entity.tile_sprite
+            };
+
+            draw_at_position_pieces(*xy, <_>::default(), sprite)
+        }
+
+        let mut draw_at_position = |position: Position, tile_sprite| {
+            draw_at_position_pieces(position.xy(), position.offset(), tile_sprite)
+        };
 
         for (position, entity) in self.mobs.all() {
             // Don't draw things that are gone.
