@@ -3039,6 +3039,21 @@ impl State {
 
                         let mob_xy = position.xy();
 
+                        /* TODO replace this with the following, once written
+                        if let Ok(target_xy) = pathfinding::next_xy_along_shortest_path(
+                            ...
+                        ) 
+                        && let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
+                            mob_mutations.push(mobs::Mutation{
+                                key: Key { xy: mob_xy },
+                                facing,
+                                target_xy,
+                            });
+                        }
+                        */
+
+
+
                         fn manhattan_distance(a: XY, b: XY) -> xy::Diff {
                             (xy::Diff::from(a.x) - xy::Diff::from(b.x)).abs() + (xy::Diff::from(a.y) - xy::Diff::from(b.y)).abs()
                         }

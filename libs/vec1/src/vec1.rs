@@ -22,6 +22,13 @@ impl <T> Vec1<T> {
         vec1![t]
     }
 
+    pub fn singleton_with_capacity(t: T, capacity: usize) -> Self {
+        let mut v = Vec::with_capacity(capacity);
+        v.push(t);
+
+        Self(v)
+    }
+
     // TODO? A len1 that returns a NonZeroUsize?
     pub fn len(&self) -> usize {
         self.0.len()
