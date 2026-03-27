@@ -6,4 +6,5 @@ edition = "2024"
 [lib]
 path = "src/pathfinding.rs"
 
-[dependencies]
+[dependencies.vec1]
+path = "../vec1"

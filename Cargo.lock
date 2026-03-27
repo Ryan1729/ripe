@@ -1566,6 +1566,9 @@ dependencies = [
 [[package]]
 name = "pathfinding"
 version = "0.1.0"
+dependencies = [
+ "vec1",
+]
 
 [[package]]
 name = "peeking_take_while"
