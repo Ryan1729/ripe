@@ -3039,19 +3039,28 @@ impl State {
 
                         let mob_xy = position.xy();
 
-                        /* TODO replace this with the following, once written
-                        if let Ok(target_xy) = pathfinding::next_xy_along_shortest_path(
-                            ...
-                        ) 
-                        && let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
-                            mob_mutations.push(mobs::Mutation{
-                                key: Key { xy: mob_xy },
-                                facing,
-                                target_xy,
-                            });
-                        }
-                        */
-
+                        // /todo replace with this when we have the trait impl'd
+                        //if let Ok(target_xy) = pathfinding::next_xy_along_shortest_path(
+                            //&self.tiles.width,
+                            //&Dir::ALL,
+                            //mob_xy,
+                            //self.player_position.xy(),
+                            //&|xy, _| {
+                                //can_walk_onto(
+                                    //&self.mechanisms,
+                                    //&self.mobs,
+                                    //&self.tiles,
+                                    //Key { xy }
+                                //)
+                            //}
+                        //) 
+                        //&& let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
+                            //mob_mutations.push(mobs::Mutation{
+                                //key: Key { xy: mob_xy },
+                                //facing,
+                                //target_xy,
+                            //});
+                        //}
 
 
                         fn manhattan_distance(a: XY, b: XY) -> xy::Diff {

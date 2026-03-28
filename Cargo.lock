@@ -2142,6 +2142,7 @@ version = "0.1.0"
 dependencies = [
  "gfx",
  "offset",
+ "pathfinding",
  "platform_types",
  "vec1",
  "xs",
