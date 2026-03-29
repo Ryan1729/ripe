@@ -242,6 +242,25 @@ pub mod xy {
         }
     }
 
+    use crate::{EdgeHitKind, TilesWidth, xy_to_i, xy_in_dir};
+
+    impl pathfinding::XYTrait<TilesWidth, platform_types::Dir> for XY {
+        fn to_i(self, &width: &TilesWidth) -> usize {
+            xy_to_i(width, self).unwrap_or(usize::MAX)
+        }
+        fn apply_dir(self, dir: platform_types::Dir) -> Option<Self> {
+            if let (xy, EdgeHitKind::Neither) = xy_in_dir(self, dir) {
+                Some(xy)
+            } else {
+                None
+            }
+        }
+        fn chebyshev_distance_to(self, other: Self) -> usize {
+            core::cmp::max((other.x.diff() - self.x.diff()).abs(), (other.y.diff() - self.y.diff()).abs())
+                .try_into().unwrap_or(usize::MAX)
+        }
+    }
+
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct WH {
         pub w: W,
@@ -741,8 +760,10 @@ enum EdgeHitKind {
     Both
 }
 
-fn xy_in_dir(xy: XY, dir: Dir8) -> (XY, EdgeHitKind) {
+fn xy_in_dir(xy: XY, dir: impl Into<Dir8>) -> (XY, EdgeHitKind) {
     use Dir8::*;
+
+    let dir = dir.into();
 
     let x = xy.x;
     let y = xy.y;
@@ -2966,7 +2987,7 @@ impl State {
         let mut player_moved = false;
         if let Some(dir) = input.dir_pressed_this_frame() {
             // Walk
-            let (new_xy, _) = xy_in_dir(self.player_position.xy(), dir.into());
+            let (new_xy, _) = xy_in_dir(self.player_position.xy(), dir);
 
             if can_walk_onto(
                 &self.mechanisms,
@@ -3039,57 +3060,21 @@ impl State {
 
                         let mob_xy = position.xy();
 
-                        // /todo replace with this when we have the trait impl'd
-                        //if let Ok(target_xy) = pathfinding::next_xy_along_shortest_path(
-                            //&self.tiles.width,
-                            //&Dir::ALL,
-                            //mob_xy,
-                            //self.player_position.xy(),
-                            //&|xy, _| {
-                                //can_walk_onto(
-                                    //&self.mechanisms,
-                                    //&self.mobs,
-                                    //&self.tiles,
-                                    //Key { xy }
-                                //)
-                            //}
-                        //) 
-                        //&& let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
-                            //mob_mutations.push(mobs::Mutation{
-                                //key: Key { xy: mob_xy },
-                                //facing,
-                                //target_xy,
-                            //});
-                        //}
-
-
-                        fn manhattan_distance(a: XY, b: XY) -> xy::Diff {
-                            (xy::Diff::from(a.x) - xy::Diff::from(b.x)).abs() + (xy::Diff::from(a.y) - xy::Diff::from(b.y)).abs()
-                        }
-
-                        let open_adjacent_spots = Dir::ALL
-                            .into_iter()
-                            .filter_map(|dir| {
-                                if let (xy, EdgeHitKind::Neither) = xy_in_dir(mob_xy, dir.into()) {
-                                    Some(xy)
-                                } else {
-                                    None
-                                }
-                            }).filter_map(|xy| {
-                                if can_walk_onto(
+                        if let Ok(target_xy) = pathfinding::next_xy_along_shortest_path::<TilesWidth, Tile, Dir, XY>(
+                            &self.tiles.width,
+                            self.tiles.tiles.len(),
+                            &Dir::ALL,
+                            mob_xy,
+                            self.player_position.xy(),
+                            &|xy| {
+                                can_walk_onto(
                                     &self.mechanisms,
                                     &self.mobs,
                                     &self.tiles,
                                     Key { xy }
-                                ) {
-                                    Some(xy)
-                                } else {
-                                    None
-                                }
-                            });
-                        if let Some(target_xy) = open_adjacent_spots.min_by_key(|target_xy|
-                            manhattan_distance(*target_xy, self.player_position.xy())
-                        )
+                                )
+                            }
+                        ) 
                         && let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
                             mob_mutations.push(mobs::Mutation{
                                 key: Key { xy: mob_xy },

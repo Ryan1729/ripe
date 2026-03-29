@@ -20,8 +20,10 @@ impl Default for DijkstrasTileData {
     }
 }
 
-trait XYTrait<Direction: Clone + Copy> : PartialEq + Sized + Clone + Copy {
-    fn to_i(self, tiles_width: Width) -> usize;
+pub trait XYTrait<IndexContext, Direction: Clone + Copy> : PartialEq + Sized + Clone + Copy {
+    /// The index context might be something like the width of the tile grid, which is useful to calculate the
+    /// index given a regular (x,y) coord pair. 
+    fn to_i(self, context: &IndexContext) -> Index;
 
     fn apply_dir(self, dir: Direction) -> Option<Self>;
 
@@ -40,25 +42,26 @@ pub enum Error {
 }
 
 // Returns next xy to go to, to move along the shortest path from `from` to `to`.
-pub fn next_xy_along_shortest_path<const TILES_LENGTH: usize, Tile, Direction, XY>(
-    tiles_width: Width,
+pub fn next_xy_along_shortest_path<IndexContext, Tile, Direction, XY>(
+    index_context: &IndexContext,
+    tile_count: TileCount,
     all_dirs: &[Direction],
     from: XY,
     to: XY,
     can_pass_through: &dyn Fn(XY) -> bool
 ) -> Result<XY, Error> 
-    where XY: XYTrait<Direction>,
+    where XY: XYTrait<IndexContext, Direction>,
         Direction: Clone + Copy
 {
-    fn find_xy<Direction, XY>(
-        tiles_width: Width,
+    fn find_xy<IndexContext, Direction, XY>(
+        index_context: &IndexContext,
         came_from: &[XY],
         from: XY,
         mut current: XY,
     ) -> XY
-        where XY: XYTrait<Direction>,
+        where XY: XYTrait<IndexContext, Direction>,
             Direction: Clone + Copy {
-        let mut current_i = current.to_i(tiles_width);
+        let mut current_i = current.to_i(index_context);
 
         while current_i < came_from.len() {
             let xy = came_from[current_i];
@@ -69,21 +72,22 @@ pub fn next_xy_along_shortest_path<const TILES_LENGTH: usize, Tile, Direction, X
             }
 
             current = xy;
-            current_i = current.to_i(tiles_width);
+            current_i = current.to_i(index_context);
         }
 
         current
     }
 
-    match calculate_intermediates::<TILES_LENGTH, Tile, Direction, XY>(
-        tiles_width,
+    match calculate_intermediates::<IndexContext, Tile, Direction, XY>(
+        index_context,
+        tile_count,
         all_dirs,
         from,
         to,
         can_pass_through,
     ) {
         Ok(Intermediates { came_from, .. }) => {
-            let xy: XY = find_xy::<Direction, XY>(tiles_width, &came_from, from, to);
+            let xy: XY = find_xy::<IndexContext, Direction, XY>(index_context, &came_from, from, to);
             Ok(xy)
         },
         Err(Error::FromEqualsTo) => Ok(to),
@@ -110,11 +114,11 @@ pub fn next_xy_along_shortest_path<const TILES_LENGTH: usize, Tile, Direction, X
         //Direction: Clone + Copy {
         //// A reasonable upper bound is diagonally from one corner of the tile grid to another.
         //// If we assume the tile grid is square, that diagonal line is around sqrt(2) times the
-        //// width (AKA height) of the grid. That width would be around sqrt(TILES_LENGTH) in that
+        //// width (AKA height) of the grid. That width would be around sqrt(tile_count) in that
         //// case. Don't want to acutally spend the time to calcaute that! If we further assume 
         //// that the length is an even power of 2, then sqrt() is the same as shifting down by 
         //// half the bits used. For example, 0b1_0000_0000 = 0b1_0000 * 0b1_0000.
-        //let capacity = TILES_LENGTH >> (TILES_LENGTH.trailing_zeros() / 2);
+        //let capacity = tile_count >> (tile_count.trailing_zeros() / 2);
 //
         //let mut output = Vec1::singleton_with_capacity(current, capacity);
 //
@@ -142,20 +146,22 @@ pub fn next_xy_along_shortest_path<const TILES_LENGTH: usize, Tile, Direction, X
     //}
 //}
 //
-struct Intermediates<const TILES_LENGTH: usize, XY> {
-    came_from: Vec<XY>,
-    shortest_distance: [TileCount; TILES_LENGTH],
-    estimated_cost: [TileCount; TILES_LENGTH],
+struct Intermediates<XY> {
+     // These could be boxed slices
+     came_from: Vec<XY>,
+     shortest_distance: Vec<TileCount>,
+     estimated_cost: Vec<TileCount>,
 }
 
-fn calculate_intermediates<const TILES_LENGTH: usize, Tile, Direction, XY>(
-    tiles_width: Width,
+fn calculate_intermediates<IndexContext, Tile, Direction, XY>(
+    index_context: &IndexContext,
+    tile_count: TileCount,
     all_dirs: &[Direction],
     from: XY,
     to: XY,
     can_pass_through: &dyn Fn(XY) -> bool
-) -> Result<Intermediates<TILES_LENGTH, XY>, Error> 
-    where XY: XYTrait<Direction>,
+) -> Result<Intermediates<XY>, Error> 
+    where XY: XYTrait<IndexContext, Direction>,
         Direction: Clone + Copy
 {
     use Error::*;
@@ -164,7 +170,7 @@ fn calculate_intermediates<const TILES_LENGTH: usize, Tile, Direction, XY>(
         return Err(FromEqualsTo);
     }
 
-    let from_i = from.to_i(tiles_width);
+    let from_i = from.to_i(index_context);
 
     macro_rules! set_result {
         ($arr: ident [$index: expr] = $value: expr) => {
@@ -177,9 +183,9 @@ fn calculate_intermediates<const TILES_LENGTH: usize, Tile, Direction, XY>(
         }
     }
 
-    // Just stuffed in here, from another place where it made more cense, without thinking 
+    // Just stuffed in here, from another place where it made more sense, without thinking 
     // too hard about it.
-    let capacity = TILES_LENGTH >> (TILES_LENGTH.trailing_zeros() / 2);
+    let capacity = tile_count >> (tile_count.trailing_zeros() / 2);
 
     let mut next_xys = std::collections::VecDeque::with_capacity(capacity);
     next_xys.push_back(to);
@@ -188,12 +194,12 @@ fn calculate_intermediates<const TILES_LENGTH: usize, Tile, Direction, XY>(
     // the shortest path to i currently known.
     let mut came_from: Vec<XY> = Vec::with_capacity(16);
 
-    let mut shortest_distance = [TileCount::max_value(); TILES_LENGTH];
+    let mut shortest_distance = vec![TileCount::max_value(); tile_count];
     set_result!( shortest_distance[from_i] = 0 )?;
 
     // For xy, estimated_cost[xy.to_i()]
     //    = shortest_distance[xy.to_i()] + from.chebyshev_distance_to(xy.to_i());
-    let mut estimated_cost = [TileCount::max_value(); TILES_LENGTH];
+    let mut estimated_cost = vec![TileCount::max_value(); tile_count];
     set_result!( estimated_cost[from_i] = from.chebyshev_distance_to(from) )?;
 
     while let Some(current_xy) = next_xys.pop_front() {
@@ -202,7 +208,7 @@ fn calculate_intermediates<const TILES_LENGTH: usize, Tile, Direction, XY>(
             return Ok(Intermediates { came_from, shortest_distance, estimated_cost });
         }
 
-        let current_i = current_xy.to_i(tiles_width);
+        let current_i = current_xy.to_i(index_context);
 
         for &dir in all_dirs.iter() {
             let xy_opt = current_xy.apply_dir(dir);
@@ -215,7 +221,7 @@ fn calculate_intermediates<const TILES_LENGTH: usize, Tile, Direction, XY>(
                 continue
             }
 
-            let neighbor_i = neighbor_xy.to_i(tiles_width);
+            let neighbor_i = neighbor_xy.to_i(index_context);
 
             let tentative_distance = shortest_distance.get(current_i).ok_or(BadIndex)? + 1;
 
