@@ -2843,6 +2843,7 @@ impl State {
             // Place enemy mobs
             //
 
+            // TODO place all these far enough away from the player that they don't get ambushed at the start
             for i in 0..tiles.len() {
                 if tiles[i].is_floor()
                 && xs::range(&mut rng, 0..8) == 0
@@ -3067,6 +3068,8 @@ impl State {
                             mob_xy,
                             self.player_position.xy(),
                             &|xy| {
+                                // TODO adjust this or whatever else is needed, to make mobs moving into the space
+                                // a mob was prevously in work properly.
                                 can_walk_onto(
                                     &self.mechanisms,
                                     &self.mobs,

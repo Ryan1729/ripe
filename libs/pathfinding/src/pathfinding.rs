@@ -41,6 +41,9 @@ pub enum Error {
     FromEqualsTo,
 }
 
+// TODO faster hash map?
+type CameFrom<XY> = std::collections::HashMap<Index, XY>;
+
 // Returns next xy to go to, to move along the shortest path from `from` to `to`.
 pub fn next_xy_along_shortest_path<IndexContext, Tile, Direction, XY>(
     index_context: &IndexContext,
@@ -50,22 +53,21 @@ pub fn next_xy_along_shortest_path<IndexContext, Tile, Direction, XY>(
     to: XY,
     can_pass_through: &dyn Fn(XY) -> bool
 ) -> Result<XY, Error> 
-    where XY: XYTrait<IndexContext, Direction>,
+    where XY: XYTrait<IndexContext, Direction> + std::fmt::Debug,
         Direction: Clone + Copy
 {
     fn find_xy<IndexContext, Direction, XY>(
         index_context: &IndexContext,
-        came_from: &[XY],
+        came_from: &CameFrom<XY>,
         from: XY,
         mut current: XY,
     ) -> XY
-        where XY: XYTrait<IndexContext, Direction>,
+        where XY: XYTrait<IndexContext, Direction> + std::fmt::Debug,
             Direction: Clone + Copy {
+
         let mut current_i = current.to_i(index_context);
 
-        while current_i < came_from.len() {
-            let xy = came_from[current_i];
-
+        while let Some(&xy) = came_from.get(&current_i) {
             if xy == from {
                 // Leave `current` as the one before `to`.
                 break
@@ -148,7 +150,7 @@ pub fn next_xy_along_shortest_path<IndexContext, Tile, Direction, XY>(
 //
 struct Intermediates<XY> {
      // These could be boxed slices
-     came_from: Vec<XY>,
+     came_from: CameFrom<XY>,
      shortest_distance: Vec<TileCount>,
      estimated_cost: Vec<TileCount>,
 }
@@ -188,11 +190,11 @@ fn calculate_intermediates<IndexContext, Tile, Direction, XY>(
     let capacity = tile_count >> (tile_count.trailing_zeros() / 2);
 
     let mut next_xys = std::collections::VecDeque::with_capacity(capacity);
-    next_xys.push_back(to);
+    next_xys.push_back(from);
 
     // For an xy index i, came_from[i] is the xy immediately preceding it on 
     // the shortest path to i currently known.
-    let mut came_from: Vec<XY> = Vec::with_capacity(16);
+    let mut came_from: CameFrom<XY> = CameFrom::with_capacity(16);
 
     let mut shortest_distance = vec![TileCount::max_value(); tile_count];
     set_result!( shortest_distance[from_i] = 0 )?;
@@ -227,7 +229,7 @@ fn calculate_intermediates<IndexContext, Tile, Direction, XY>(
 
             if tentative_distance < *shortest_distance.get(neighbor_i).ok_or(BadIndex)? {
                 // A new shortest distance!
-                set_result!{ came_from[neighbor_i] = current_xy }?;
+                came_from.insert(neighbor_i, current_xy);
                 set_result!{ shortest_distance[neighbor_i] = tentative_distance }?;
                 set_result!{ estimated_cost[neighbor_i] = tentative_distance + from.chebyshev_distance_to(neighbor_xy) }?;
                 if !next_xys.contains(&neighbor_xy) {
