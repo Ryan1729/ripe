@@ -829,32 +829,42 @@ pub struct Tiles {
     pub tiles: Vec1<Tile>
 }
 
-fn can_walk_onto_tile(tiles: &Tiles, xy: XY) -> bool {
-    let Ok(i) = xy_to_i(tiles.width, xy) else {
-        return false
-    };
-
-    tiles.tiles.get(i)
-        .map(|t| t.is_floor())
-        .unwrap_or(false)
-}
-
 fn can_walk_onto(
     mechanisms: &Mechanisms,
     mobs: &Mobs,
+    mob_mutations: &[mobs::Mutation],
     tiles: &Tiles,
     key: Key
 ) -> bool {
-    can_walk_onto_tile(tiles, key.xy)
-    && { // can walk onto mob
-        match mobs.get(key) {
-            Some(mob) => {
-                // Can walk onto things that are gone.
-                (mob.flags & GONE) == GONE
-            },
-            None => true,
+    ( // can walk onto tile
+        xy_to_i(tiles.width, key.xy)
+            .map(|i| {
+                tiles.tiles.get(i)
+                    .map(|t| t.is_floor())
+                    .unwrap_or(false)
+            }).unwrap_or(false)
+    ) && {// can walk given mob positions and current mutations
+        if mob_mutations.iter().any(|m| m.target_xy == key.xy) {
+            // A Mob's already moving there this time
+            false
+        } else {
+            match mobs.get(key) {
+                Some(mob) => {
+                    // Can walk onto things that are gone.
+                    (mob.flags & GONE) == GONE
+                    || {
+                        // If the mob isn't gone, it might still be moving 
+                        // out of the way already, in which case the slot is
+                        // available.
+                        mob_mutations.iter()
+                            .any(|m| m.key == key && m.target_xy != key.xy)
+                    }
+                },
+                None => true,
+            }
         }
-    } && { // can walk onto mechanism
+    }
+    && { // can walk onto mechanism
         match mechanisms.get(key) {
             Some(mechanism) => {
                 // Can walk onto things that are gone.
@@ -2993,6 +3003,7 @@ impl State {
             if can_walk_onto(
                 &self.mechanisms,
                 &self.mobs,
+                &[],
                 &self.tiles,
                 Key { xy: new_xy }
             ) {
@@ -3073,6 +3084,7 @@ impl State {
                                 can_walk_onto(
                                     &self.mechanisms,
                                     &self.mobs,
+                                    &mob_mutations,
                                     &self.tiles,
                                     Key { xy }
                                 )
