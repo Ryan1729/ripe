@@ -661,6 +661,41 @@ mod mechanisms {
 }
 use mechanisms::Mechanisms;
 
+mod switches {
+    use super::*;
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Switches {
+        entities: BTreeMap<Key, Entity>,
+    }
+
+    impl Switches {
+        pub fn get(&self, key: Key) -> Option<&Entity> {
+            self.entities.get(&key)
+        }
+
+        pub fn get_mut(&mut self, key: Key) -> Option<&mut Entity> {
+            self.entities.get_mut(&key)
+        }
+
+        pub fn insert(&mut self, key: Key, entity: Entity) {
+            self.entities.insert(
+                key,
+                entity
+            );
+        }
+
+        pub fn entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
+            self.entities.values_mut()
+        }
+
+        pub fn all(&self) -> impl Iterator<Item = (&Key, &Entity)> {
+            self.entities.iter()
+        }
+    }
+}
+use switches::Switches;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Dir8 {
     #[default]
@@ -830,13 +865,17 @@ pub struct Tiles {
 }
 
 fn can_walk_onto(
+    switches: &Switches,
     mechanisms: &Mechanisms,
     mobs: &Mobs,
     mob_mutations: &[mobs::Mutation],
     tiles: &Tiles,
     key: Key
 ) -> bool {
-    ( // can walk onto tile
+    ( // can walk onto switch
+        switches.get(key).is_none()
+    )
+    && ( // can walk onto tile
         xy_to_i(tiles.width, key.xy)
             .map(|i| {
                 tiles.tiles.get(i)
@@ -2144,11 +2183,11 @@ enum HitEffect {
     RemoveRoach,
 }
 
-fn get_hit_effect(key: Key, mobs: &Mobs) -> HitEffect {
+fn get_hit_effect(key: Key, switches: &Switches, mobs: &Mobs) -> HitEffect {
     use HitEffect::*;
     let mut effect = HitEffect::NoOp;
 
-    match mobs.get(key) {
+    match switches.get(key).or(mobs.get(key)) {
         Some(hit_mob) if hit_mob.tile_sprite == SWITCH_BASE => {
             // Toggle relevant mobs
             if hit_mob.toggle_group_id != NULL_GROUP {
@@ -2215,6 +2254,7 @@ pub struct State {
     pub player_position: Position,
     pub mobs: Mobs,
     pub mechanisms: Mechanisms,
+    pub switches: Switches,
     pub tiles: Tiles,
     pub animations: Animations,
 }
@@ -2250,6 +2290,20 @@ impl State {
             ($xy: expr, $entity: expr) => ({
                 let entity = $entity;
                 mechanisms.insert(
+                    Key {
+                        xy: $xy,
+                    },
+                    entity
+                );
+            })
+        }
+
+        let mut switches = Switches::default();
+
+        macro_rules! insert_switch {
+            ($xy: expr, $entity: expr) => ({
+                let entity = $entity;
+                switches.insert(
                     Key {
                         xy: $xy,
                     },
@@ -2832,7 +2886,7 @@ impl State {
                         // * Place the switch
                         let switch_xy = i_to_xy(width, switch_i);
 
-                        insert_mob!(
+                        insert_switch!(
                             switch_xy,
                             Entity {
                                 tile_sprite: SWITCH_BASE,
@@ -2853,22 +2907,21 @@ impl State {
             // Place enemy mobs
             //
 
-            // TODO place all these far enough away from the player that they don't get ambushed at the start
+            use pathfinding::XYTrait;
+
             for i in 0..tiles.len() {
                 if tiles[i].is_floor()
+                && let enemy_xy = i_to_xy(width, i)
+                && let key = (Key { xy: enemy_xy })
+                // Don't replace other mobs or
+                // spawn on mechanisms or switches
+                && let None = mobs.get(key)
+                    .or(mechanisms.get(key))
+                    .or(switches.get(key))
+                // place all these far enough away from the player that they don't get ambushed at the start
+                && enemy_xy.chebyshev_distance_to(start_xy) > 4
                 && xs::range(&mut rng, 0..8) == 0
                 {
-                    let enemy_xy = i_to_xy(width, i);
-
-                    // Don't replace other mobs
-                    if let Some(_) = mobs.get(
-                        Key {
-                            xy: enemy_xy,
-                        }
-                    ) {
-                        continue
-                    }
-
                     insert_mob!(
                         enemy_xy,
                         Entity {
@@ -2896,6 +2949,7 @@ impl State {
             rng,
             player,
             player_position,
+            switches,
             mechanisms,
             mobs,
             tiles: Tiles {
@@ -2945,8 +2999,8 @@ impl State {
                         }
                         let mut post_action = PostAction::NoOp;
 
-                        if let Some(mob) = self.mobs.get_mut(animation.target_key) {
-                            match mob.tile_sprite {
+                        if let Some(switch) = self.switches.get_mut(animation.target_key) {
+                            match switch.tile_sprite {
                                 SWITCH_HIT => {
                                     let should_redo_animation = if let (staff_xy, EdgeHitKind::Neither) = staff_xy_pair {
                                         staff_xy == animation.target_key.xy
@@ -2957,7 +3011,7 @@ impl State {
                                     if should_redo_animation {
                                         post_action = PostAction::RedoAnimation;
                                     } else {
-                                        mob.tile_sprite = SWITCH_BASE;
+                                        switch.tile_sprite = SWITCH_BASE;
                                     }
                                 }
                                 _ => {}
@@ -3001,6 +3055,7 @@ impl State {
             let (new_xy, _) = xy_in_dir(self.player_position.xy(), dir);
 
             if can_walk_onto(
+                &self.switches,
                 &self.mechanisms,
                 &self.mobs,
                 &[],
@@ -3025,11 +3080,11 @@ impl State {
 
             use HitEffect::*;
 
-            match get_hit_effect(key, &self.mobs) {
+            match get_hit_effect(key, &self.switches, &self.mobs) {
                 NoOp => {},
                 Toggle(group_id) => {
-                    if let Some(hit_mob) = self.mobs.get_mut(key) {
-                        hit_mob.tile_sprite = SWITCH_HIT;
+                    if let Some(hit_switch) = self.switches.get_mut(key) {
+                        hit_switch.tile_sprite = SWITCH_HIT;
 
                         // Start animation timer
                         self.animations.push(Animation::reset(key));
@@ -3082,6 +3137,7 @@ impl State {
                                 // This check is weakened tp allow mobs to plan to walk past things that might
                                 // be out of the way later.
                                 can_walk_onto(
+                                    &self.switches,
                                     &Mechanisms::default(),
                                     &Mobs::default(),
                                     &[],
@@ -3095,6 +3151,7 @@ impl State {
                             // paths to extend past mobs. This check ensures that the single space
                             // we will actually move into this time is really valid
                             if can_walk_onto(
+                                &self.switches,
                                 &self.mechanisms,
                                 &self.mobs,
                                 &mob_mutations,
@@ -3226,6 +3283,19 @@ impl State {
             };
 
             draw_at_position(position, sprite);
+        }
+
+        for (key, entity) in self.switches.all() {
+            // Don't draw things that are gone.
+            if entity.flags & GONE == GONE { continue }
+
+            let sprite = if entity.flags & RENDER_FACING == RENDER_FACING {
+                sprite_with_facing!(entity.tile_sprite, entity.facing)
+            } else {
+                entity.tile_sprite
+            };
+
+            draw_at_position(key.xy.into(), sprite);
         }
 
         assert_eq!(self.player.flags & GONE, 0, "The player should never be gone!");
