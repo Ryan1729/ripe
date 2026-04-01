@@ -3079,23 +3079,34 @@ impl State {
                             mob_xy,
                             self.player_position.xy(),
                             &|xy| {
-                                // TODO adjust this or whatever else is needed, to make mobs moving into the space
-                                // a mob was prevously in work properly.
+                                // This check is weakened tp allow mobs to plan to walk past things that might
+                                // be out of the way later.
                                 can_walk_onto(
-                                    &self.mechanisms,
-                                    &self.mobs,
-                                    &mob_mutations,
+                                    &Mechanisms::default(),
+                                    &Mobs::default(),
+                                    &[],
                                     &self.tiles,
                                     Key { xy }
                                 )
                             }
                         ) 
                         && let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
-                            mob_mutations.push(mobs::Mutation{
-                                key: Key { xy: mob_xy },
-                                facing,
-                                target_xy,
-                            });
+                            // We check again because we weakened the pathfinding check to allow
+                            // paths to extend past mobs. This check ensures that the single space
+                            // we will actually move into this time is really valid
+                            if can_walk_onto(
+                                &self.mechanisms,
+                                &self.mobs,
+                                &mob_mutations,
+                                &self.tiles,
+                                Key { xy: target_xy }
+                            ) {
+                                mob_mutations.push(mobs::Mutation{
+                                    key: Key { xy: mob_xy },
+                                    facing,
+                                    target_xy,
+                                });
+                            }
                         }
                     },
                     _ => {} // This type of mob doesn't move
