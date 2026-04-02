@@ -225,6 +225,102 @@ pub use world::hallway::State as HallwayState;
 //    * Disgaea's geo-block puzzles
 //    * Boulder Dash maybe?
 
+// Some of the ideas above I seem to recall being intended for the main game, as opposed to hallways. 
+// For example, the language thing. Though now it's tempting to add things primarily as new hallways.
+// Previously, there was less of a firm distinction, with ideas about the hallways expending 
+// resources that might be regained elswhere, and the gameplay focusing on that. Not sure which 
+// direction to take things now.
+//
+// On one hand, the idea of making things have relevant connections seems both difficult to balance,
+// but seems to have lots of potential. On the other, being able to mkae many small things without
+// needing to think about them being connected, seems fun. This particular project was a reaction 
+// to a previous idea being too intricate to actually make progress on, at a certain point. So, the
+// more fun, and and less reliant on other pieces part seems better.
+//
+// Given that, right now S.W.O.R.D. is nearing completion, and I'm not sure what the next hallway
+// should be. Thoughts floating around are: Psuedo-3D maybe? That language idea sounds cool. Does
+// Disgaea's geo-block puzzles actually have enough meat to be a whole hallway? Uhh ... Pac-Man,
+// but I guess turn based? Sliding block puzzles? Writing a Forth is something I was considering
+// anyway, so programming puzzles? Thought about Herdy Gerdy; some kind of herding thing?
+//
+// Trying to combine some of these: We already have semi-spaceship theming. Something about figuring
+// out alien languages and/or user interfaces, to get where you are going can be a theme for a lot 
+// of these.
+//
+// All three current parts are directly about moving through space: main, ice puzzles, S.W.O.R.D.
+// Does that mean we should keep that, or be sure to do something that isn't that? Like yes, it's
+// traversing a hallway, but it could be a spaceship/elevator/train car controls, from the inside.
+//
+// Some combined ideas:
+// * Collect things in a Pac-Man maze to unlock enough language knowledge to open the puzzle door.
+//    * Might be able to brute force/lucky guess it before collecting everything, which is fun.
+// * Herding creatures with Disgaea geo-block mechanics?
+//    * So you herd them into a specific area, and then what?
+//        * Catch and trade them for a key?
+// * Write Forth code to control a sliding block puzzle?
+// * Enduro, (in pseudo-3D), but in a loop until you collect enough Pac-Man pellets?
+// * Herding via programming?
+//
+// "Herding" can mean moving things that move themselves, out of your way. Perhaps with the 
+// requirement that there's a path that they can't touch you on. Like detect such a path, then
+// have the player character automatically walk down that path.
+//    * Could have the S.W.O.R.D. hallways auto-finish once all mobs are gone, too.
+//
+// Okay, what's the simplest, but non-trival version of the language thing?
+// You have a space you go collect knowledge on, and then it tells you where to go to find the exit?
+// Like maybe you have a space with landmarks, and you need to logic out what the right one is, 
+// based on the text?
+// 
+// Landmarks is kinda interesting, but more complciated than the simplest version. A password is the 
+// simplest version, I think. So, on-screen keyboard, and some notes to help you figure out the 
+// langauge. So a cipher solver?
+//
+// Generation strategy is a big part of these. I might go so far to sa that once you have that, the
+// rest is just derieving details. For a cipher solver, I think some text could just be generated
+// and then the player notices repeated words like "the", and picks the right letters for them, and
+// then goes from there? So like is any few paragraphs that describes a password solvable?
+//
+//
+// Should the password be in a different set of symbols? "The code is mountain, sunrise, watermelon"?
+// I guess the password description can be direct, and there can be unrelated paragraphs about 
+// anything?
+//
+// I find myself wonder whether it would be fun. But in this case a player can just leave that kind 
+// of hallway out. It's fine if it's a dud.
+//
+// Proposed steps
+// * Create password entering interface, where the password is just displayed directly
+//    * Numeric passwords are pobably fine, at least to start
+// * Generate a longer random password description phrase, for any randomly selected password
+// * Generate random, unrelated sentences and make interface allow you to see both
+// * Add the ability to scramble letters around, assingning different letters to different slots
+//     * Decide whether we want alien letters or just scambling 
+// * Start things off scrambled/obscured
+//
+// Is this really randomizer insired at this point?
+//
+// Oh! The seed sentences wouldn't even need to all be sentences. Some could be a half-filled 
+// word search.
+//
+// ...
+// Could have different modes like a ceaser cipher mode, (only 25 options to pick from) and a
+// fully random letter scramle mode.
+//
+// Also thinking about Boulder Dash. Would we be able to do a similar trick to the ice puzzles
+// generation, where we place the exit based on a random path? I thnk if we go with a gem
+// requirement to leave the level, we can place those on spaces along the path that don't 
+// affect the puzzle. Then count how many we placed, make that the requirement, and maybe add 
+// a few extras off the path as red herrings.
+//
+// There's something enticing about making a generator like that, given how well the ice 
+// puzzles one turned out.
+//
+// I am curious if we can find a good source of multiple games we could make such generators 
+// for. Scouring sets of games made with hardware that encouraged tiles? ZX spectrum era stuff?
+// 
+// Making generators for games that had fixed levels seems like it's fitting the "randomizer 
+// inspired" part well.
+
 fn warp_player_to(world: &mut World, target: &DoorTarget) {
     world.segment_id = target.segment_id;
     world.player.xy = target.xy;
