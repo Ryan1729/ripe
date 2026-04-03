@@ -3,7 +3,7 @@
 use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
 use vec1::{Vec1, vec1};
-use xs::Xs;
+use xs::{Seed, Xs};
 
 use std::collections::{BTreeMap, HashMap};
 use std::num::{NonZeroU8, NonZeroU16};
@@ -892,7 +892,7 @@ fn can_walk_onto(
                     // Can walk onto things that are gone.
                     (mob.flags & GONE) == GONE
                     || {
-                        // If the mob isn't gone, it might still be moving 
+                        // If the mob isn't gone, it might still be moving
                         // out of the way already, in which case the slot is
                         // available.
                         mob_mutations.iter()
@@ -2249,6 +2249,7 @@ mod get_hit_effect_works_on {
 
 #[derive(Clone, Debug)]
 pub struct State {
+    pub seed: Seed, // For restarting
     pub rng: Xs,
     pub player: Entity,
     pub player_position: Position,
@@ -2263,6 +2264,10 @@ impl State {
     pub fn new(rng: &mut Xs, wall_spec: &sprite::Spec<sprite::Wall>) -> Self {
         let seed = xs::new_seed(rng);
 
+        Self::init(seed, wall_spec)
+    }
+
+    fn init(seed: Seed, wall_spec: &sprite::Spec<sprite::Wall>) -> Self {
         let mut rng = xs::from_seed(seed);
 
         let mut player = Entity::default();
@@ -2946,6 +2951,7 @@ impl State {
         assert_eq!(player.flags & RENDER_FACING, RENDER_FACING, "The player should always be rendered taking facing into account!");
 
         Self {
+            seed,
             rng,
             player,
             player_position,
@@ -2958,6 +2964,10 @@ impl State {
             },
             animations: <_>::default(),
         }
+    }
+
+    fn restart(&mut self, wall_spec: &sprite::Spec::<sprite::Wall>) {
+        *self = Self::init(self.seed, wall_spec);
     }
 
     pub fn is_complete(&self) -> bool {
@@ -3071,6 +3081,8 @@ impl State {
         } else if input.pressed_this_frame(Button::B) {
             self.player.facing = self.player.facing.clockwise();
             player_moved = true;
+        } else if input.pressed_this_frame(Button::START) {
+            self.restart(wall_spec);
         }
 
         let staff_xy_pair = self.staff_xy_pair();
@@ -3145,7 +3157,7 @@ impl State {
                                     Key { xy }
                                 )
                             }
-                        ) 
+                        )
                         && let Some(facing) = dir_to(FromTo { from: mob_xy, to: target_xy }) {
                             // We check again because we weakened the pathfinding check to allow
                             // paths to extend past mobs. This check ensures that the single space
@@ -3172,6 +3184,12 @@ impl State {
 
             for mutation in mob_mutations {
                 self.mobs.apply(mutation);
+            }
+
+            if self.mobs.get(Key { xy: self.player_position.xy() }).is_some() {
+                // TODO good place for SFX
+
+                self.restart(wall_spec);
             }
         }
 
