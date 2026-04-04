@@ -965,6 +965,13 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                             hallway::State::SWORD(sword::State::new(rng, &specs.wall)),
                         );
                     },
+                    //HallwaySpec::BOLD => {
+                        //hallway_states.insert(
+                            //key_i,
+                            //key_j,
+                            //hallway::State::BOLD(bold::State::new(rng)),
+                        //);
+                    //},
                 }
 
                 assert_door_targets_seem_right!();

@@ -1389,7 +1389,6 @@ fn generate_with_exit_at_index(
     //
 
     proto_tiles[exit_hallway_index] |= fix_flags;
-    print_proto_tiles(&proto_tiles, proto_width);
 
     exit_facing
 }
@@ -2468,20 +2467,6 @@ impl State {
             find_all_paths(&tiles, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
 
             // Currently there's always only one path. Might pick the longest path among multiple later.
-            if paths.is_empty() {
-                print_tiles_options(
-                    &tiles,
-                    width,
-                    {
-                        let mut tags = HashMap::default();
-                        tags.insert(start_index, 's');
-                        tags.insert(exit_index, 'e');
-                        tags
-                    }
-                );
-                eprintln!("{:?} to {:?}", start_xy, exit_xy);
-                assert!(!paths.is_empty());
-            }
             let path: Path = paths.swap_remove(0);
 
             // There's a few types of indexes flying around in this part of the code, and it feels like mistakes are
@@ -2944,8 +2929,6 @@ impl State {
         };
 
         set_indexes(&mut tiles, width);
-
-        print_tiles(&tiles, width);
 
         assert_eq!(player.flags & GONE, 0, "The player should never be gone!");
         assert_eq!(player.flags & RENDER_FACING, RENDER_FACING, "The player should always be rendered taking facing into account!");

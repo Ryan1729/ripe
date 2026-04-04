@@ -321,6 +321,38 @@ pub use world::hallway::State as HallwayState;
 // Making generators for games that had fixed levels seems like it's fitting the "randomizer 
 // inspired" part well.
 
+
+// Some notes on Boulder Dash:
+// * The original Atari 8-bit PC version had pallete switching on each level.
+//     * We should do paletted colours and pick a random colour scheme each time!
+// * Will need to figure out/find a description of, the original falling rocks logic
+//   and the enemy movements.
+//    * Re-implementations exist, and we could crib off those for the logic
+//        * For example: https://github.com/rossberg/boulder-dash
+//            * Looks like that implementation decided to have the Amoeba have a timer
+//            that makes it moke likely to expand when it runs out.
+//            https://github.com/rossberg/boulder-dash/blob/2262970186faa672871f8ec9a7c37cef05cb6655/src/physics.ml#L186
+//            Specifically changing the random roll from a d32 to a d4, where we need a 0 to have an expansion
+//            Note sure if that's based on like disassembling the game or a guess by that programmer.
+//    * The easiest manual to find seems to be this one for a backport to the 2600
+//      from 2012, of all things:
+//      https://www.ataricompendium.com/archives/manuals/vcs/boulder_dash.pdf
+//        * So that doesn't fully describe the logic, but does point out the butterfly
+//        movement is simply the firefly movement reversed.
+// * We should allow restarting, but maybe with a prompt.
+//    * Would detecting that the player cannot move be worth it?
+//
+// So, we don't to *completely* clone Boulder Dash, certainly not levels and all. Implementing all three enemies
+// and the related physics? Maybe, maybe not.
+//
+// Would something related to the fact the character has a staff be interesting? For example, would the ability 
+// to prop up exactly one rock with the staff, and then needing to pull it back out before you leave be useful 
+// enough to be worth it? Is it worth trying just to see?
+//
+// Quick name idea: B.O.L.D. or D.A.S.H and come up with a relevantish mapping back to that.
+// "Boldly Or Leisurely Dashing" because we're gonna make it fully turn based.
+//
+
 fn warp_player_to(world: &mut World, target: &DoorTarget) {
     world.segment_id = target.segment_id;
     world.player.xy = target.xy;
