@@ -139,6 +139,10 @@ pub mod hallway {
         IcePuzzle(ice_puzzle::State),
         // Staff Whacking Ordeal Required, Duh
         SWORD(sword::State),
+        // Boldly Or Leisurely Dashing
+        // or
+        // Boulders Often Lope Downwards
+        BOLD(bold::State),
     }
 
     impl State {
@@ -147,6 +151,7 @@ pub mod hallway {
             match self {
                 IcePuzzle(inner) => inner.is_complete(),
                 SWORD(inner) => inner.is_complete(),
+                BOLD(inner) => inner.is_complete(),
             }
         }
     }
@@ -965,13 +970,13 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                             hallway::State::SWORD(sword::State::new(rng, &specs.wall)),
                         );
                     },
-                    //HallwaySpec::BOLD => {
-                        //hallway_states.insert(
-                            //key_i,
-                            //key_j,
-                            //hallway::State::BOLD(bold::State::new(rng)),
-                        //);
-                    //},
+                    HallwaySpec::BOLD => {
+                        hallway_states.insert(
+                            key_i,
+                            key_j,
+                            hallway::State::BOLD(bold::State::new(rng)),
+                        );
+                    },
                 }
 
                 assert_door_targets_seem_right!();

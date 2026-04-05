@@ -634,6 +634,7 @@ mod rune_based {
                 models::consts::NONE => HallwaySpec::None,
                 models::consts::ICE_PUZZLE => HallwaySpec::IcePuzzle,
                 models::consts::SWORD => HallwaySpec::SWORD,
+                models::consts::BOLD => HallwaySpec::BOLD,
                 _ => return Err(Error::UnknownHallwayKind{ key, parent_key, kind }),
             };
 

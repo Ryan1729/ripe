@@ -325,6 +325,15 @@ pub use world::hallway::State as HallwayState;
 // Some notes on Boulder Dash:
 // * The original Atari 8-bit PC version had pallete switching on each level.
 //     * We should do paletted colours and pick a random colour scheme each time!
+//        * How do we make it easy to author new versions of the graphics though?
+//            * I guess allow specifying the paletted colours, and like leave things outside the palette alone?
+//              Or would we really rather have a separate paletted graphics file? How many other paletted things
+//              do we expect to implement later?
+//            * I think the easiest way it could possibly work, assuming one is fine with the colour changing, is
+//              for the code to scan the given area of the sheet and determine the palette from that.
+//                * We can add an override palette option at the point that it ever matters. The code can leave 
+//                  anything not in the palette alone, so disabling it is as easy as just making it an empty list,
+//                  and making just part of a character change is possible.
 // * Will need to figure out/find a description of, the original falling rocks logic
 //   and the enemy movements.
 //    * Re-implementations exist, and we could crib off those for the logic

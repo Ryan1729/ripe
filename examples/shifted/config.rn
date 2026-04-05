@@ -131,6 +131,10 @@ pub fn main() /* -> Result<Object, String> */ {
                 kind: HW::SWORD,
                 // TODO configuration of SWORD.
             },
+            #{
+                kind: HW::BOLD,
+                // TODO configuration of BOLD.
+            },
         ],
         entities: entities,
         segments: [

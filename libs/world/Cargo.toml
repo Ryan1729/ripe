@@ -8,6 +8,9 @@ path = "src/world.rs"
 
 [dependencies]
 
+[dependencies.bold]
+path = "../bold"
+
 [dependencies.features]
 path = "../features"
 

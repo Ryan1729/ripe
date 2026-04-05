@@ -635,45 +635,6 @@ pub mod sprite {
     pub use super::unscaled::{self, W, H, WH};
     use std::marker::PhantomData;
 
-    /// Marker
-    /// The rendering commands store only allow `sprite::XY<Renderable>`
-    /// so all other types must be converted to `sprite::XY<Renderable>`
-    /// via a `sprite::Spec<A>` for the appropriate `A`.
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct Renderable;
-
-    /// Marker
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct BaseFont;
-
-    /// Marker
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct BaseUI;
-
-    /// Marker
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct BaseTiles;
-    
-    /// Marker
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct IcePuzzles;
-    
-    /// Marker
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct SWORD;
-
-    /// Marker
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct Wall;
-
-    /// Marker
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct Floor;
-
-    /// Marker
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct ToggleWall;
-
     pub type Inner = u16;
     #[derive(Debug, PartialEq, Eq)]
     pub struct X<Marker>(Inner, PhantomData<Marker>);
@@ -970,8 +931,33 @@ pub mod sprite {
         }
     }
 
-    #[derive(Clone, Debug)]
-    pub struct Specs {
+    /// Marker
+    /// The rendering commands store only allow `sprite::XY<Renderable>`
+    /// so all other types must be converted to `sprite::XY<Renderable>`
+    /// via a `sprite::Spec<A>` for the appropriate `A`.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct Renderable;
+
+    macro_rules! specs_and_markers_def {
+        (
+            $( pub $field: ident : Spec< $marker: ident >),+ $(,)?
+        ) => {
+            $( 
+                /// Marker
+                #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+                pub struct $marker;
+            )+
+
+            #[derive(Clone, Debug)]
+            pub struct Specs {
+                $( 
+                    pub $field: Spec<$marker>,
+                )+
+            }
+        }
+    }
+
+    specs_and_markers_def!{
         pub base_font: Spec<BaseFont>,
         pub base_tiles: Spec<BaseTiles>,
         pub base_ui: Spec<BaseUI>,
@@ -980,6 +966,7 @@ pub mod sprite {
         pub wall: Spec<Wall>,
         pub floor: Spec<Floor>,
         pub toggle_wall: Spec<ToggleWall>,
+        pub bold: Spec<BOLD>,
     }
     
     impl Default for Specs {
@@ -1028,6 +1015,11 @@ pub mod sprite {
                     tiles_per_row: 16,
                 }),
                 // }
+                bold: spec::<BOLD>(SpecPieces{
+                    offset: WH{ w: W(768), h: H(0) },
+                    tile: WH{ w: W(16), h: H(16) },
+                    tiles_per_row: 8,
+                }),
             }
         }
     }
@@ -1135,6 +1127,7 @@ pub mod config {
         None,
         IcePuzzle,
         SWORD,
+        BOLD,
     }
 }
 pub use config::{Config, EntityDef, SpeechesList};
@@ -1202,6 +1195,7 @@ pub mod consts {
         NONE = 0,
         ICE_PUZZLE = 1,
         SWORD = 2,
+        BOLD = 3,
     }
 
     pub type TileFlags = u32;
