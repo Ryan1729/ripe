@@ -630,12 +630,9 @@ mod rune_based {
 
             let kind: models::consts::HallwayKind = get_int!(hallway, key, parent_key);
 
-            let spec = match kind {
-                models::consts::NONE => HallwaySpec::None,
-                models::consts::ICE_PUZZLE => HallwaySpec::IcePuzzle,
-                models::consts::SWORD => HallwaySpec::SWORD,
-                models::consts::BOLD => HallwaySpec::BOLD,
-                _ => return Err(Error::UnknownHallwayKind{ key, parent_key, kind }),
+            let spec = match pak_types::const_to_hallway_spec(kind) {
+                Some(spec) => spec,
+                None => return Err(Error::UnknownHallwayKind{ key, parent_key, kind }),
             };
 
             hallways_vec.push(spec);

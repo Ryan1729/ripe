@@ -17,13 +17,13 @@ pub mod unscaled {
                 pub type $inner_name = $inner_type;
                 #[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
                 pub struct $name(pub $inner_name);
-    
+
                 impl $name {
                     pub const fn get(self) -> $inner_name {
                         self.0
                     }
                 }
-    
+
                 impl From<$name> for $inner_name {
                     fn from(to_convert: $name) -> $inner_name {
                         $inner_name::from(to_convert.0)
@@ -109,25 +109,25 @@ pub mod unscaled {
                     self.0 += other.0;
                 }
             }
-        
+
             impl core::ops::Add<$b_name> for $a_name {
                 type Output = Self;
-        
+
                 fn add(mut self, other: $b_name) -> Self::Output {
                     self += other;
                     self
                 }
             }
-        
+
             impl core::ops::SubAssign<$b_name> for $a_name {
                 fn sub_assign(&mut self, other: $b_name) {
                     self.0 -= other.0;
                 }
             }
-        
+
             impl core::ops::Sub<$b_name> for $a_name {
                 type Output = Self;
-        
+
                 fn sub(mut self, other: $b_name) -> Self::Output {
                     self -= other;
                     self
@@ -155,16 +155,16 @@ pub mod unscaled {
                     }
                 }
             }
-        
+
             impl core::ops::Add<$b_name> for $a_name {
                 type Output = Self;
-        
+
                 fn add(mut self, other: $b_name) -> Self::Output {
                     self += other;
                     self
                 }
             }
-        
+
             impl core::ops::SubAssign<$b_name> for $a_name {
                 fn sub_assign(&mut self, other: $b_name) {
                     if other.0 < 0 {
@@ -177,10 +177,10 @@ pub mod unscaled {
                     }
                 }
             }
-        
+
             impl core::ops::Sub<$b_name> for $a_name {
                 type Output = Self;
-        
+
                 fn sub(mut self, other: $b_name) -> Self::Output {
                     self -= other;
                     self
@@ -319,70 +319,70 @@ pub mod unscaled {
                         self.0 += other.0;
                     }
                 }
-    
+
                 impl core::ops::Add for $name {
                     type Output = Self;
-    
+
                     fn add(mut self, other: Self) -> Self::Output {
                         self += other;
                         self
                     }
                 }
-    
+
                 impl core::ops::SubAssign for $name {
                     fn sub_assign(&mut self, other: Self) {
                         self.0 -= other.0;
                     }
                 }
-    
+
                 impl core::ops::Sub for $name {
                     type Output = Self;
-    
+
                     fn sub(mut self, other: Self) -> Self::Output {
                         self -= other;
                         self
                     }
                 }
-    
+
                 impl $name {
                     pub fn saturating_sub(self, other: Self) -> Self {
                         Self(self.0.saturating_sub(other.0))
                     }
                 }
-    
+
                 impl core::ops::MulAssign<$inner_name> for $name {
                     fn mul_assign(&mut self, inner: $inner_name) {
                         self.0 *= inner;
                     }
                 }
-            
+
                 impl core::ops::Mul<$inner_name> for $name {
                     type Output = Self;
-            
+
                     fn mul(mut self, inner: $inner_name) -> Self::Output {
                         self *= inner;
                         self
                     }
                 }
-            
+
                 impl core::ops::Mul<$name> for $inner_name {
                     type Output = $name;
-            
+
                     fn mul(self, mut w: $name) -> Self::Output {
                         w *= self;
                         w
                     }
                 }
-            
+
                 impl core::ops::DivAssign<$inner_name> for $name {
                     fn div_assign(&mut self, inner: $inner_name) {
                         self.0 /= inner;
                     }
                 }
-            
+
                 impl core::ops::Div<$inner_name> for $name {
                     type Output = Self;
-            
+
                     fn div(mut self, inner: $inner_name) -> Self::Output {
                         self /= inner;
                         self
@@ -644,7 +644,7 @@ pub mod sprite {
             *self
         }
     }
-    
+
     impl<Marker> Copy for X<Marker> {}
 
     impl <Marker> Default for X<Marker> {
@@ -661,7 +661,7 @@ pub mod sprite {
             *self
         }
     }
-    
+
     impl<Marker> Copy for Y<Marker> {}
 
     impl <Marker> Default for Y<Marker> {
@@ -824,7 +824,7 @@ pub mod sprite {
         ) -> unscaled::Rect {
             let tile = self.tile;
             let mut output = self.rect(base_corner);
-        
+
             if offset.x > offset::X::ZERO {
                 output.x += unscaled::W::from(
                     offset::Inner::from(offset.x) * offset::Inner::from(tile.w)
@@ -836,7 +836,7 @@ pub mod sprite {
             } else {
                 // do nothing for zeroes or other weird values.
             }
-        
+
             if offset.y > offset::Y::ZERO {
                 output.y += unscaled::H::from(
                     offset::Inner::from(offset.y) * offset::Inner::from(tile.h)
@@ -848,7 +848,7 @@ pub mod sprite {
             } else {
                 // do nothing for zeroes or other weird values.
             }
-        
+
             output
         }
 
@@ -862,7 +862,7 @@ pub mod sprite {
             let tile = self.tile();
             let tile_w = tile.w;
             let tile_h = tile.h;
-        
+
             (
                 (gfx_sizes::COMMAND_WIDTH / tile_w.get()).into(),
                 (gfx_sizes::COMMAND_HEIGHT / tile_h.get()).into(),
@@ -872,7 +872,7 @@ pub mod sprite {
         /// Not advised for general use, but only when initally constructing the specs
         /// while retaining the default values from Specs.
         // TODO? Is there a clean way to allow that to work, and avoid exposing this?
-        // Exposing this is not the biggest deal of course. Keeping the rune stuff in 
+        // Exposing this is not the biggest deal of course. Keeping the rune stuff in
         // one crate seems more important than this project's code "relying too much"
         // on itself.
         pub fn pieces(&self) -> SpecPieces {
@@ -942,7 +942,7 @@ pub mod sprite {
         (
             $( pub $field: ident : Spec< $marker: ident >),+ $(,)?
         ) => {
-            $( 
+            $(
                 /// Marker
                 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
                 pub struct $marker;
@@ -950,7 +950,7 @@ pub mod sprite {
 
             #[derive(Clone, Debug)]
             pub struct Specs {
-                $( 
+                $(
                     pub $field: Spec<$marker>,
                 )+
             }
@@ -968,7 +968,7 @@ pub mod sprite {
         pub toggle_wall: Spec<ToggleWall>,
         pub bold: Spec<BOLD>,
     }
-    
+
     impl Default for Specs {
         fn default() -> Self {
             Self {
@@ -1064,6 +1064,79 @@ impl From<&str> for Speech {
     }
 }
 
+macro_rules! consts_def {
+    (
+        $all_name: ident : $type: ty;
+        $($name: ident = $value: expr),+ $(,)?
+    ) => {
+        pub const $all_name: [(&str, $type); const {
+            let mut count = 0;
+
+            $(
+                // Use the repetition for something so we can take the count
+                const _: $type = $value;
+                count += 1;
+            )+
+
+            count
+        }] = [
+            $(
+                (stringify!($name), $value),
+            )+
+        ];
+
+        $(
+            pub const $name: $type = $value;
+        )+
+    };
+}
+
+mod hallway_spec {
+    macro_rules! def {
+        (
+            $($enum_name: ident $const_name: ident = $value: expr),+ $(,)?
+        ) => {
+            #[derive(Clone, Debug, Default)]
+            pub enum HallwaySpec {
+                #[default]
+                None,
+                $(
+                    $enum_name,
+                )+
+            }
+
+            pub mod consts {
+                pub type HallwayKind = u8;
+
+                consts_def!{
+                    ALL_HALLWAY_KINDS: HallwayKind;
+                    NONE = 0,
+                    $(
+                        $const_name = $value,
+                    )+
+                }
+            }
+
+            pub fn const_to_hallway_spec(kind: consts::HallwayKind) -> Option<HallwaySpec> {
+                Some(match kind {
+                    consts::NONE => HallwaySpec::None,
+                    $(
+                        $const_name => HallwaySpec::$enum_name,
+                    )+
+                    _ => return None,
+                })
+            }
+        }
+    }
+
+    def!{
+        IcePuzzle ICE_PUZZLE = 1,
+        SWORD SWORD = 2,
+        BOLD BOLD = 3,
+    }
+}
+pub use hallway_spec::const_to_hallway_spec;
+
 pub type TileSprite = u8;
 
 pub mod config {
@@ -1121,56 +1194,20 @@ pub mod config {
         pub on_collect: OnCollect,
     }
 
-    #[derive(Clone, Debug, Default)]
-    pub enum HallwaySpec {
-        #[default]
-        None,
-        IcePuzzle,
-        SWORD,
-        BOLD,
-    }
+    pub use crate::hallway_spec::HallwaySpec;
 }
 pub use config::{Config, EntityDef, SpeechesList};
 
 pub mod consts {
-    macro_rules! consts_def {
-        (
-            $all_name: ident : $type: ty;
-            $($name: ident = $value: expr),+ $(,)?
-        ) => {
-    
-    
-            pub const $all_name: [(&str, $type); const {
-                let mut count = 0;
-    
-                $(
-                    // Use the repetition for something so we can take the count
-                    const _: $type = $value;
-                    count += 1;
-                )+
-    
-                count
-            }] = [
-                $(
-                    (stringify!($name), $value),
-                )+
-            ];
-    
-            $(
-                pub const $name: $type = $value;
-            )+
-        };
-    }
-    
     pub type CollectActionKind = u8;
-    
+
     consts_def!{
         ALL_COLLECT_ACTION_KINDS: CollectActionKind;
         TRANSFORM = 1,
     }
 
     pub type EntityDefIdRefKind = u8;
-    
+
     consts_def!{
         ALL_ENTITY_ID_REFERENCE_KINDS: EntityDefIdRefKind;
         RELATIVE = 1,
@@ -1178,7 +1215,7 @@ pub mod consts {
     }
 
     pub type EntityDefFlags = u8;
-    
+
     consts_def!{
         ALL_ENTITY_FLAGS: EntityDefFlags;
         COLLECTABLE = super::COLLECTABLE,
@@ -1188,18 +1225,10 @@ pub mod consts {
         NOT_SPAWNED_AT_START = 1 << 4,
     }
 
-    pub type HallwayKind = u8;
-    
-    consts_def!{
-        ALL_HALLWAY_KINDS: CollectActionKind;
-        NONE = 0,
-        ICE_PUZZLE = 1,
-        SWORD = 2,
-        BOLD = 3,
-    }
+    pub use crate::hallway_spec::consts::*;
 
     pub type TileFlags = u32;
-    
+
     consts_def!{
         ALL_TILE_FLAGS: TileFlags;
         // Can't be anything but a blocker
@@ -1221,7 +1250,7 @@ pub const DOOR: EntityFlags = 1 << 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Transform {
-    pub from: DefId, 
+    pub from: DefId,
     pub to: DefId,
 }
 

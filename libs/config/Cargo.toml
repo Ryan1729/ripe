@@ -15,6 +15,9 @@ wasm = [] # Leftover from before
 # Currently needed for bitwise operations. Once a new version is released to crates.io, we'd prefer to use that version.
 rune = { git = "https://github.com/rune-rs/rune.git", rev = "734b79e", default-features = false, features = ["alloc", "emit"] }
 
+[dependencies.pak_types]
+path = "../pak_types"
+
 [dependencies.platform_types]
 path = "../platform_types"
 

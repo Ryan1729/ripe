@@ -292,6 +292,7 @@ name = "config"
 version = "0.1.0"
 dependencies = [
  "models",
+ "pak_types",
  "platform_types",
  "rune",
  "vec1",
