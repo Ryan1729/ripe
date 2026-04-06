@@ -224,6 +224,8 @@ pub use world::hallway::State as HallwayState;
 //    * Idleon seems to have a bunch of minigames, that are already based around getting a reward
 //    * Disgaea's geo-block puzzles
 //    * Boulder Dash maybe?
+//    * Game and Watch games? Do those actually fit?
+//        * If they do, then Warioware and clones would fit too
 
 // Some of the ideas above I seem to recall being intended for the main game, as opposed to hallways. 
 // For example, the language thing. Though now it's tempting to add things primarily as new hallways.

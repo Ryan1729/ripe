@@ -4,7 +4,7 @@
 pub type ARGB = u32;
 
 pub const GFX_WIDTH: usize = 768;
-pub const GFX_HEIGHT: usize = 256;
+pub const GFX_HEIGHT: usize = 512;
 pub const GFX_LENGTH: usize = GFX_WIDTH * GFX_HEIGHT;
 
 /// Small enough to fit on pretty much any reasonable device, at an aspect ratio

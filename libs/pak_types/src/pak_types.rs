@@ -1016,7 +1016,7 @@ pub mod sprite {
                 }),
                 // }
                 bold: spec::<BOLD>(SpecPieces{
-                    offset: WH{ w: W(768), h: H(0) },
+                    offset: WH{ w: W(256), h: H(256) },
                     tile: WH{ w: W(16), h: H(16) },
                     tiles_per_row: 8,
                 }),
