@@ -123,6 +123,7 @@ pub fn main() /* -> Result<Object, String> */ {
             //#{
                 //kind: HW::NONE,
             //},
+            /*
             #{
                 kind: HW::ICE_PUZZLE,
                 // TODO configuration of ice puzzle. Width and height probably?
@@ -131,6 +132,7 @@ pub fn main() /* -> Result<Object, String> */ {
                 kind: HW::SWORD,
                 // TODO configuration of SWORD.
             },
+            */
             #{
                 kind: HW::BOLD,
                 // TODO configuration of BOLD.

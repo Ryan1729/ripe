@@ -1,3 +1,6 @@
+#![deny(dead_code)]
+#![deny(unused)]
+
 ///! S.W.O.R.D.: Staff Whacking Ordeal Required, Duh
 
 use gfx::{Commands};
@@ -509,8 +512,6 @@ type ToggleWallSpecWidth = NonZeroU8;
 
 /// We have the default as wall elsewhere, so let's be consistent.
 type IsFloorFlag = bool;
-const IS_WALL: IsFloorFlag = false;
-const IS_FLOOR: IsFloorFlag = true;
 
 pub struct ToggleWallSpec {
     pub width: ToggleWallSpecWidth,
@@ -1290,16 +1291,12 @@ mod random {
 }
 
 #[derive(Clone, Copy)]
-struct ProtoTilesIndex(Index);
+pub struct ProtoTilesIndex(Index);
 
 #[derive(Clone, Copy)]
-struct ProtoTilesWidth(TilesWidth);
+pub struct ProtoTilesWidth(TilesWidth);
 
 impl ProtoTilesWidth {
-    fn new(inner: TilesWidthInner) -> Option<Self> {
-        TilesWidth::new(inner).map(Self)
-    }
-
     fn get(&self) -> TilesWidthInner {
         self.0.get()
     }
@@ -1819,7 +1816,6 @@ fn to_one_thick(
 ) -> Vec1<Tile> {
     use TileIndex::*;
 
-    const W: TileIndex = Wall(0);
     const F: TileIndex = Floor;
 
     let mut tiles = vec1![Tile::default(); tiles_length];
@@ -2391,7 +2387,6 @@ impl State {
 
             let (proto_exit_index, exit_facing) = generate_maze(&mut rng, &mut proto_tiles, sizes.proto_width);
 
-            const W: TileIndex = Wall(0);
             const F: TileIndex = Floor;
 
             let mut tiles = to_one_thick(&proto_tiles, sizes.proto_width, sizes.tiles_length, sizes.tiles_width);

@@ -620,7 +620,6 @@ mod rune_based {
         let mut hallways_vec = Vec::with_capacity(hallways.len());
 
         for i in 0..hallways.len() {
-            use models::config::HallwaySpec;
             let parent_key = ik!("hallways", i.into());
 
             let hallway: Object = rune::from_value(hallways[i].clone())

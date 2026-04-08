@@ -1,3 +1,5 @@
+#![deny(unreachable_patterns)]
+
 use gfx_sizes::*;
 
 pub mod unscaled {
@@ -1121,7 +1123,7 @@ mod hallway_spec {
                 Some(match kind {
                     consts::NONE => HallwaySpec::None,
                     $(
-                        $const_name => HallwaySpec::$enum_name,
+                        consts::$const_name => HallwaySpec::$enum_name,
                     )+
                     _ => return None,
                 })

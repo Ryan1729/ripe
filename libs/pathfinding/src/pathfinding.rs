@@ -1,24 +1,7 @@
-use vec1::{vec1, Vec1};
+#![deny(unused)]
 
 type Index = usize;
-type Width = usize;
 type TileCount = usize;
-
-/// Used for a version of https://en.wikipedia.org/wiki/A*_search_algorithm
-#[derive(Clone, Copy, Debug)]
-struct DijkstrasTileData {
-    previous_index: Index,
-    shortest_distance: TileCount,
-}
-
-impl Default for DijkstrasTileData {
-    fn default() -> Self {
-        Self {
-            previous_index: Index::max_value(),
-            shortest_distance: TileCount::max_value(),
-        }
-    }
-}
 
 pub trait XYTrait<IndexContext, Direction: Clone + Copy> : PartialEq + Sized + Clone + Copy {
     /// The index context might be something like the width of the tile grid, which is useful to calculate the
@@ -97,62 +80,65 @@ pub fn next_xy_along_shortest_path<IndexContext, Tile, Direction, XY>(
     }
 }
 
-//// Returns path in order from `to` to `from`, likely reverse of what you'd expect.
-//pub fn shortest_path<const TILES_LENGTH: usize, Tile, Direction, XY>(
-    //tiles: &[Tile],
-    //all_dirs: &[Direction],
-    //from: XY,
-    //to: XY,
-    //can_pass_through: &dyn Fn(XY, &Tile) -> bool
-//) -> Result<Vec1<XY>, Error> 
-    //where XY: XYTrait<Direction>,
-        //Direction: Clone + Copy
-//{
-    //fn reconstruct_path<const TILES_LENGTH: usize, Direction, XY>(
-        //came_from: &[XY],
-        //mut current: XY,
-    //) -> Vec1<XY>
-        //where XY: XYTrait<Direction>,
-        //Direction: Clone + Copy {
-        //// A reasonable upper bound is diagonally from one corner of the tile grid to another.
-        //// If we assume the tile grid is square, that diagonal line is around sqrt(2) times the
-        //// width (AKA height) of the grid. That width would be around sqrt(tile_count) in that
-        //// case. Don't want to acutally spend the time to calcaute that! If we further assume 
-        //// that the length is an even power of 2, then sqrt() is the same as shifting down by 
-        //// half the bits used. For example, 0b1_0000_0000 = 0b1_0000 * 0b1_0000.
-        //let capacity = tile_count >> (tile_count.trailing_zeros() / 2);
-//
-        //let mut output = Vec1::singleton_with_capacity(current, capacity);
-//
-        //let mut current_i = current.to_i();
-//
-        //while current_i < came_from.len() {
-            //current = came_from[current_i];
-            //output.push(current);
-            //current_i = current.to_i();
-        //}
-//
-        //output
-    //}
-//
-    //match calculate_intermediates::<TILES_LENGTH, Tile, Direction, XY>(
-        //tiles,
-        //all_dirs,
-        //from,
-        //to,
-        //can_pass_through,
-    //) {
-        //Ok(Intermediates { came_from, .. }) => Ok(reconstruct_path::<TILES_LENGTH, Direction, XY>(&came_from, to)),
-        //Err(Error::FromEqualsTo) => Ok(vec1![to]),
-        //Err(other_err) => Err(other_err),
-    //}
-//}
-//
+#[cfg(false)]
+// Returns path in order from `to` to `from`, likely reverse of what you'd expect.
+pub fn shortest_path<const TILES_LENGTH: usize, Tile, Direction, XY>(
+    tiles: &[Tile],
+    all_dirs: &[Direction],
+    from: XY,
+    to: XY,
+    can_pass_through: &dyn Fn(XY, &Tile) -> bool
+) -> Result<Vec1<XY>, Error> 
+    where XY: XYTrait<Direction>,
+        Direction: Clone + Copy
+{
+    fn reconstruct_path<const TILES_LENGTH: usize, Direction, XY>(
+        came_from: &[XY],
+        mut current: XY,
+    ) -> Vec1<XY>
+        where XY: XYTrait<Direction>,
+        Direction: Clone + Copy {
+        // A reasonable upper bound is diagonally from one corner of the tile grid to another.
+        // If we assume the tile grid is square, that diagonal line is around sqrt(2) times the
+        // width (AKA height) of the grid. That width would be around sqrt(tile_count) in that
+        // case. Don't want to acutally spend the time to calcaute that! If we further assume 
+        // that the length is an even power of 2, then sqrt() is the same as shifting down by 
+        // half the bits used. For example, 0b1_0000_0000 = 0b1_0000 * 0b1_0000.
+        let capacity = tile_count >> (tile_count.trailing_zeros() / 2);
+
+        let mut output = Vec1::singleton_with_capacity(current, capacity);
+
+        let mut current_i = current.to_i();
+
+        while current_i < came_from.len() {
+            current = came_from[current_i];
+            output.push(current);
+            current_i = current.to_i();
+        }
+
+        output
+    }
+
+    match calculate_intermediates::<TILES_LENGTH, Tile, Direction, XY>(
+        tiles,
+        all_dirs,
+        from,
+        to,
+        can_pass_through,
+    ) {
+        Ok(Intermediates { came_from, .. }) => Ok(reconstruct_path::<TILES_LENGTH, Direction, XY>(&came_from, to)),
+        Err(Error::FromEqualsTo) => Ok(vec1![to]),
+        Err(other_err) => Err(other_err),
+    }
+}
+
 struct Intermediates<XY> {
-     // These could be boxed slices
-     came_from: CameFrom<XY>,
-     shortest_distance: Vec<TileCount>,
-     estimated_cost: Vec<TileCount>,
+    // These could be boxed slices
+    came_from: CameFrom<XY>,
+    #[cfg(false)]
+    shortest_distance: Vec<TileCount>,
+    #[cfg(false)]    
+    estimated_cost: Vec<TileCount>,
 }
 
 fn calculate_intermediates<IndexContext, Tile, Direction, XY>(
@@ -207,7 +193,13 @@ fn calculate_intermediates<IndexContext, Tile, Direction, XY>(
     while let Some(current_xy) = next_xys.pop_front() {
         // current_xy has the lowest estimated_cost.
         if current_xy == to {
-            return Ok(Intermediates { came_from, shortest_distance, estimated_cost });
+            return Ok(Intermediates {
+                came_from,
+                #[cfg(false)]
+                shortest_distance,
+                #[cfg(false)]
+                estimated_cost
+             });
         }
 
         let current_i = current_xy.to_i(index_context);

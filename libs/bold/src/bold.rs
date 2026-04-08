@@ -30,6 +30,9 @@ impl State {
         input: Input,
         _speaker: &mut Speaker,
     ) {
-
+        commands.sspr(
+            bold_spec.xy_from_tile_sprite(0u16),
+            command::Rect::from_unscaled(bold_spec.rect(<_>::default())),
+        );
     }
 }

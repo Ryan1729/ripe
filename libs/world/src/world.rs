@@ -4,7 +4,7 @@ use models::{
     consts::{ITEM_START, NPC_START, PLAYER_START, COLLECTABLE, STEPPABLE, VICTORY, NOT_SPAWNED_AT_START, DOOR, FLOOR, DOOR_START},
     speeches,
     sprite,
-    CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Specs, Speech, Speeches, Tile, TileSprite, Transform, WorldSegment, XY, SegmentId
+    CollectAction, DefId, Entity, EntityTransformable, Location, MiniEntityDef, Speeches, Tile, TileSprite, Transform, WorldSegment, XY, SegmentId
 };
 use vec1::Vec1;
 use xs::{Xs};

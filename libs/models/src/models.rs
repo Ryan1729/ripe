@@ -592,9 +592,6 @@ pub mod speeches {
                 return Ok(())
             }
 
-            let state_len: SparseState = std::num::NonZeroUsize::try_from(speeches.len())
-                .and_then(SparseState::try_from)
-                .map_err(|_| PushError::TooManySpeechStates)?;
             let def_id = DefId::try_from(self.first_speeches.len()).map_err(|_| PushError::TooManyDefs)?;
 
             let mut state = SparseState::MIN;

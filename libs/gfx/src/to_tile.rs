@@ -1,5 +1,7 @@
-use platform_types::{sprite, sprite::{Renderable, BaseTiles}, unscaled};
-use models::{Entity, xy::{XY}, TileSprite, offset};
+#![deny(unused)]
+
+use platform_types::{sprite, sprite::{BaseTiles}, unscaled};
+use models::{Entity, xy::{XY}};
 /// Take a models::XY to the unscaled::XY representing the corner of the tile, with the mininum x/y values.
 /// Suitable for drawing the tile at that point
 pub fn min_corner(spec: &sprite::Spec<BaseTiles>, xy: XY) -> unscaled::XY {
