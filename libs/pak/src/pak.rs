@@ -260,7 +260,7 @@ pub fn spritesheet_from_png_frame(frame: &PngFrame) -> Spritesheet {
     };
 
     Spritesheet {
-        pixels,
+        cells: pixels.try_into().expect("No pixels found for spritesheet"),
         width: usize::try_from(frame.info.width).expect("Not expected to be run on less than 32 bit platforms"),
     }
 }

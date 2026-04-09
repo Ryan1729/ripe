@@ -203,7 +203,7 @@ pub mod hallway {
 }
 pub use hallway::{States as HallwayStates};
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct World {
     pub segments: Vec1<WorldSegment>,
     /// The ID of the current segment we are in.
@@ -286,12 +286,12 @@ mod random {
 
     pub fn passable_tile(rng: &mut Xs, segment: &WorldSegment) -> Option<XY> {
         // TODO? Cap tiles length or accept this giving a messed up probabilty for large segments?
-        let len = segment.tiles.len();
+        let len = segment.cells.len();
         let offset = xs::index(rng, 0..len);
         for index in 0..len {
             let i = (index + offset) % len;
 
-            let tile = &segment.tiles[i];
+            let tile = &segment.cells[i];
 
             if crate::is_passable(tile) {
                 return Some(i_to_xy(segment.width, i));
@@ -309,12 +309,12 @@ mod random {
         filter_out: &[Location],
     ) -> Option<Location> {
         // TODO? Cap tiles length or accept this giving a messed up probabilty for large segments?
-        let len = segment.tiles.len();
+        let len = segment.cells.len();
         let offset = xs::index(rng, 0..len);
         for index in 0..len {
             let i = (index + offset) % len;
 
-            let current_tile_flags = &segment.tiles[i];
+            let current_tile_flags = &segment.cells[i];
 
             if current_tile_flags & needle_flags == needle_flags {
                 let current_xy = i_to_xy(segment.width, i);
@@ -583,7 +583,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
         let config_segment = &config.segments[index];
 
         let tiles: Vec1<_> = Vec1::map1(
-            &config_segment.tiles,
+            &config_segment.cells,
             |tile_flags| {
                 Tile {
                     sprite: if tile_flags & FLOOR != 0 {
@@ -598,7 +598,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
         segments.push(
             WorldSegment {
                 width: config_segment.width,
-                tiles,
+                cells: tiles,
             },
         );
         config_segments.push(

@@ -67,7 +67,7 @@ impl State {
         const HARDCODED_CONFIG: &str = include_str!("../../../examples/default/config.rn");
 
         let get_hardcoded_spritesheet = || Spritesheet {
-            pixels: assets::GFX.into(),
+            cells: assets::GFX.try_into().expect("assets::GFX should always have a length greater than 0"),
             width: GFX_WIDTH,
         };
 
@@ -464,11 +464,11 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
             return
         };
 
-        for i in 0..segment.tiles.len() {
+        for i in 0..segment.cells.len() {
             draw_tile(
                 commands,
                 i_to_xy(segment.width, i),
-                segment.tiles[i].sprite,
+                segment.cells[i].sprite,
             );
         }
 

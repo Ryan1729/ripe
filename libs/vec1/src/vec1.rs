@@ -1,5 +1,7 @@
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
+use std::num::NonZeroUsize;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Vec1<T>(Vec<T>);
 
@@ -29,9 +31,13 @@ impl <T> Vec1<T> {
         Self(v)
     }
 
-    // TODO? A len1 that returns a NonZeroUsize?
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    #[allow(unused)]
+    pub fn len1(&self) -> NonZeroUsize {
+        self.0.len().try_into().expect("Invalid Vec1 was created!")
     }
 
     pub fn push(&mut self, value: T) {
@@ -123,6 +129,14 @@ impl <T> TryFrom<Vec<T>> for Vec1<T> {
     }
 }
 
+impl <T, const N: usize> TryFrom<[T; N]> for Vec1<T> {
+    type Error = EmptyError;
+
+    fn try_from(array: [T; N]) -> Result<Self, Self::Error> {
+        Vec::from(array).try_into()
+    }
+}
+
 impl <T> From<Vec1<T>> for Vec<T> {
     fn from(value: Vec1<T>) -> Self {
         value.0
@@ -141,3 +155,85 @@ macro_rules! _vec1 {
     };
 }
 pub use _vec1 as vec1;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Grid1<Element, Width = NonZeroUsize> {
+    pub width: Width,
+    // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that restriction clear, so we
+    // can't have like PC only grids that break in weird ways online. Probably no one will ever need that
+    // many cells. Or maybe make it Vec1<Element, Index = usize>?
+    pub cells: Vec1<Element>,
+}
+
+impl <Element, Width> Grid1<Element, Width> {
+    pub fn len(&self) -> usize {
+        self.cells.len()
+    }
+
+    #[allow(unused)]
+    pub fn len1(&self) -> NonZeroUsize {
+        self.cells.len1()
+    }
+
+    pub fn get(&self, index: usize) -> Option<&Element> {
+        self.cells.get(index)
+    }
+
+    #[allow(unused)]
+    pub fn first(&self) -> &Element {
+        self.cells.first()
+    }
+
+    #[allow(unused)]
+    pub fn last(&self) -> &Element {
+        self.cells.last()
+    }
+}
+
+impl <Element, Width> Grid1<Element, Width> 
+where Width: Clone {
+    #[allow(unused)]
+    pub fn map1<OldElement>(grid: &Grid1<OldElement, Width>, mapper: impl Fn(&OldElement) -> Element) -> Self {
+        let width: Width = grid.width.clone();
+
+        Self {
+            width,
+            cells: Vec1::map1(&grid.cells, mapper),
+        }
+    }
+
+    pub fn slice(&self) -> (&[Element], Width) {
+        (&self.cells, self.width.clone())
+    }
+}
+
+impl<Element, Width, I: std::slice::SliceIndex<[Element]>> Index<I> for Grid1<Element, Width> {
+    type Output = I::Output;
+
+    #[inline]
+    fn index(&self, index: I) -> &Self::Output {
+        &self.cells[index]
+    }
+}
+
+impl<Element, Width, I: std::slice::SliceIndex<[Element]>> IndexMut<I> for Grid1<Element, Width> {
+    #[inline]
+    fn index_mut(&mut self, index: I) -> &mut Self::Output {
+        &mut self.cells[index]
+    }
+}
+
+impl <'vec, Element, Width> Grid1<Element, Width> {
+    fn iter(&'vec self) -> Iter<'vec, Element> {
+        self.cells.iter()
+    }
+}
+
+impl<'a, Element, Width> IntoIterator for &'a Grid1<Element, Width> {
+    type Item = &'a Element;
+    type IntoIter = Iter<'a, Element>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}

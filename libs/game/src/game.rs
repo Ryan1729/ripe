@@ -379,7 +379,7 @@ fn can_walk_onto(world: &World, key @ EntityKey { segment_id, xy: XY{ x, y } }: 
         return false;
     };
 
-    if let Some(tile) = segment.tiles.get(i) {
+    if let Some(tile) = segment.get(i) {
         if let Some(mob) = world.mobs.get(key) {
             if !mob.is_steppable() {
                 return false;

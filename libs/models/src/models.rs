@@ -1,7 +1,7 @@
 pub use pak_types::*;
 pub use offset;
 
-use vec1::Vec1;
+use vec1::{Grid1, Vec1};
 
 /// An amount of screenshake to render with.
 pub type ShakeAmount = u8;
@@ -467,14 +467,7 @@ pub struct Tile {
     pub sprite: TileSprite,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct WorldSegment {
-    pub width: SegmentWidth,
-    // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that restriction clear, so we
-    // can't have like PC only worlds that break in weird ways online. Probably no one will ever need that
-    // many tiles per segment. Plus, then xs conversions go away.
-    pub tiles: Vec1<Tile>,
-}
+pub type WorldSegment = Grid1<Tile, SegmentWidth>;
 
 pub type Index = usize;
 
@@ -484,11 +477,12 @@ pub enum XYToIError {
 
 pub fn xy_to_i(segment: &WorldSegment, x: X, y: Y) -> Result<Index, XYToIError> {
     let x_usize = x.usize();
-    if x_usize >= segment.width {
+    let width_usize = segment.width.into();
+    if x_usize >= width_usize {
         return Err(XYToIError::XPastWidth);
     }
 
-    Ok(y.usize() * segment.width + x_usize)
+    Ok(y.usize() * width_usize + x_usize)
 }
 
 pub fn i_to_xy(segment_width: SegmentWidth, index: Index) -> XY {

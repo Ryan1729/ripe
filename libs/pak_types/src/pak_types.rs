@@ -1,6 +1,7 @@
 #![deny(unreachable_patterns)]
 
 use gfx_sizes::*;
+use vec1::Grid1;
 
 pub mod unscaled {
     ///! Values are in pixels.
@@ -1036,7 +1037,7 @@ pub type DefIdDelta = i16;
 
 pub type DefIdNextLargerSigned = i32;
 
-pub type SegmentWidth = usize;
+pub type SegmentWidth = std::num::NonZeroUsize;
 
 /// 64k world segments ought to be enough for anybody!
 pub type SegmentId = u16;
@@ -1142,22 +1143,15 @@ pub use hallway_spec::const_to_hallway_spec;
 pub type TileSprite = u8;
 
 pub mod config {
-    use vec1::{Vec1};
+    use vec1::{Grid1, Vec1};
     use crate::{
         consts::{EntityDefFlags, TileFlags},
         DefId, OnCollect, SegmentWidth, Specs, Speech, TileSprite
     };
     use std::path::PathBuf;
 
-    /// A configuration WorldSegment that can be used to contruct game::WorldSegments later.
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub struct WorldSegment {
-        pub width: SegmentWidth,
-        // TODO Since usize is u32 on wasm, let's make a Vec32 type that makes that restriction clear, so we
-        // can't have like PC only worlds that break in weird ways online. Probably no one will ever need that
-        // many tiles per segment. Plus, then xs conversions go away.
-        pub tiles: Vec1<TileFlags>,
-    }
+    /// A configuration WorldSegment that can be used to construct game::WorldSegments later.
+    pub type WorldSegment = Grid1<TileFlags, SegmentWidth>;
 
     #[derive(Clone, Debug)]
     pub struct Config {
@@ -1263,16 +1257,7 @@ pub enum CollectAction {
 
 pub type OnCollect = Vec<CollectAction>;
 
-pub struct Spritesheet {
-    pub pixels: Vec<ARGB>,
-    pub width: usize,
-}
-
-impl Spritesheet {
-    pub fn slice(&self) -> (&[ARGB], usize) {
-        (&self.pixels, self.width)
-    }
-}
+pub type Spritesheet = Grid1<ARGB, usize>;
 
 pub struct Pak {
     pub config: Config,

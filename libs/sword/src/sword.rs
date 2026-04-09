@@ -5,7 +5,7 @@
 
 use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
-use vec1::{Vec1, vec1};
+use vec1::{Grid1, Vec1, vec1};
 use xs::{Seed, Xs};
 
 use std::collections::{BTreeMap, HashMap};
@@ -859,11 +859,7 @@ pub fn xy_to_i(width: impl Into<TilesWidth>, xy: XY) -> Result<usize, XYToIError
 pub type TilesWidthInner = u16;
 pub type TilesWidth = NonZeroU16;
 
-#[derive(Clone, Debug)]
-pub struct Tiles {
-    pub width: TilesWidth,
-    pub tiles: Vec1<Tile>
-}
+pub type Tiles = Grid1<Tile, TilesWidth>;
 
 fn can_walk_onto(
     switches: &Switches,
@@ -879,7 +875,7 @@ fn can_walk_onto(
     && ( // can walk onto tile
         xy_to_i(tiles.width, key.xy)
             .map(|i| {
-                tiles.tiles.get(i)
+                tiles.cells.get(i)
                     .map(|t| t.is_floor())
                     .unwrap_or(false)
             }).unwrap_or(false)
@@ -2938,7 +2934,7 @@ impl State {
             mobs,
             tiles: Tiles {
                 width,
-                tiles,
+                cells: tiles,
             },
             animations: <_>::default(),
         }
@@ -3119,7 +3115,7 @@ impl State {
 
                         if let Ok(target_xy) = pathfinding::next_xy_along_shortest_path::<TilesWidth, Tile, Dir, XY>(
                             &self.tiles.width,
-                            self.tiles.tiles.len(),
+                            self.tiles.cells.len(),
                             &Dir::ALL,
                             mob_xy,
                             self.player_position.xy(),
@@ -3177,9 +3173,9 @@ impl State {
 
         // Render tiles
 
-        for i in 0..self.tiles.tiles.len() {
+        for i in 0..self.tiles.cells.len() {
             use TileIndex::*;
-            let tile = self.tiles.tiles[i];
+            let tile = self.tiles.cells[i];
 
             let spec_tile = match tile.sprite_index {
                 Wall(..) => wall_spec.tile(),

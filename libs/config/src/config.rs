@@ -250,12 +250,11 @@ mod rune_based {
             let int: i64 =
                 $val.as_integer().map_err(|got| Error::TypeMismatch{ key, expected: "int", got })?;
 
-            int
-                .try_into().map_err(|error| Error::SizeError {
-                    key,
-                    parent_key,
-                    error,
-                })?
+            int.try_into().map_err(|error| Error::SizeError {
+                key,
+                parent_key,
+                error,
+            })?
         })
     }
 
@@ -353,7 +352,14 @@ mod rune_based {
             let segment: Object = rune::from_value(segments[i].clone())
                 .map_err(|got| Error::TypeMismatch{ key: parent_key, expected: "map", got })?;
 
-            let width: SegmentWidth = get_int!(segment, "width", parent_key);
+            let key = "width";
+
+            let width_usize: usize = get_int!(segment, key, parent_key);
+            let width: SegmentWidth = width_usize.try_into().map_err(|error| Error::SizeError {
+                key: key.into(),
+                parent_key,
+                error,
+            })?;
 
             let tiles: Vec1<TileFlags> = {
                 let key = "tiles";
@@ -378,7 +384,7 @@ mod rune_based {
 
             segments_vec.push(WorldSegment {
                 width,
-                tiles,
+                cells: tiles,
             });
         }
 
