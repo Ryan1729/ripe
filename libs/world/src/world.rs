@@ -974,7 +974,7 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                         hallway_states.insert(
                             key_i,
                             key_j,
-                            hallway::State::BOLD(bold::State::new(rng)),
+                            hallway::State::BOLD(bold::State::new(rng, &specs.bold)),
                         );
                     },
                 }

@@ -14,5 +14,8 @@ path = "../gfx"
 [dependencies.platform_types]
 path = "../platform_types"
 
+[dependencies.vec1]
+path = "../vec1"
+
 [dependencies.xs]
 path = "../xs"

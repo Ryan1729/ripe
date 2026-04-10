@@ -237,3 +237,19 @@ impl<'a, Element, Width> IntoIterator for &'a Grid1<Element, Width> {
         self.iter()
     }
 }
+
+#[derive(Debug)]
+pub struct Grid1Spec<Width> {
+    pub width: Width,
+    pub len: usize,
+}
+
+impl <Element, Width> Grid1<Element, Width> 
+where Width: Clone {
+    pub fn spec(&self) -> Grid1Spec<Width> {
+        Grid1Spec {
+            width: self.width.clone(),
+            len: self.cells.len(),
+        }
+    }
+}

@@ -5,13 +5,13 @@
 
 use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
-use vec1::{Grid1, Vec1, vec1};
+use vec1::{Grid1, Grid1Spec, Vec1, vec1};
 use xs::{Seed, Xs};
 
 use std::collections::{BTreeMap, HashMap};
 use std::num::{NonZeroU8, NonZeroU16};
 
-type Index = usize;
+pub type Index = usize;
 
 /*
     Notes on wall/floor tiles and their various edge types:
@@ -1201,8 +1201,6 @@ mod random {
     use super::*;
     use std::num::TryFromIntError;
 
-    pub type Index = usize;
-
     #[derive(Debug)]
     pub enum NonEdgeError {
         WidthTooSmall,
@@ -1223,60 +1221,59 @@ mod random {
         }
     }
 
-    // `(min_corner_xy, max_corner_xy)` Inclusive in both cases.
-    // TODO? Is there a struct we already have in this project that would work here?
-    pub type Rect = (XY, XY);
+    #[derive(Clone, Copy)]
+    pub struct XYXY {
+        pub min: XY, 
+        pub one_past_max: XY,
+    }
 
-    pub fn non_edge_rect(width: TilesWidth, tiles_len: Index) -> Result<Rect, NonEdgeError> {
+    impl XYXY {
+        pub fn contains(self, xy: XY) -> bool {
+            xy.x >= self.min.x
+            && xy.y >= self.min.y
+            && xy.x < self.one_past_max.x
+            && xy.y < self.one_past_max.y
+        }
+    }
+
+    pub fn non_edge_rect(Grid1Spec { width, len }: Grid1Spec<TilesWidth>) -> Result<XYXY, NonEdgeError> {
         if width.get() < 3 {
             return Err(NonEdgeError::WidthTooSmall);
         }
 
         // The min/max non-edge corners; The corners of the rectangle of non-edge pieces.
         let min_corner_xy = xy::XY { x: xy::x(1), y: xy::y(1) };
-        let height = xy::Inner::try_from(tiles_len)? / width.get();
+        let height = xy::Inner::try_from(len)? / width.get();
         if height < 3 {
             return Err(NonEdgeError::TilesTooShort);
         }
 
-        // -2 because -1 to get to the last index, then another to go to the second last index.
-        let max_corner_xy = xy::XY { x: xy::x(width.get() - 2), y: xy::y(height - 2) };
+        let max_corner_xy = xy::XY { x: xy::x(width.get() - 1), y: xy::y(height - 1) };
 
-        Ok((min_corner_xy, max_corner_xy))
-    }
-
-    // TODO use this where we can.
-    #[derive(Debug)]
-    pub struct TilesSpec {
-        pub width: TilesWidth,
-        pub len: Index,
+        Ok(XYXY{min: min_corner_xy, one_past_max: max_corner_xy})
     }
 
     // Written for an assert
     #[allow(unused)]
-    pub fn is_non_edge_index(TilesSpec { width, len }: TilesSpec, index_to_check: Index) -> bool {
-        non_edge_rect(width, len)
-            .map(|(min_corner_xy, max_corner_xy)| {
-                let xy = i_to_xy(width, index_to_check);
+    pub fn is_non_edge_index(spec: Grid1Spec<TilesWidth>, index_to_check: Index) -> bool {
+        let xy = i_to_xy(spec.width, index_to_check);
 
-                xy.x >= min_corner_xy.x
-                && xy.y >= min_corner_xy.y
-                && xy.x <= max_corner_xy.x
-                && xy.y <= max_corner_xy.y
-            })
+        non_edge_rect(spec)
+            .map(|xyxy| xyxy.contains(xy))
             .unwrap_or(false)
     }
 
-    pub fn non_edge_index(width: TilesWidth, len: Index, rng: &mut Xs) -> Result<Index, NonEdgeError> {
-        let (min_corner_xy, max_corner_xy) = non_edge_rect(width, len)?;
+    pub fn non_edge_index(spec: Grid1Spec<TilesWidth>, rng: &mut Xs) -> Result<Index, NonEdgeError> {
+        let width = spec.width;
+        let XYXY { min, one_past_max } = non_edge_rect(spec)?;
 
         let selected_xy = xy::XY {
-            x: xy::x(xs::range(rng, min_corner_xy.x.u32()..max_corner_xy.x.u32() + 1) as xy::Inner),
-            y: xy::y(xs::range(rng, min_corner_xy.y.u32()..max_corner_xy.y.u32() + 1) as xy::Inner)
+            x: xy::x(xs::range(rng, min.x.u32()..one_past_max.x.u32()) as xy::Inner),
+            y: xy::y(xs::range(rng, min.y.u32()..one_past_max.y.u32()) as xy::Inner)
         };
 
-        let min_corner_index = xy_to_i(width, min_corner_xy)?;
-        let max_corner_index = xy_to_i(width, max_corner_xy)?;
+        let min_corner_index = xy_to_i(width, min)?;
+        let max_corner_index = xy_to_i(width, one_past_max)?;
 
         if max_corner_index < min_corner_index {
             return Err(NonEdgeError::TilesTooShort);
@@ -1317,7 +1314,10 @@ fn generate_maze(
     //
 
     // Multiple things in the generation function rely on the starting exit_index being an non-edge tile!
-    let exit_index_result = random::non_edge_index(width, proto_tiles.len(), rng);
+    let exit_index_result = random::non_edge_index(
+        Grid1Spec { width, len: proto_tiles.len() },
+        rng
+    );
     debug_assert!(exit_index_result.is_ok(), "got {exit_index_result:?}");
     // Default to the first non-edge tile
     let exit_index = exit_index_result.unwrap_or(width_usize + 2);
@@ -1334,9 +1334,9 @@ fn generate_with_exit_at_index(
     exit_index: Index,
 ) -> Dir {
     assert!(
-        random::is_non_edge_index(random::TilesSpec { width: proto_width.into(), len: proto_tiles.len() }, exit_index),
+        random::is_non_edge_index(Grid1Spec::<TilesWidth> { width: proto_width.into(), len: proto_tiles.len() }, exit_index),
         "{:?} {:?}",
-        random::TilesSpec { width: proto_width.into(), len: proto_tiles.len() },
+        Grid1Spec::<TilesWidth> { width: proto_width.into(), len: proto_tiles.len() },
         exit_index,
     );
 
@@ -1848,26 +1848,25 @@ fn to_one_thick(
     tiles
 }
 
+fn calc_height<A>(
+    width: TilesWidth,
+    tiles: &[A],
+) -> xy::Inner {
+    calc_height_len(Grid1Spec { width, len: tiles.len() })
+}
+
+fn calc_height_len(
+    Grid1Spec { width, len }: Grid1Spec<TilesWidth>
+) -> xy::Inner {
+    xy::Inner::try_from(len).map(|len| len / width.get()).unwrap_or(xy::Inner::MAX)
+}
+
 #[allow(unused)]
 fn print_tiles(
     tiles: &[Tile],
     width: TilesWidth,
 ) {
    print_tiles_options(tiles, width, <_>::default())
-}
-
-fn calc_height<A>(
-    width: TilesWidth,
-    tiles: &[A],
-) -> xy::Inner {
-    calc_height_len(width, tiles.len())
-}
-
-fn calc_height_len(
-    width: TilesWidth,
-    tiles_len: usize,
-) -> xy::Inner {
-    xy::Inner::try_from(tiles_len).map(|len| len / width.get()).unwrap_or(xy::Inner::MAX)
 }
 
 #[allow(unused)]
@@ -2264,6 +2263,10 @@ impl State {
         let mut player = Entity::default();
         player.tile_sprite = PLAYER_BASE;
         player.flags |= RENDER_FACING;
+
+        assert_eq!(player.flags & GONE, 0, "The player should never be gone!");
+        assert_eq!(player.flags & RENDER_FACING, RENDER_FACING, "The player should always be rendered taking facing into account!");
+
         let player_position;
 
         let mut mobs = Mobs::default();
@@ -2318,9 +2321,6 @@ impl State {
         if max_tile_h == 0 {
             max_tile_h = 1;
         }
-
-        assert_eq!(player.flags & GONE, 0, "The player should never be gone!");
-        assert_eq!(player.flags & RENDER_FACING, RENDER_FACING, "The player should always be rendered taking facing into account!");
 
         let width = TilesWidth::new(max_tile_w).expect("Don't set a 0 width!");
         let mut tiles = {
@@ -3185,6 +3185,8 @@ impl State {
             let tile_w = spec_tile.w;
             let tile_h = spec_tile.h;
 
+            // TODO Seems like it would be faster to avoid the divide in here
+            // by iterating over `XY`s instead
             let xy = i_to_xy(self.tiles.width, i);
 
             let base_xy = unscaled::XY {
