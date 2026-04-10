@@ -574,7 +574,7 @@ pub mod button {
 pub use button::Button;
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Default,PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Dir {
     #[default]
     Left,
@@ -621,6 +621,16 @@ impl Dir {
 
     pub const fn opposite(self) -> Dir {
         Self::OPPOSITE[self.index()]
+    }
+
+    pub const fn moves_in_x(self) -> bool {
+        self.u8() == Dir::Left.u8()
+        || self.u8() == Dir::Right.u8()
+    }
+
+    pub const fn moves_in_y(self) -> bool {
+        self.u8() == Dir::Up.u8()
+        || self.u8() == Dir::Down.u8()
     }
 }
 

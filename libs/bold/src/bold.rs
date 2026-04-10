@@ -458,6 +458,53 @@ mod player_animation {
     }
 }
 
+fn can_walk_onto(tiles: &Tiles, xy: XY) -> bool {
+    if let Ok(i) = xy_to_i(tiles.width, xy)
+    && let Some(tile) = tiles.get(i)
+    && tile & IS_WALL == 0 {
+        true
+    } else {
+        false
+    }
+}
+
+#[derive(Debug)]
+enum EdgeHitKind {
+    Neither,
+    X,
+    Y,
+    Both
+}
+
+fn xy_in_dir(xy: XY, dir: Dir) -> (XY, EdgeHitKind) {
+    use Dir::*;
+
+    let x = xy.x;
+    let y = xy.y;
+
+    let (new_x, new_y) = match dir {
+        Up => (x, y.dec()),
+        Right => (x.inc(), y),
+        Down => (x, y.inc()),
+        Left => (x.dec(), y),
+    };
+
+    (
+        XY { x: new_x, y: new_y },
+        // This can happen due to saturation
+        if new_x == x
+        && new_y == y {
+            EdgeHitKind::Both
+        } else if new_x == x && dir.moves_in_x() {
+            EdgeHitKind::X
+        } else if new_y == y && dir.moves_in_y() {
+            EdgeHitKind::Y
+        } else {
+            EdgeHitKind::Neither
+        }
+    )
+}
+
 #[derive(Clone, Debug)]
 pub struct State {
     pub tiles: Tiles,
@@ -541,7 +588,19 @@ impl State {
         //
         //
 
-        self.player_animation_state.advance();
+        if let Some(dir) = input.dir_pressed_this_frame() {
+            // Walk
+            let (new_xy, _) = xy_in_dir(self.player_xy, dir);
+
+            if can_walk_onto(
+                &self.tiles,
+                new_xy
+            ) {
+                self.player_xy = new_xy;
+            }
+        } else {
+            self.player_animation_state.advance();
+        }
 
         //
         //
