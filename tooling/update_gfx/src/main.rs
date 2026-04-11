@@ -80,17 +80,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let spritesheet = pak::spritesheet_from_png_frame(&frame);
     
         assert_eq!(spritesheet.width, gfx_sizes::GFX_WIDTH, "Input PNG was not the right width");
-        assert_eq!(spritesheet.pixels.len(), gfx_sizes::GFX_LENGTH, "Input PNG was not the right length");
+        assert_eq!(spritesheet.cells.len(), gfx_sizes::GFX_LENGTH, "Input PNG was not the right length");
 
         let mut output = String::with_capacity(
-            spritesheet.pixels.len() * "0xFFFFFFFF, ".len()
+            spritesheet.cells.len() * "0xFFFFFFFF, ".len()
             // Newlines for each row
             + 1024
             // Extra for start and end of array
             + 8
         );
         output.push_str("[\n");
-        for chunk in spritesheet.pixels.chunks(gfx_sizes::GFX_WIDTH) {
+        for chunk in spritesheet.cells.chunks(gfx_sizes::GFX_WIDTH) {
             for colour in chunk.iter() {
                 output.push_str(&format!("0x{colour:08X}, "));
             }

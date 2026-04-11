@@ -321,6 +321,13 @@ pub type Tile = TileFlags;
 pub type Tiles = Grid1<Tile, TilesWidth>;
 pub type TilesSpec = Grid1Spec<TilesWidth>;
 
+pub type TileSprite = u16;
+
+const FLOOR: TileSprite = 24;
+const WALL: TileSprite = 25;
+const DIRT: TileSprite = 26;
+const BOULDER: TileSprite = 27;
+
 #[derive(Clone, Debug)]
 pub struct State {
     pub tiles: Tiles,
@@ -401,18 +408,22 @@ impl State {
             // by iterating over `XY`s instead
             let xy = i_to_xy(self.tiles.width, i);
 
-            if tile & IS_WALL == IS_WALL {
-                let base_xy = unscaled::XY {
-                    x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
-                    y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
-                };
+            let sprite = if tile & IS_WALL == IS_WALL {
+                WALL
+            } else {
+                FLOOR
+            };
+            
+            let base_xy = unscaled::XY {
+                x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
+                y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
+            };
 
-                // TODO add the wall sprite and use that here
-                commands.sspr(
-                    bold_spec.xy_from_tile_sprite(0u16),
-                    command::Rect::from_unscaled(bold_spec.rect(base_xy)),
-                );
-            }
+            // TODO add the wall sprite and use that here
+            commands.sspr(
+                bold_spec.xy_from_tile_sprite(sprite),
+                command::Rect::from_unscaled(bold_spec.rect(base_xy)),
+            );
         }
     }
 }
