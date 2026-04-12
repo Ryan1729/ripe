@@ -323,14 +323,146 @@ pub type TilesSpec = Grid1Spec<TilesWidth>;
 
 pub type TileSprite = u16;
 
+const IDLE_OPEN: TileSprite = 0;
+const IDLE_SQUINT: TileSprite = 1;
+const IDLE_CLOSED: TileSprite = 2;
+
+const LIFT_OPEN: TileSprite = 3;
+const LIFT_SQUINT: TileSprite = 4;
+const LIFT_CLOSED: TileSprite = 5;
+const THUMP: TileSprite = 6;
+
 const FLOOR: TileSprite = 24;
 const WALL: TileSprite = 25;
 const DIRT: TileSprite = 26;
 const BOULDER: TileSprite = 27;
 
+mod player_animation {
+    use super::{
+        TileSprite,
+        IDLE_OPEN,
+        IDLE_SQUINT,
+        IDLE_CLOSED,
+        LIFT_OPEN,
+        LIFT_SQUINT,
+        LIFT_CLOSED,
+        THUMP,
+    };
+
+    type IdleState = u8;
+
+    #[derive(Clone, Copy, Debug)]
+    pub enum State {
+        Idle(IdleState),
+    }
+
+    impl Default for State {
+        fn default() -> State {
+            State::Idle(<_>::default())
+        }
+    }
+
+    impl State {
+        pub fn advance(&mut self) {
+            use State::*;
+            match self {
+                Idle(state) => {
+                    *state = state.wrapping_add(1);
+                },
+            };
+        }
+
+        pub fn sprite(&self) -> TileSprite {
+            use State::*;
+
+            match self {
+                Idle(25) => IDLE_SQUINT,
+                Idle(26) => IDLE_CLOSED,
+                Idle(27) => IDLE_CLOSED,
+                Idle(28) => IDLE_CLOSED,
+                Idle(29) => IDLE_SQUINT,
+
+                Idle(49) => IDLE_SQUINT,
+                Idle(50) => IDLE_CLOSED,
+                Idle(51) => IDLE_CLOSED,
+                Idle(52) => IDLE_CLOSED,
+                Idle(53) => IDLE_SQUINT,
+
+                Idle(56) => IDLE_SQUINT,
+                Idle(57) => IDLE_CLOSED,
+                Idle(58) => IDLE_CLOSED,
+                Idle(59) => IDLE_CLOSED,
+                Idle(60) => IDLE_SQUINT,
+
+                Idle(96) => IDLE_SQUINT,
+                Idle(97) => IDLE_CLOSED,
+                Idle(98) => IDLE_CLOSED,
+                Idle(99) => IDLE_CLOSED,
+                Idle(100) => IDLE_SQUINT,
+
+
+                Idle(134) => LIFT_OPEN,
+                Idle(135) => LIFT_OPEN,
+                Idle(136) => LIFT_OPEN,
+                Idle(137) => LIFT_OPEN,
+                Idle(138) => LIFT_OPEN,
+
+                Idle(140) => LIFT_OPEN,
+                Idle(141) => LIFT_OPEN,
+                Idle(142) => LIFT_OPEN,
+                Idle(143) => LIFT_OPEN,
+                Idle(144) => LIFT_OPEN,
+
+                Idle(154) => LIFT_OPEN,
+                Idle(155) => LIFT_SQUINT,
+                Idle(156) => LIFT_CLOSED,
+                Idle(157) => LIFT_CLOSED,
+                Idle(158) => LIFT_CLOSED,
+                Idle(159) => LIFT_CLOSED,
+                Idle(160) => LIFT_CLOSED,
+                Idle(161) => LIFT_SQUINT,
+                Idle(162) => LIFT_OPEN,
+
+                Idle(168) => LIFT_OPEN,
+                Idle(169) => LIFT_OPEN,
+                Idle(170) => LIFT_OPEN,
+                Idle(171) => LIFT_OPEN,
+                Idle(172) => LIFT_OPEN,
+
+                Idle(178) => LIFT_OPEN,
+                Idle(179) => LIFT_OPEN,
+                Idle(180) => LIFT_OPEN,
+                Idle(181) => LIFT_OPEN,
+                Idle(182) => LIFT_OPEN,
+
+                Idle(213) => LIFT_OPEN,
+                Idle(214) => LIFT_SQUINT,
+                Idle(215) => LIFT_CLOSED,
+                Idle(216) => LIFT_CLOSED,
+                Idle(217) => LIFT_CLOSED,
+                Idle(218) => LIFT_SQUINT,
+                Idle(219) => LIFT_OPEN,
+
+                Idle(223) => LIFT_OPEN,
+                Idle(224) => LIFT_SQUINT,
+                Idle(225) => LIFT_CLOSED,
+                Idle(226) => LIFT_CLOSED,
+                Idle(227) => LIFT_CLOSED,
+                Idle(228) => LIFT_SQUINT,
+                Idle(229) => LIFT_OPEN,
+
+                Idle(s) if *s > 128 => THUMP,
+                Idle(_) => IDLE_OPEN,
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct State {
     pub tiles: Tiles,
+    pub player_xy: XY,
+    pub player_animation_state: player_animation::State,
 }
 
 impl State {
@@ -367,6 +499,8 @@ impl State {
 
         let xyxy = non_edge_rect(spec).expect("Play grid is too small!");
 
+        let mut player_xy = <_>::default();
+
         for x in 0..max_tile_w {
             for y in 0..max_tile_h {
                 let xy = XY{ x: X(x), y: Y(y) };
@@ -377,12 +511,16 @@ impl State {
                     };
 
                     tiles.cells[i] |= IS_WALL;
+                } else {
+                    player_xy = xy; // TODO Pick a random non-wall tile
                 }
             }
         }
 
         Self {
             tiles,
+            player_xy,
+            player_animation_state: <_>::default(),
         }
     }
 
@@ -397,9 +535,27 @@ impl State {
         input: Input,
         _speaker: &mut Speaker,
     ) {
+        //
+        //
+        // Update Section
+        //
+        //
+
+        self.player_animation_state.advance();
+
+        //
+        //
+        // Render Section
+        //
+        //
+
         let tile = bold_spec.tile();
         let tile_w = tile.w;
         let tile_h = tile.h;
+
+        //
+        // Draw tiles
+        //
 
         for i in 0..self.tiles.cells.len() {
             let tile = self.tiles.cells[i];
@@ -425,5 +581,19 @@ impl State {
                 command::Rect::from_unscaled(bold_spec.rect(base_xy)),
             );
         }
+
+        //
+        // Draw player
+        //
+
+        let base_xy = unscaled::XY {
+            x: unscaled::X(unscaled::Inner::from(self.player_xy.x.0) * tile_w.get()),
+            y: unscaled::Y(unscaled::Inner::from(self.player_xy.y.0) * tile_h.get())
+        };
+
+        commands.sspr(
+            bold_spec.xy_from_tile_sprite(self.player_animation_state.sprite()),
+            command::Rect::from_unscaled(bold_spec.rect(base_xy)),
+        );
     }
 }
