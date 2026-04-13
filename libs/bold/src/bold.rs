@@ -278,7 +278,7 @@ impl From<TryFromIntError> for NonEdgeError {
 
 #[derive(Clone, Copy)]
 pub struct XYXY {
-    pub min: XY, 
+    pub min: XY,
     pub one_past_max: XY,
 }
 
@@ -351,9 +351,22 @@ mod player_animation {
 
     type IdleState = u8;
 
+    type DirState = u8;
+    const DIR_STATE_COUNT: DirState = 7;
+
+    const LEFT_SPRITES: [TileSprite; DIR_STATE_COUNT as usize] = [
+        8, 9, 10, 11, 12, 13, 14,
+    ];
+
+    const RIGHT_SPRITES: [TileSprite; DIR_STATE_COUNT as usize] = [
+        16, 17, 18, 19, 20, 21, 22,
+    ];
+
     #[derive(Clone, Copy, Debug)]
     pub enum State {
         Idle(IdleState),
+        Left(DirState),
+        Right(DirState),
     }
 
     impl Default for State {
@@ -363,11 +376,49 @@ mod player_animation {
     }
 
     impl State {
+        pub fn idle(&mut self) {
+            if let State::Idle(_) = self {
+                return
+            }
+
+            *self = State::Idle(<_>::default());
+        }
+
+        pub fn right(&mut self) {
+            if let State::Right(_) = self {
+                return
+            }
+
+            *self = State::Right(<_>::default());
+        }
+
+        pub fn left(&mut self) {
+            if let State::Left(_) = self {
+                return
+            }
+
+            *self = State::Left(<_>::default());
+        }
+
         pub fn advance(&mut self) {
             use State::*;
             match self {
                 Idle(state) => {
                     *state = state.wrapping_add(1);
+                },
+                Left(state) => {
+                    *state = state.wrapping_add(1);
+
+                    if *state >= DIR_STATE_COUNT {
+                        *state = 0;
+                    }
+                },
+                Right(state) => {
+                    *state = state.wrapping_add(1);
+
+                    if *state >= DIR_STATE_COUNT {
+                        *state = 0;
+                    }
                 },
             };
         }
@@ -453,6 +504,9 @@ mod player_animation {
 
                 Idle(s) if *s > 128 => THUMP,
                 Idle(_) => IDLE_OPEN,
+
+                Left(s) => LEFT_SPRITES[(*s) as usize],
+                Right(s) => RIGHT_SPRITES[(*s) as usize],
             }
         }
     }
@@ -510,6 +564,7 @@ pub struct State {
     pub tiles: Tiles,
     pub player_xy: XY,
     pub player_animation_state: player_animation::State,
+    pub left_was_last_x_dir_pressed: bool,
 }
 
 impl State {
@@ -568,6 +623,7 @@ impl State {
             tiles,
             player_xy,
             player_animation_state: <_>::default(),
+            left_was_last_x_dir_pressed: false,
         }
     }
 
@@ -588,19 +644,31 @@ impl State {
         //
         //
 
-        if let Some(dir) = input.dir_pressed_this_frame() {
-            // Walk
-            let (new_xy, _) = xy_in_dir(self.player_xy, dir);
-
-            if can_walk_onto(
-                &self.tiles,
-                new_xy
-            ) {
-                self.player_xy = new_xy;
+        if let Some(dir) = input.dir_pressed_this_frame()
+        // Walk
+        && let (new_xy, _) = xy_in_dir(self.player_xy, dir)
+        && can_walk_onto(&self.tiles, new_xy)
+        {
+            self.player_xy = new_xy;
+            if dir == Dir::Left {
+                self.left_was_last_x_dir_pressed = true;
             }
+            if dir == Dir::Right {
+                self.left_was_last_x_dir_pressed = false;
+            }
+
+            if self.left_was_last_x_dir_pressed {
+                self.player_animation_state.left()
+            } else {
+                self.player_animation_state.right()
+            }
+        } else if input.contains_dir().is_none() {
+            self.player_animation_state.idle();
         } else {
             self.player_animation_state.advance();
         }
+
+
 
         //
         //
@@ -628,7 +696,7 @@ impl State {
             } else {
                 FLOOR
             };
-            
+
             let base_xy = unscaled::XY {
                 x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
                 y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
