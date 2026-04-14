@@ -8,6 +8,7 @@ use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Spe
 use vec1::{Grid1, Grid1Spec, vec1, Vec1};
 use xs::Xs;
 
+use std::collections::BTreeMap;
 use std::num::TryFromIntError;
 
 type Index = usize;
@@ -559,9 +560,52 @@ fn xy_in_dir(xy: XY, dir: Dir) -> (XY, EdgeHitKind) {
     )
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct Entity {
+    pub tile_sprite: TileSprite,
+}
+
+pub type Key = XY;
+
+mod mobs {
+    use super::*;
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Mobs {
+        entities: BTreeMap<Key, Entity>,
+    }
+
+    impl Mobs {
+        pub fn get(&self, key: Key) -> Option<&Entity> {
+            self.entities.get(&key)
+        }
+
+        pub fn get_mut(&mut self, key: Key) -> Option<&mut Entity> {
+            self.entities.get_mut(&key)
+        }
+
+        pub fn insert(&mut self, key: Key, entity: Entity) {
+            self.entities.insert(
+                key,
+                entity
+            );
+        }
+
+        pub fn entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
+            self.entities.values_mut()
+        }
+
+        pub fn all(&self) -> impl Iterator<Item = (&Key, &Entity)> {
+            self.entities.iter()
+        }
+    }
+}
+use mobs::Mobs;
+
 #[derive(Clone, Debug)]
 pub struct State {
     pub tiles: Tiles,
+    pub mobs: Mobs,
     pub player_xy: XY,
     pub player_animation_state: player_animation::State,
     pub left_was_last_x_dir_pressed: bool,
@@ -619,8 +663,32 @@ impl State {
             }
         }
 
+        let mut mobs = Mobs::default();
+
+        for x in 0..max_tile_w {
+            for y in 0..max_tile_h {
+                let xy = XY{ x: X(x), y: Y(y) };
+
+                if xy == player_xy {
+                    continue
+                }
+
+                let Ok(i) = xy_to_i(width, xy) else {
+                    continue
+                };
+
+                if tiles.cells[i] & IS_WALL == IS_WALL {
+                    continue
+                }
+
+                mobs.insert(xy, Entity { tile_sprite: DIRT });
+            }
+        }
+
+
         Self {
             tiles,
+            mobs,
             player_xy,
             player_animation_state: <_>::default(),
             left_was_last_x_dir_pressed: false,
@@ -680,6 +748,19 @@ impl State {
         let tile_w = tile.w;
         let tile_h = tile.h;
 
+        let mut draw_tile_sprite = |xy: XY, sprite: TileSprite| {
+            let base_xy = unscaled::XY {
+                x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
+                y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
+            };
+
+            // TODO add the wall sprite and use that here
+            commands.sspr(
+                bold_spec.xy_from_tile_sprite(sprite),
+                command::Rect::from_unscaled(bold_spec.rect(base_xy)),
+            );
+        };
+
         //
         // Draw tiles
         //
@@ -697,30 +778,21 @@ impl State {
                 FLOOR
             };
 
-            let base_xy = unscaled::XY {
-                x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
-                y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
-            };
+            draw_tile_sprite(xy, sprite);
+        }
 
-            // TODO add the wall sprite and use that here
-            commands.sspr(
-                bold_spec.xy_from_tile_sprite(sprite),
-                command::Rect::from_unscaled(bold_spec.rect(base_xy)),
-            );
+        //
+        // Draw Mobs
+        //
+
+        for (&xy, mob) in self.mobs.all() {
+            draw_tile_sprite(xy, mob.tile_sprite);
         }
 
         //
         // Draw player
         //
 
-        let base_xy = unscaled::XY {
-            x: unscaled::X(unscaled::Inner::from(self.player_xy.x.0) * tile_w.get()),
-            y: unscaled::Y(unscaled::Inner::from(self.player_xy.y.0) * tile_h.get())
-        };
-
-        commands.sspr(
-            bold_spec.xy_from_tile_sprite(self.player_animation_state.sprite()),
-            command::Rect::from_unscaled(bold_spec.rect(base_xy)),
-        );
+        draw_tile_sprite(self.player_xy, self.player_animation_state.sprite());
     }
 }
