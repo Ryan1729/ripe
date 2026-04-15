@@ -513,14 +513,29 @@ mod player_animation {
     }
 }
 
-fn can_walk_onto(tiles: &Tiles, xy: XY) -> bool {
-    if let Ok(i) = xy_to_i(tiles.width, xy)
-    && let Some(tile) = tiles.get(i)
-    && tile & IS_WALL == 0 {
-        true
-    } else {
-        false
-    }
+fn can_walk_onto(
+    tiles: &Tiles,
+    mobs: &Mobs,
+    xy: XY
+) -> bool {
+    (
+        // Are not blocked by tiles
+        if let Ok(i) = xy_to_i(tiles.width, xy)
+        && let Some(tile) = tiles.get(i)
+        && tile & IS_WALL == 0 {
+            true
+        } else {
+            false
+        }
+    ) && (
+        if let Some(mob) = mobs.get(xy) {
+            // TODO checking whether boulder can be pushed,
+            // is it a collectable, etc.
+            mob.is_dirt()
+        } else {
+            true
+        }
+    )
 }
 
 #[derive(Debug)]
@@ -565,6 +580,12 @@ pub struct Entity {
     pub tile_sprite: TileSprite,
 }
 
+impl Entity {
+    fn is_dirt(&self) -> bool {
+        self.tile_sprite == DIRT
+    }
+}
+
 pub type Key = XY;
 
 mod mobs {
@@ -582,6 +603,10 @@ mod mobs {
 
         pub fn get_mut(&mut self, key: Key) -> Option<&mut Entity> {
             self.entities.get_mut(&key)
+        }
+
+        pub fn remove(&mut self, key: Key) -> Option<Entity> {
+            self.entities.remove(&key)
         }
 
         pub fn insert(&mut self, key: Key, entity: Entity) {
@@ -715,7 +740,7 @@ impl State {
         if let Some(dir) = input.dir_pressed_this_frame()
         // Walk
         && let (new_xy, _) = xy_in_dir(self.player_xy, dir)
-        && can_walk_onto(&self.tiles, new_xy)
+        && can_walk_onto(&self.tiles, &self.mobs, new_xy)
         {
             self.player_xy = new_xy;
             if dir == Dir::Left {
@@ -729,6 +754,14 @@ impl State {
                 self.player_animation_state.left()
             } else {
                 self.player_animation_state.right()
+            }
+
+            match self.mobs.remove(self.player_xy) {
+                Some(mob) if mob.is_dirt() => {}, // Expected
+                Some(mob) => {
+                    debug_assert!(false, "Unexpected mob type removed! {mob:?}");
+                }
+                None => {} // Expected
             }
         } else if input.contains_dir().is_none() {
             self.player_animation_state.idle();
