@@ -629,6 +629,7 @@ use mobs::Mobs;
 
 #[derive(Clone, Debug)]
 pub struct State {
+    pub rng: Xs,
     pub tiles: Tiles,
     pub mobs: Mobs,
     pub player_xy: XY,
@@ -670,8 +671,6 @@ impl State {
 
         let xyxy = non_edge_rect(spec).expect("Play grid is too small!");
 
-        let mut player_xy = <_>::default();
-
         for x in 0..max_tile_w {
             for y in 0..max_tile_h {
                 let xy = XY{ x: X(x), y: Y(y) };
@@ -682,13 +681,49 @@ impl State {
                     };
 
                     tiles.cells[i] |= IS_WALL;
-                } else {
-                    player_xy = xy; // TODO Pick a random non-wall tile
                 }
             }
         }
 
+        let mut player_i = xs::range(rng, 0..length as u32) as usize;
+        while tiles.cells[player_i] & IS_WALL == IS_WALL  {
+            player_i += 1;
+            if player_i >= length as usize {
+                player_i = 0;
+            }
+        }
+
+        let player_xy = i_to_xy(width, player_i);
+
         let mut mobs = Mobs::default();
+
+        for x in 0..max_tile_w {
+            for y in 0..max_tile_h {
+                if xs::range(rng, 0..6) > 0 {
+                    continue
+                }
+
+                let xy = XY{ x: X(x), y: Y(y) };
+
+                if xy == player_xy {
+                    continue
+                }
+
+                let Ok(i) = xy_to_i(width, xy) else {
+                    continue
+                };
+
+                if tiles.cells[i] & IS_WALL == IS_WALL {
+                    continue
+                }
+
+                if mobs.get(xy).is_some() {
+                    continue
+                }
+
+                mobs.insert(xy, Entity { tile_sprite: BOULDER });
+            }
+        }
 
         for x in 0..max_tile_w {
             for y in 0..max_tile_h {
@@ -706,12 +741,17 @@ impl State {
                     continue
                 }
 
+                if mobs.get(xy).is_some() {
+                    continue
+                }
+
                 mobs.insert(xy, Entity { tile_sprite: DIRT });
             }
         }
 
 
         Self {
+            rng: xs::from_seed(xs::new_seed(rng)),
             tiles,
             mobs,
             player_xy,
