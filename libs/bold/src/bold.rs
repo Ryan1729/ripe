@@ -623,6 +623,12 @@ mod mobs {
         pub fn all(&self) -> impl Iterator<Item = (&Key, &Entity)> {
             self.entities.iter()
         }
+
+        pub fn keys(&self) -> impl Iterator<Item = &Key> {
+            self.entities.keys()
+        }
+
+
     }
 }
 use mobs::Mobs;
@@ -764,6 +770,35 @@ impl State {
         false
     }
 
+    fn tick(&mut self) {
+        let keys = self.mobs.keys().cloned().collect::<Vec<Key>>();
+
+        for xy in keys {
+            let Some(current_mob) = self.mobs.get(xy).map(|t| t.tile_sprite) else {
+                continue
+            };
+
+            match current_mob {
+                DIRT => {}
+                BOULDER => {
+                    // Falling downward
+                    if let (below, EdgeHitKind::Neither) = xy_in_dir(xy, Dir::Down)
+                    && below != self.player_xy
+                    && let Ok(below_i) = xy_to_i(self.tiles.width, below)
+                    && self.tiles.get(below_i).map(|t| t & IS_WALL == 0).unwrap_or(false)
+                    && self.mobs.get(below).is_none()
+                    && let Some(mob) = self.mobs.remove(xy)
+                    {
+                        // TODO? Instead, collect all movments then apply them all afterwards?
+                        // If we do, avoid the `collect` call above.
+                        self.mobs.insert(below, mob);
+                    }
+                }
+                _ => { debug_assert!(false, "Unhandled mob kind in tick"); }
+            }
+        }
+    }
+
     pub fn update_and_render(
         &mut self,
         commands: &mut Commands,
@@ -809,7 +844,7 @@ impl State {
             self.player_animation_state.advance();
         }
 
-
+        self.tick();
 
         //
         //
