@@ -770,6 +770,16 @@ impl State {
         false
     }
 
+    fn is_clear(&self, xy: XY) -> bool {
+        xy != self.player_xy
+        && {
+            let Ok(i) = xy_to_i(self.tiles.width, xy) else { return false };
+
+            self.tiles.get(i).map(|t| t & IS_WALL == 0).unwrap_or(false)
+            && self.mobs.get(xy).is_none()
+        }
+    }
+
     fn tick(&mut self) {
         let keys = self.mobs.keys().cloned().collect::<Vec<Key>>();
 
@@ -781,17 +791,51 @@ impl State {
             match current_mob {
                 DIRT => {}
                 BOULDER => {
-                    // Falling downward
                     if let (below, EdgeHitKind::Neither) = xy_in_dir(xy, Dir::Down)
-                    && below != self.player_xy
-                    && let Ok(below_i) = xy_to_i(self.tiles.width, below)
-                    && self.tiles.get(below_i).map(|t| t & IS_WALL == 0).unwrap_or(false)
-                    && self.mobs.get(below).is_none()
+                    && self.is_clear(below)
                     && let Some(mob) = self.mobs.remove(xy)
                     {
+                        // Falling downward
+
                         // TODO? Instead, collect all movments then apply them all afterwards?
                         // If we do, avoid the `collect` call above.
                         self.mobs.insert(below, mob);
+                    } else if let left_down = {
+                        if let (left, EdgeHitKind::Neither) = xy_in_dir(xy, Dir::Left)
+                        && let (left_down, EdgeHitKind::Neither) = xy_in_dir(left, Dir::Down)
+                        {
+                            (self.is_clear(left) && self.is_clear(left_down)).then_some(left_down)
+                        } else {
+                            None
+                        }
+                    }
+                    && let right_down = {
+                        if let (right, EdgeHitKind::Neither) = xy_in_dir(xy, Dir::Right)
+                        && let (right_down, EdgeHitKind::Neither) = xy_in_dir(right, Dir::Down)
+                        {
+                            (self.is_clear(right) && self.is_clear(right_down)).then_some(right_down)
+                        } else {
+                            None
+                        }
+                    }
+                    && (left_down.is_some() || right_down.is_some())
+                    && let Some(mob) = self.mobs.remove(xy)
+                    {
+                        // Rolling to the side of a pile
+                        // TODO Go all the way until we hit something, and count the distance to decide
+                        //      which way to roll?
+                        match (left_down, right_down) {
+                            (Some(target), _) => {
+                                // Roll left first. At the moment, determinism seems better than randomness.
+                                self.mobs.insert(target, mob);
+                            },
+                            (_, Some(target)) => {
+                                self.mobs.insert(target, mob);
+                            },
+                            (None, None) => unreachable!("We checked this already"),
+                        }
+                    } else {
+                        // Stay still
                     }
                 }
                 _ => { debug_assert!(false, "Unhandled mob kind in tick"); }
