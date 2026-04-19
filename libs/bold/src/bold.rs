@@ -338,6 +338,28 @@ const WALL: TileSprite = 25;
 const DIRT: TileSprite = 26;
 const BOULDER: TileSprite = 27;
 
+const GEM_BASE: TileSprite = 32;
+const GEM_FRAME_COUNT: u8 = 8;
+
+fn is_gem(s: TileSprite) -> bool {
+    s >= GEM_BASE && s < (GEM_BASE + GEM_FRAME_COUNT as TileSprite)
+}
+
+fn gen_gem_tile(rng: &mut Xs) -> TileSprite {
+    GEM_BASE + (xs::range(rng, 0..GEM_FRAME_COUNT as u32) as TileSprite)
+}
+
+// TODO replace with an animation module like the player one. Store the data on the entity
+// Adjust the graphics to make the gems be still most of the time but have light quickly
+// dance across them
+fn next_gem(mut gem: TileSprite) -> TileSprite {
+    gem += 1;
+    if gem >= GEM_BASE + (GEM_FRAME_COUNT as TileSprite) {
+        gem = GEM_BASE;
+    }
+    gem
+}
+
 mod player_animation {
     use super::{
         TileSprite,
@@ -705,7 +727,7 @@ impl State {
 
         for x in 0..max_tile_w {
             for y in 0..max_tile_h {
-                if xs::range(rng, 0..6) > 0 {
+                if xs::range(rng, 0..4) > 0 {
                     continue
                 }
 
@@ -727,7 +749,11 @@ impl State {
                     continue
                 }
 
-                mobs.insert(xy, Entity { tile_sprite: BOULDER });
+                if xs::range(rng, 0..2) > 0 {
+                    mobs.insert(xy, Entity { tile_sprite: gen_gem_tile(rng) });
+                } else {
+                    mobs.insert(xy, Entity { tile_sprite: BOULDER });
+                }
             }
         }
 
@@ -756,6 +782,13 @@ impl State {
         }
 
 
+        // TODO place gems that you can collect
+        // TODO Add a exit that opens when you get enough gems
+        // TODO place the exit and player in such a way that guarantees the level is solvable
+        //    Presumably by tracing a path past the rocks and placing the player and exit on the ends
+        //        Or maybe trace a path, then place the rocks?
+        // TODO implment enemies; place them sparsely, and not along the path traced to place other things
+
         Self {
             rng: xs::from_seed(xs::new_seed(rng)),
             tiles,
@@ -780,6 +813,55 @@ impl State {
         }
     }
 
+    fn apply_gravity(&mut self, xy: XY) {
+        if let (below, EdgeHitKind::Neither) = xy_in_dir(xy, Dir::Down)
+        && self.is_clear(below)
+        && let Some(mob) = self.mobs.remove(xy)
+        {
+            // Falling downward
+
+            // TODO? Instead, collect all movments then apply them all afterwards?
+            // If we do, avoid the `collect` call above.
+            self.mobs.insert(below, mob);
+        } else if let left_down = {
+            if let (left, EdgeHitKind::Neither) = xy_in_dir(xy, Dir::Left)
+            && let (left_down, EdgeHitKind::Neither) = xy_in_dir(left, Dir::Down)
+            {
+                (self.is_clear(left) && self.is_clear(left_down)).then_some(left_down)
+            } else {
+                None
+            }
+        }
+        && let right_down = {
+            if let (right, EdgeHitKind::Neither) = xy_in_dir(xy, Dir::Right)
+            && let (right_down, EdgeHitKind::Neither) = xy_in_dir(right, Dir::Down)
+            {
+                (self.is_clear(right) && self.is_clear(right_down)).then_some(right_down)
+            } else {
+                None
+            }
+        }
+        && (left_down.is_some() || right_down.is_some())
+        && let Some(mob) = self.mobs.remove(xy)
+        {
+            // Rolling to the side of a pile
+            // TODO Go all the way until we hit something, and count the distance to decide
+            //      which way to roll?
+            match (left_down, right_down) {
+                (Some(target), _) => {
+                    // Roll left first. At the moment, determinism seems better than randomness.
+                    self.mobs.insert(target, mob);
+                },
+                (_, Some(target)) => {
+                    self.mobs.insert(target, mob);
+                },
+                (None, None) => unreachable!("We checked this already"),
+            }
+        } else {
+            // Stay still
+        }
+    }
+
     fn tick(&mut self) {
         let keys = self.mobs.keys().cloned().collect::<Vec<Key>>();
 
@@ -789,54 +871,17 @@ impl State {
             };
 
             match current_mob {
+                gem if is_gem(gem) => {
+                    if let Some(mut mob) = self.mobs.remove(xy) {
+                        mob.tile_sprite = next_gem(gem);
+                        self.mobs.insert(xy, mob);
+                    }
+
+                    self.apply_gravity(xy);
+                }
                 DIRT => {}
                 BOULDER => {
-                    if let (below, EdgeHitKind::Neither) = xy_in_dir(xy, Dir::Down)
-                    && self.is_clear(below)
-                    && let Some(mob) = self.mobs.remove(xy)
-                    {
-                        // Falling downward
-
-                        // TODO? Instead, collect all movments then apply them all afterwards?
-                        // If we do, avoid the `collect` call above.
-                        self.mobs.insert(below, mob);
-                    } else if let left_down = {
-                        if let (left, EdgeHitKind::Neither) = xy_in_dir(xy, Dir::Left)
-                        && let (left_down, EdgeHitKind::Neither) = xy_in_dir(left, Dir::Down)
-                        {
-                            (self.is_clear(left) && self.is_clear(left_down)).then_some(left_down)
-                        } else {
-                            None
-                        }
-                    }
-                    && let right_down = {
-                        if let (right, EdgeHitKind::Neither) = xy_in_dir(xy, Dir::Right)
-                        && let (right_down, EdgeHitKind::Neither) = xy_in_dir(right, Dir::Down)
-                        {
-                            (self.is_clear(right) && self.is_clear(right_down)).then_some(right_down)
-                        } else {
-                            None
-                        }
-                    }
-                    && (left_down.is_some() || right_down.is_some())
-                    && let Some(mob) = self.mobs.remove(xy)
-                    {
-                        // Rolling to the side of a pile
-                        // TODO Go all the way until we hit something, and count the distance to decide
-                        //      which way to roll?
-                        match (left_down, right_down) {
-                            (Some(target), _) => {
-                                // Roll left first. At the moment, determinism seems better than randomness.
-                                self.mobs.insert(target, mob);
-                            },
-                            (_, Some(target)) => {
-                                self.mobs.insert(target, mob);
-                            },
-                            (None, None) => unreachable!("We checked this already"),
-                        }
-                    } else {
-                        // Stay still
-                    }
+                    self.apply_gravity(xy);
                 }
                 _ => { debug_assert!(false, "Unhandled mob kind in tick"); }
             }
