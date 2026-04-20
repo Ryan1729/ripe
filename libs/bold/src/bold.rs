@@ -345,19 +345,48 @@ fn is_gem(s: TileSprite) -> bool {
     s >= GEM_BASE && s < (GEM_BASE + GEM_FRAME_COUNT as TileSprite)
 }
 
-fn gen_gem_tile(rng: &mut Xs) -> TileSprite {
-    GEM_BASE + (xs::range(rng, 0..GEM_FRAME_COUNT as u32) as TileSprite)
-}
+mod gem_animation {
+    use super::{
+        TileSprite,
+        Xs,
+        GEM_BASE,
+        GEM_FRAME_COUNT,
+    };
 
-// TODO replace with an animation module like the player one. Store the data on the entity
-// Adjust the graphics to make the gems be still most of the time but have light quickly
-// dance across them
-fn next_gem(mut gem: TileSprite) -> TileSprite {
-    gem += 1;
-    if gem >= GEM_BASE + (GEM_FRAME_COUNT as TileSprite) {
-        gem = GEM_BASE;
+    type StateInner = u16;    
+
+    const STATE_MAX: StateInner = 180;
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct State(StateInner);
+
+    pub fn gen_state(rng: &mut Xs) -> State {
+        State(
+            (xs::range(rng, 0..STATE_MAX as u32)) as StateInner
+        )
     }
-    gem
+
+    impl State {
+        pub fn advance(&mut self) {
+            self.0 += 1;
+            if self.0 >= STATE_MAX {
+                self.0 = 0;
+            }
+        }
+
+        pub fn sprite(&self) -> TileSprite {
+            match self.0 {
+                 1 |  2 => GEM_BASE + 1,
+                 3 |  4 => GEM_BASE + 2,
+                 5 |  6 => GEM_BASE + 3,
+                 7 |  8 => GEM_BASE + 4,
+                 9 | 10 => GEM_BASE + 5,
+                11 | 12 => GEM_BASE + 6,
+                13 | 14 => GEM_BASE + 7,
+                _ => GEM_BASE,
+            }
+        }
+    }
 }
 
 mod player_animation {
@@ -600,11 +629,16 @@ fn xy_in_dir(xy: XY, dir: Dir) -> (XY, EdgeHitKind) {
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
     pub tile_sprite: TileSprite,
+    pub gem_animation_state: gem_animation::State,
 }
 
 impl Entity {
     fn is_dirt(&self) -> bool {
         self.tile_sprite == DIRT
+    }
+
+    fn is_gem(&self) -> bool {
+        is_gem(self.tile_sprite)
     }
 }
 
@@ -750,9 +784,21 @@ impl State {
                 }
 
                 if xs::range(rng, 0..2) > 0 {
-                    mobs.insert(xy, Entity { tile_sprite: gen_gem_tile(rng) });
+                    mobs.insert(
+                        xy,
+                        Entity {
+                            tile_sprite: GEM_BASE,
+                            gem_animation_state: gem_animation::gen_state(rng),
+                        }
+                    );
                 } else {
-                    mobs.insert(xy, Entity { tile_sprite: BOULDER });
+                    mobs.insert(
+                        xy,
+                        Entity {
+                            tile_sprite: BOULDER,
+                            gem_animation_state: <_>::default(),
+                        }
+                    );
                 }
             }
         }
@@ -777,7 +823,13 @@ impl State {
                     continue
                 }
 
-                mobs.insert(xy, Entity { tile_sprite: DIRT });
+                mobs.insert(
+                    xy,
+                    Entity {
+                        tile_sprite: DIRT,
+                        gem_animation_state: <_>::default(),
+                    }
+                );
             }
         }
 
@@ -873,7 +925,8 @@ impl State {
             match current_mob {
                 gem if is_gem(gem) => {
                     if let Some(mut mob) = self.mobs.remove(xy) {
-                        mob.tile_sprite = next_gem(gem);
+                        mob.gem_animation_state.advance();
+
                         self.mobs.insert(xy, mob);
                     }
 
@@ -983,7 +1036,12 @@ impl State {
         //
 
         for (&xy, mob) in self.mobs.all() {
-            draw_tile_sprite(xy, mob.tile_sprite);
+            let sprite = if mob.is_gem() {
+                mob.gem_animation_state.sprite()
+            } else {
+                mob.tile_sprite
+            };
+            draw_tile_sprite(xy, sprite);
         }
 
         //
