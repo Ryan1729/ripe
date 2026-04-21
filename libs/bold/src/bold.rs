@@ -338,11 +338,52 @@ const WALL: TileSprite = 25;
 const DIRT: TileSprite = 26;
 const BOULDER: TileSprite = 27;
 
+const EXIT_BASE: TileSprite = 28;
+const EXIT_FRAME_COUNT: TileSprite = 4;
+
 const GEM_BASE: TileSprite = 32;
 const GEM_FRAME_COUNT: u8 = 8;
 
-fn is_gem(s: TileSprite) -> bool {
-    s >= GEM_BASE && s < (GEM_BASE + GEM_FRAME_COUNT as TileSprite)
+type GemCount = u8;
+
+mod exit_animation {
+    use super::{
+        GemCount,
+        TileSprite,
+        EXIT_BASE,
+        EXIT_FRAME_COUNT,
+    };
+
+    type StateInner = u8;
+
+    const STATE_MAX: StateInner = 6;
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct State(StateInner);
+
+    impl State {
+        pub fn advance(&mut self, gem_count: GemCount) {
+            if gem_count < 5 {
+                return
+            }
+            if self.0 < STATE_MAX {
+                self.0 += 1;
+            }
+        }
+
+        pub fn sprite(&self) -> TileSprite {
+            match self.0 {
+                 0 |  1 => EXIT_BASE,
+                 2 |  3 => EXIT_BASE + 1,
+                 4 |  5 => EXIT_BASE + 2,
+                _ => EXIT_BASE + 3,
+            }
+        }
+
+        pub fn is_open(&self) -> bool {
+            self.sprite() == EXIT_BASE + 3
+        }
+    }
 }
 
 mod gem_animation {
@@ -562,6 +603,7 @@ mod player_animation {
             }
         }
     }
+
 }
 
 fn can_walk_onto(
@@ -580,9 +622,10 @@ fn can_walk_onto(
         }
     ) && (
         if let Some(mob) = mobs.get(xy) {
-            // TODO checking whether boulder can be pushed,
-            // is it a collectable, etc.
-            mob.is_dirt()
+            // Is it a collectable.
+            (mob.is_dirt() || mob.is_gem())
+            || (mob.is_exit() && mob.exit_animation_state.is_open())
+            // TODO checking whether boulder can be pushed
         } else {
             true
         }
@@ -630,15 +673,40 @@ fn xy_in_dir(xy: XY, dir: Dir) -> (XY, EdgeHitKind) {
 pub struct Entity {
     pub tile_sprite: TileSprite,
     pub gem_animation_state: gem_animation::State,
+    pub exit_animation_state: exit_animation::State,
 }
 
-impl Entity {
-    fn is_dirt(&self) -> bool {
-        self.tile_sprite == DIRT
+macro_rules! predicates_def {
+    (
+        $(fn $fn_name: ident($sprite: ident: TileSprite) -> bool $code: block )+
+    ) => {
+        $(
+            fn $fn_name($sprite: TileSprite) -> bool {
+                $code
+            }
+        )+
+
+        impl Entity {
+            $(
+                fn $fn_name(&self) -> bool {
+                    $fn_name(self.tile_sprite)
+                }
+            )+
+        }
+    }
+}
+
+predicates_def!{
+    fn is_exit(s: TileSprite) -> bool {
+        s >= EXIT_BASE && s < (EXIT_BASE + EXIT_FRAME_COUNT as TileSprite)
     }
 
-    fn is_gem(&self) -> bool {
-        is_gem(self.tile_sprite)
+    fn is_dirt(s: TileSprite) -> bool {
+        s == DIRT
+    }
+
+    fn is_gem(s: TileSprite) -> bool {
+        s >= GEM_BASE && s < (GEM_BASE + GEM_FRAME_COUNT as TileSprite)
     }
 }
 
@@ -696,6 +764,7 @@ pub struct State {
     pub mobs: Mobs,
     pub player_xy: XY,
     pub player_animation_state: player_animation::State,
+    pub gem_count: GemCount,
     pub left_was_last_x_dir_pressed: bool,
 }
 
@@ -747,16 +816,6 @@ impl State {
             }
         }
 
-        let mut player_i = xs::range(rng, 0..length as u32) as usize;
-        while tiles.cells[player_i] & IS_WALL == IS_WALL  {
-            player_i += 1;
-            if player_i >= length as usize {
-                player_i = 0;
-            }
-        }
-
-        let player_xy = i_to_xy(width, player_i);
-
         let mut mobs = Mobs::default();
 
         for x in 0..max_tile_w {
@@ -766,10 +825,6 @@ impl State {
                 }
 
                 let xy = XY{ x: X(x), y: Y(y) };
-
-                if xy == player_xy {
-                    continue
-                }
 
                 let Ok(i) = xy_to_i(width, xy) else {
                     continue
@@ -789,6 +844,7 @@ impl State {
                         Entity {
                             tile_sprite: GEM_BASE,
                             gem_animation_state: gem_animation::gen_state(rng),
+                            exit_animation_state: <_>::default(),
                         }
                     );
                 } else {
@@ -797,9 +853,46 @@ impl State {
                         Entity {
                             tile_sprite: BOULDER,
                             gem_animation_state: <_>::default(),
+                            exit_animation_state: <_>::default(),
                         }
                     );
                 }
+            }
+        }
+
+        let mut exit_i = xs::range(rng, 0..length as u32) as usize;
+        let mut exit_xy;
+        // Assignment is meant here
+        while { exit_xy = i_to_xy(width, exit_i); false }
+        || tiles.cells[exit_i] & IS_WALL == IS_WALL
+        || mobs.get(exit_xy).is_some()
+        {
+            exit_i += 1;
+            if exit_i >= length as usize {
+                exit_i = 0;
+            }
+        }
+
+        mobs.insert(
+            exit_xy,
+            Entity {
+                tile_sprite: EXIT_BASE,
+                gem_animation_state: <_>::default(),
+                exit_animation_state: <_>::default(),
+            }
+        );
+
+        let mut player_i = xs::range(rng, 0..length as u32) as usize;
+        let mut player_xy;
+
+        // Assignment is meant here
+        while { player_xy = i_to_xy(width, player_i); false }
+        || tiles.cells[player_i] & IS_WALL == IS_WALL
+        || mobs.get(player_xy).is_some()
+        {
+            player_i += 1;
+            if player_i >= length as usize {
+                player_i = 0;
             }
         }
 
@@ -811,6 +904,10 @@ impl State {
                     continue
                 }
 
+                if mobs.get(xy).is_some() {
+                    continue
+                }
+
                 let Ok(i) = xy_to_i(width, xy) else {
                     continue
                 };
@@ -819,23 +916,20 @@ impl State {
                     continue
                 }
 
-                if mobs.get(xy).is_some() {
-                    continue
-                }
-
                 mobs.insert(
                     xy,
                     Entity {
                         tile_sprite: DIRT,
                         gem_animation_state: <_>::default(),
+                        exit_animation_state: <_>::default(),
                     }
                 );
             }
         }
 
-
         // TODO place gems that you can collect
         // TODO Add a exit that opens when you get enough gems
+        // TODO Display Have gems / Need gems
         // TODO place the exit and player in such a way that guarantees the level is solvable
         //    Presumably by tracing a path past the rocks and placing the player and exit on the ends
         //        Or maybe trace a path, then place the rocks?
@@ -845,6 +939,7 @@ impl State {
             rng: xs::from_seed(xs::new_seed(rng)),
             tiles,
             mobs,
+            gem_count: 0,
             player_xy,
             player_animation_state: <_>::default(),
             left_was_last_x_dir_pressed: false,
@@ -852,7 +947,9 @@ impl State {
     }
 
     pub fn is_complete(&self) -> bool {
-        false
+        self.mobs.get(self.player_xy)
+            .map(|mob| mob.exit_animation_state.is_open())
+            .unwrap_or(false)
     }
 
     fn is_clear(&self, xy: XY) -> bool {
@@ -923,7 +1020,7 @@ impl State {
             };
 
             match current_mob {
-                gem if is_gem(gem) => {
+                t_s if is_gem(t_s) => {
                     if let Some(mut mob) = self.mobs.remove(xy) {
                         mob.gem_animation_state.advance();
 
@@ -931,6 +1028,13 @@ impl State {
                     }
 
                     self.apply_gravity(xy);
+                }
+                t_s if is_exit(t_s) => {
+                    if let Some(mut mob) = self.mobs.remove(xy) {
+                        mob.exit_animation_state.advance(self.gem_count);
+
+                        self.mobs.insert(xy, mob);
+                    }
                 }
                 DIRT => {}
                 BOULDER => {
@@ -975,6 +1079,12 @@ impl State {
 
             match self.mobs.remove(self.player_xy) {
                 Some(mob) if mob.is_dirt() => {}, // Expected
+                Some(mob) if mob.is_gem() => {
+                    self.gem_count += 1;
+                },
+                Some(mob) if mob.is_exit() => {
+                    self.mobs.insert(self.player_xy, mob);
+                },
                 Some(mob) => {
                     debug_assert!(false, "Unexpected mob type removed! {mob:?}");
                 }
@@ -1004,7 +1114,6 @@ impl State {
                 y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
             };
 
-            // TODO add the wall sprite and use that here
             commands.sspr(
                 bold_spec.xy_from_tile_sprite(sprite),
                 command::Rect::from_unscaled(bold_spec.rect(base_xy)),
@@ -1038,6 +1147,8 @@ impl State {
         for (&xy, mob) in self.mobs.all() {
             let sprite = if mob.is_gem() {
                 mob.gem_animation_state.sprite()
+            } else if mob.is_exit() {
+                mob.exit_animation_state.sprite()
             } else {
                 mob.tile_sprite
             };
