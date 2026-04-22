@@ -773,6 +773,7 @@ pub struct State {
     pub player_animation_state: player_animation::State,
     pub collection: Collection,
     pub left_was_last_x_dir_pressed: bool,
+    pub gem_hud_buffer: String,
 }
 
 impl State {
@@ -942,7 +943,7 @@ impl State {
         //    Presumably by tracing a path past the rocks and placing the player and exit on the ends
         //        Or maybe trace a path, then place the rocks?
         // TODO implment enemies; place them sparsely, and not along the path traced to place other things
-        dbg!(placed / 2);
+
         Self {
             rng: xs::from_seed(xs::new_seed(rng)),
             tiles,
@@ -954,6 +955,7 @@ impl State {
             player_xy,
             player_animation_state: <_>::default(),
             left_was_last_x_dir_pressed: false,
+            gem_hud_buffer: String::with_capacity(16),
         }
     }
 
@@ -1176,10 +1178,12 @@ impl State {
         // Draw HUD
         //
 
-        // TODO? Worth caching this?
-        let collection_str = format!("{} / {}", self.collection.current, self.collection.target);
+        use std::fmt::Write;
+        self.gem_hud_buffer.clear();
+        // This doesn't actually fail for strings.
+        let _ = write!(&mut self.gem_hud_buffer, "{} / {}", self.collection.current, self.collection.target);
         commands.print_line(
-            collection_str.as_bytes(),
+            self.gem_hud_buffer.as_bytes(),
             unscaled::XY { x: unscaled::X(1), y: unscaled::Y(1) },
             6
         );
