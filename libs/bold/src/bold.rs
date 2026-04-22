@@ -348,6 +348,7 @@ type GemCount = u8;
 
 mod exit_animation {
     use super::{
+        Collection,
         GemCount,
         TileSprite,
         EXIT_BASE,
@@ -362,8 +363,8 @@ mod exit_animation {
     pub struct State(StateInner);
 
     impl State {
-        pub fn advance(&mut self, gem_count: GemCount) {
-            if gem_count < 5 {
+        pub fn advance(&mut self, collection: Collection) {
+            if collection.current < collection.target {
                 return
             }
             if self.0 < STATE_MAX {
@@ -757,6 +758,12 @@ mod mobs {
 }
 use mobs::Mobs;
 
+#[derive(Clone, Copy, Debug)]
+pub struct Collection {
+    pub current: GemCount,
+    pub target: GemCount,
+}
+
 #[derive(Clone, Debug)]
 pub struct State {
     pub rng: Xs,
@@ -764,7 +771,7 @@ pub struct State {
     pub mobs: Mobs,
     pub player_xy: XY,
     pub player_animation_state: player_animation::State,
-    pub gem_count: GemCount,
+    pub collection: Collection,
     pub left_was_last_x_dir_pressed: bool,
 }
 
@@ -818,6 +825,8 @@ impl State {
 
         let mut mobs = Mobs::default();
 
+        let mut placed: GemCount = 0;
+
         for x in 0..max_tile_w {
             for y in 0..max_tile_h {
                 if xs::range(rng, 0..4) > 0 {
@@ -847,6 +856,7 @@ impl State {
                             exit_animation_state: <_>::default(),
                         }
                     );
+                    placed += 1;
                 } else {
                     mobs.insert(
                         xy,
@@ -927,19 +937,20 @@ impl State {
             }
         }
 
-        // TODO place gems that you can collect
-        // TODO Add a exit that opens when you get enough gems
         // TODO Display Have gems / Need gems
         // TODO place the exit and player in such a way that guarantees the level is solvable
         //    Presumably by tracing a path past the rocks and placing the player and exit on the ends
         //        Or maybe trace a path, then place the rocks?
         // TODO implment enemies; place them sparsely, and not along the path traced to place other things
-
+        dbg!(placed / 2);
         Self {
             rng: xs::from_seed(xs::new_seed(rng)),
             tiles,
             mobs,
-            gem_count: 0,
+            collection: Collection {
+                current: 0,
+                target: placed / 2,
+            },
             player_xy,
             player_animation_state: <_>::default(),
             left_was_last_x_dir_pressed: false,
@@ -1031,7 +1042,7 @@ impl State {
                 }
                 t_s if is_exit(t_s) => {
                     if let Some(mut mob) = self.mobs.remove(xy) {
-                        mob.exit_animation_state.advance(self.gem_count);
+                        mob.exit_animation_state.advance(self.collection);
 
                         self.mobs.insert(xy, mob);
                     }
@@ -1080,7 +1091,7 @@ impl State {
             match self.mobs.remove(self.player_xy) {
                 Some(mob) if mob.is_dirt() => {}, // Expected
                 Some(mob) if mob.is_gem() => {
-                    self.gem_count += 1;
+                    self.collection.current += 1;
                 },
                 Some(mob) if mob.is_exit() => {
                     self.mobs.insert(self.player_xy, mob);
@@ -1160,5 +1171,17 @@ impl State {
         //
 
         draw_tile_sprite(self.player_xy, self.player_animation_state.sprite());
+
+        //
+        // Draw HUD
+        //
+
+        // TODO? Worth caching this?
+        let collection_str = format!("{} / {}", self.collection.current, self.collection.target);
+        commands.print_line(
+            collection_str.as_bytes(),
+            unscaled::XY { x: unscaled::X(1), y: unscaled::Y(1) },
+            6
+        );
     }
 }
