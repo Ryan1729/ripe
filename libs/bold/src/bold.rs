@@ -607,26 +607,71 @@ mod player_animation {
 
 }
 
+#[derive(Clone, Copy, Debug)]
+struct Targeting {
+    pub source: XY,
+    pub target: XY,
+}
+
+impl Targeting {
+    fn dir_one_move(self) -> Option<Dir> {
+        match (
+            self.source.x.diff() - self.target.x.diff(),
+            self.source.y.diff() - self.target.y.diff()
+        ) {
+            (1, 0) => Some(Dir::Left),
+            (-1, 0) => Some(Dir::Right),
+            (0, 1) => Some(Dir::Up),
+            (0, -1) => Some(Dir::Down),
+            _ => None,
+        }
+    }
+}
+
+fn push_past_xy(
+    tiles: &Tiles,
+    mobs: &Mobs,
+    targeting @ Targeting { source, target }: Targeting
+) -> Option<XY> {
+    if is_unblocked_by_tiles(tiles, target)
+    && let Some(mob) = mobs.get(target)
+    && mob.is_boulder()
+    && let Some(dir) = targeting.dir_one_move()
+    && let (past, EdgeHitKind::Neither) = xy_in_dir(target, dir)
+    && is_unblocked_by_tiles(tiles, past)
+    && mobs.get(past).is_none()
+    {
+        Some(past)
+    } else {
+        None
+    }
+}
+
+fn is_unblocked_by_tiles(
+    tiles: &Tiles,
+    target: XY,
+) -> bool {
+    if let Ok(i) = xy_to_i(tiles.width, target)
+    && let Some(tile) = tiles.get(i)
+    && tile & IS_WALL == 0 {
+        true
+    } else {
+        false
+    }
+}
+
 fn can_walk_onto(
     tiles: &Tiles,
     mobs: &Mobs,
-    xy: XY
+    targeting @ Targeting { source, target }: Targeting
 ) -> bool {
-    (
-        // Are not blocked by tiles
-        if let Ok(i) = xy_to_i(tiles.width, xy)
-        && let Some(tile) = tiles.get(i)
-        && tile & IS_WALL == 0 {
-            true
-        } else {
-            false
-        }
-    ) && (
-        if let Some(mob) = mobs.get(xy) {
+    push_past_xy(tiles, mobs, targeting).is_some()
+    || (
+        is_unblocked_by_tiles(tiles, target)
+        && if let Some(mob) = mobs.get(target) {
             // Is it a collectable.
             (mob.is_dirt() || mob.is_gem())
             || (mob.is_exit() && mob.exit_animation_state.is_open())
-            // TODO checking whether boulder can be pushed
         } else {
             true
         }
@@ -708,6 +753,10 @@ predicates_def!{
 
     fn is_gem(s: TileSprite) -> bool {
         s >= GEM_BASE && s < (GEM_BASE + GEM_FRAME_COUNT as TileSprite)
+    }
+
+    fn is_boulder(s: TileSprite) -> bool {
+        s == BOULDER
     }
 }
 
@@ -938,11 +987,10 @@ impl State {
             }
         }
 
-        // TODO Display Have gems / Need gems
         // TODO place the exit and player in such a way that guarantees the level is solvable
         //    Presumably by tracing a path past the rocks and placing the player and exit on the ends
         //        Or maybe trace a path, then place the rocks?
-        // TODO implment enemies; place them sparsely, and not along the path traced to place other things
+        // TODO implement enemies; place them sparsely, and not along the path traced to place other things
 
         Self {
             rng: xs::from_seed(xs::new_seed(rng)),
@@ -1071,12 +1119,14 @@ impl State {
         //
         //
 
+        let mut skip_animation_section = true;
+
         if let Some(dir) = input.dir_pressed_this_frame()
         // Walk
         && let (new_xy, _) = xy_in_dir(self.player_xy, dir)
-        && can_walk_onto(&self.tiles, &self.mobs, new_xy)
         {
-            self.player_xy = new_xy;
+            let targeting = Targeting { source: self.player_xy, target: new_xy };
+
             if dir == Dir::Left {
                 self.left_was_last_x_dir_pressed = true;
             }
@@ -1084,29 +1134,56 @@ impl State {
                 self.left_was_last_x_dir_pressed = false;
             }
 
-            if self.left_was_last_x_dir_pressed {
-                self.player_animation_state.left()
-            } else {
-                self.player_animation_state.right()
-            }
+            if let Some(past) = push_past_xy(&self.tiles, &self.mobs, targeting) {
+                self.player_xy = new_xy;
 
-            match self.mobs.remove(self.player_xy) {
-                Some(mob) if mob.is_dirt() => {}, // Expected
-                Some(mob) if mob.is_gem() => {
-                    self.collection.current += 1;
-                },
-                Some(mob) if mob.is_exit() => {
-                    self.mobs.insert(self.player_xy, mob);
-                },
-                Some(mob) => {
-                    debug_assert!(false, "Unexpected mob type removed! {mob:?}");
+                if self.left_was_last_x_dir_pressed {
+                    self.player_animation_state.left()
+                } else {
+                    self.player_animation_state.right()
                 }
-                None => {} // Expected
+
+                match self.mobs.remove(self.player_xy) {
+                    Some(mob) if mob.is_boulder() => {
+                        self.mobs.insert(past, mob);
+                    },
+                    mob_opt => {
+                        debug_assert!(false, "Unexpected case when pushing! {mob_opt:?}");
+                    }
+                }
+            } else if can_walk_onto(&self.tiles, &self.mobs, targeting) {
+                self.player_xy = new_xy;
+               
+                if self.left_was_last_x_dir_pressed {
+                    self.player_animation_state.left()
+                } else {
+                    self.player_animation_state.right()
+                }
+    
+                match self.mobs.remove(self.player_xy) {
+                    Some(mob) if mob.is_dirt() => {}, // Expected
+                    Some(mob) if mob.is_gem() => {
+                        self.collection.current += 1;
+                    },
+                    Some(mob) if mob.is_exit() => {
+                        self.mobs.insert(self.player_xy, mob);
+                    },
+                    Some(mob) => {
+                        debug_assert!(false, "Unexpected mob type removed! {mob:?}");
+                    }
+                    None => {} // Expected
+                }
+            } else {
+                skip_animation_section = false;
             }
-        } else if input.contains_dir().is_none() {
-            self.player_animation_state.idle();
-        } else {
-            self.player_animation_state.advance();
+        }
+
+        if !skip_animation_section {
+            if input.contains_dir().is_none() {
+                self.player_animation_state.idle();
+            } else {
+                self.player_animation_state.advance();
+            }
         }
 
         self.tick();
