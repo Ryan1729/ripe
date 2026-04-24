@@ -1290,6 +1290,11 @@ pub struct ProtoTilesIndex(Index);
 pub struct ProtoTilesWidth(TilesWidth);
 
 impl ProtoTilesWidth {
+    #[cfg(test)]
+    fn new(inner: TilesWidthInner) -> Option<Self> {
+        TilesWidth::new(inner).map(Self)
+    }
+
     fn get(&self) -> TilesWidthInner {
         self.0.get()
     }
@@ -1809,7 +1814,7 @@ fn to_one_thick(
     proto_width: ProtoTilesWidth,
     tiles_length: TilesLength,
     width: TilesWidth
-) -> Vec1<Tile> {
+) -> Grid1<Tile, TilesWidth> {
     use TileIndex::*;
 
     const F: TileIndex = Floor;
@@ -1845,7 +1850,10 @@ fn to_one_thick(
         }
     }
 
-    tiles
+    Grid1{
+        width,
+        cells: tiles,
+    }
 }
 
 fn calc_height<A>(
@@ -2003,7 +2011,9 @@ mod to_one_thick_connects_all_cells_on {
             sizes.tiles_width,
         );
 
-        assert!(are_all_one_floor_tiles_connected(&tiles, sizes.tiles_width));
+        let slice = tiles.slice();
+
+        assert!(are_all_one_floor_tiles_connected(slice.0, slice.1));
     }
 
     #[test]
@@ -2031,12 +2041,17 @@ mod to_one_thick_connects_all_cells_on {
             sizes.tiles_width,
         );
 
-        assert!(are_all_one_floor_tiles_connected(&tiles, sizes.tiles_width));
+        let slice = tiles.slice();
+
+        assert!(are_all_one_floor_tiles_connected(slice.0, slice.1));
     }
 }
 
 /// Set the indexes from the surrounding tiles.
-fn set_indexes(tiles: &mut [Tile], width: TilesWidth) {
+fn set_indexes(tiles: &mut Tiles) {
+    let width = tiles.width;
+    let tiles = &mut tiles.cells;
+
     for index in 0..tiles.len() {
         if !tiles[index].sprite_index.is_floor() {
             let width = usize::from(width.get());
@@ -2093,7 +2108,9 @@ mod set_indexes_works_on {
     use super::*;
 
     /// Only returns walls with unset (zero) indexes.
-    fn three_by_three_walls_from_index(index: u8) -> Vec1<Tile> {
+    fn three_by_three_walls_from_index(index: u8) -> Tiles {
+        let width = TilesWidth::new(3).unwrap();
+
         let w: Tile = Tile {
             sprite_index: TileIndex::Wall(0),
             ..Tile::default()
@@ -2103,7 +2120,7 @@ mod set_indexes_works_on {
             ..Tile::default()
         };
 
-        let mut output = vec1![
+        let mut cells = vec1![
             w, w, w,
             w, w, w,
             w, w, w,
@@ -2113,22 +2130,24 @@ mod set_indexes_works_on {
             let mask = 1 << i;
 
             if index & mask != 0 {
-                output[if i < 4 { i } else { i + 1 } as usize] = f;
+                cells[if i < 4 { i } else { i + 1 } as usize] = f;
             }
         }
 
-        output
+        Tiles {
+            cells,
+            width,
+        }
     }
 
     #[test]
     fn the_one_floor_cases() {
-        let width = TilesWidth::new(3).unwrap();
         for i in 0..8 {
             let index = 0b1u8.rotate_left(i);
 
             let mut tiles = three_by_three_walls_from_index(index);
 
-            set_indexes(&mut tiles, width);
+            set_indexes(&mut tiles);
 
             // The middle tile
             assert_eq!(tiles[4].sprite_index, TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
@@ -2137,13 +2156,12 @@ mod set_indexes_works_on {
 
     #[test]
     fn the_adjacent_two_floor_cases() {
-        let width = TilesWidth::new(3).unwrap();
         for i in 0..8 {
             let index = 0b11u8.rotate_left(i);
 
             let mut tiles = three_by_three_walls_from_index(index);
 
-            set_indexes(&mut tiles, width);
+            set_indexes(&mut tiles);
 
             // The middle tile
             assert_eq!(tiles[4].sprite_index, TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
@@ -2152,13 +2170,12 @@ mod set_indexes_works_on {
 
     #[test]
     fn the_one_apart_two_floor_cases() {
-        let width = TilesWidth::new(3).unwrap();
         for i in 0..8 {
             let index = 0b101u8.rotate_left(i);
 
             let mut tiles = three_by_three_walls_from_index(index);
 
-            set_indexes(&mut tiles, width);
+            set_indexes(&mut tiles);
 
             // The middle tile
             assert_eq!(tiles[4].sprite_index, TileIndex::Wall(index), "i = {i}, tiles = {tiles:?}");
@@ -2191,50 +2208,6 @@ fn get_hit_effect(key: Key, switches: &Switches, mobs: &Mobs) -> HitEffect {
     }
 
     effect
-}
-
-#[cfg(test)]
-mod get_hit_effect_works_on {
-    use super::*;
-
-    #[test]
-    fn these_roach_examples() {
-        use HitEffect::*;
-
-        let key_1 = Key { xy: <_>::default() };
-        let key_2 = Key { xy: XY { x: xy::x(1), y: xy::y(1), } };
-
-        let mut mobs: Mobs = <_>::default();
-
-        mobs.insert(key_1, Entity {
-            tile_sprite: ROACH_BASE,
-            position: key_1.xy.into(),
-            ..<_>::default()
-        });
-
-        let mut position_in_motion = Position::from(XY { x: xy::x(0), y: xy::y(1), });
-
-        position_in_motion.set_xy(key_2.xy);
-        position_in_motion.decay();
-
-        // Oh wait, I bet we messed up mutating mobs, and the key and positions don't match.
-        // Get this building, then prevent that from happening with a module.
-        mobs.insert(key_2, Entity {
-            tile_sprite: ROACH_BASE,
-            position: position_in_motion,
-            ..<_>::default()
-        });
-
-        assert_eq!(
-            RemoveRoach,
-            get_hit_effect(key_1, &mobs),
-        );
-
-        assert_eq!(
-            RemoveRoach,
-            get_hit_effect(key_2, &mobs),
-        );
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -2385,7 +2358,7 @@ impl State {
 
             const F: TileIndex = Floor;
 
-            let mut tiles = to_one_thick(&proto_tiles, sizes.proto_width, sizes.tiles_length, sizes.tiles_width);
+            let mut tiles: Tiles = to_one_thick(&proto_tiles, sizes.proto_width, sizes.tiles_length, sizes.tiles_width);
 
             let exit_index = xy_to_i(sizes.tiles_width, proto_i_to_tile_xy(sizes.proto_width, proto_exit_index))
                 // Default to the first non-edge tile
@@ -2394,6 +2367,12 @@ impl State {
             //
             // Pick sections for things to be placed in
             //
+
+//            let start_index = tiles.distinct_far_away_index(exit_index);
+
+            //fn distinct_far_away_index(&self, base_index: Index) -> Index {
+//
+            //}
 
             let start_index = {
                 let mut start_index = exit_index;
@@ -2422,6 +2401,21 @@ impl State {
             let mut paths = Vec::with_capacity(16 /* not thought about too hard */);
 
             type Path = Vec<Index>;
+
+            // Proposed steps to do paths in B.O.L.D.
+            // * Write a version of the call B.O.L.D. wants, to validate the following steps.
+            //    * Comment it out if you have to, but make sure we are exposung an immediately 
+            //      useful API for that case at the same time as we keep S.W.O.R.D. working.
+            // * See if we can move the `ProtoTile`s into a module here, and if it contains only
+            //   stuff we are willing to move to a new shared crate.
+            // * Move `find_all_paths` function into that module too
+            //     * Convert this `find_all_paths` function to work on abstract tiles
+            //         * I guess things with a way to answer the question "fn blocks() -> bool"
+            //     * I guess `to_one_thick` will need to go in there too?
+            // * Make a `dir` crate, and move the Dir type in there, for minimum dependencies
+            //   created in next step.
+            // * Add new `maze` crate, move new module to there
+            //     * depend on that dir crate
 
             fn find_all_paths(
                 tiles: &[Tile],
@@ -2455,7 +2449,7 @@ impl State {
                 }
             }
 
-            find_all_paths(&tiles, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
+            find_all_paths(tiles.slice().0, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
 
             // Currently there's always only one path. Might pick the longest path among multiple later.
             let path: Path = paths.swap_remove(0);
@@ -2919,7 +2913,7 @@ impl State {
             tiles
         };
 
-        set_indexes(&mut tiles, width);
+        set_indexes(&mut tiles);
 
         assert_eq!(player.flags & GONE, 0, "The player should never be gone!");
         assert_eq!(player.flags & RENDER_FACING, RENDER_FACING, "The player should always be rendered taking facing into account!");
@@ -2932,10 +2926,7 @@ impl State {
             switches,
             mechanisms,
             mobs,
-            tiles: Tiles {
-                width,
-                cells: tiles,
-            },
+            tiles,
             animations: <_>::default(),
         }
     }

@@ -770,13 +770,15 @@ fn err_render(commands: &mut Commands, error_state: &ErrorState) {
 
 #[test]
 fn something_gets_drawn_for_ice_puzzle_alone() {
+    let specs = crate::Specs::default();
+
     let seed = <_>::default();
 
     let mut rng  = xs::from_seed(seed);
 
-    let mut state = ice_puzzle::State::new(&mut rng);
+    let mut state = ice_puzzle::State::new(&mut rng, &specs.ice_puzzles);
 
-    let mut commands = Commands::new(seed);
+    let mut commands = Commands::new(seed, specs.base_font, specs.base_ui);
     let input = <_>::default();
     let mut speaker = <_>::default();
 
@@ -784,6 +786,7 @@ fn something_gets_drawn_for_ice_puzzle_alone() {
 
     state.update_and_render(
         &mut commands,
+        &specs.ice_puzzles,
         input,
         &mut speaker,
     );
@@ -793,10 +796,12 @@ fn something_gets_drawn_for_ice_puzzle_alone() {
 
 #[test]
 fn something_gets_drawn_for_ice_puzzle_within_app_state() {
+    let specs = crate::Specs::default();
+
     let seed = <_>::default();
 
     let params = StateParams {
-        config_loader: None,
+        pak_loader: None,
         logger: None,
         error_logger: None,
         seed,
@@ -812,7 +817,7 @@ fn something_gets_drawn_for_ice_puzzle_within_app_state() {
 
     let mut rng = xs::from_seed(seed);
 
-    state.game_state.as_mut().expect("should not be in an error state").hallway_states.insert(source, target, HallwayState::IcePuzzle(ice_puzzle::State::new(&mut rng)));
+    state.game_state.as_mut().expect("should not be in an error state").hallway_states.insert(source, target, HallwayState::IcePuzzle(ice_puzzle::State::new(&mut rng, &specs.ice_puzzles)));
 
     assert!(state.commands.slice().len() <= 0, "precondition failure");
 

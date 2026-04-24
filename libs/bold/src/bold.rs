@@ -920,42 +920,70 @@ impl State {
             }
         }
 
-        let mut exit_i = xs::range(rng, 0..length as u32) as usize;
-        let mut exit_xy;
-        // Assignment is meant here
-        while { exit_xy = i_to_xy(width, exit_i); false }
-        || tiles.cells[exit_i] & IS_WALL == IS_WALL
-        || mobs.get(exit_xy).is_some()
-        {
-            exit_i += 1;
-            if exit_i >= length as usize {
-                exit_i = 0;
+        #[cfg(false)] 
+        let player_xy = {
+            let (player_xy, exit_xy) = {
+                
+                find_all_paths(&tiles, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
+
+                // Currently there's always only one path. Might pick the longest path among multiple later.
+                let path: Path = paths.swap_remove(0);
+            };
+
+            mobs.insert(
+                exit_xy,
+                Entity {
+                    tile_sprite: EXIT_BASE,
+                    gem_animation_state: <_>::default(),
+                    exit_animation_state: <_>::default(),
+                }
+            );
+
+            player_xy
+        };
+
+        #[cfg(true)] 
+        let player_xy = {
+            let mut exit_i = xs::range(rng, 0..length as u32) as usize;
+            let mut exit_xy;
+            // Assignment is meant here
+            while { exit_xy = i_to_xy(width, exit_i); false }
+            || tiles.cells[exit_i] & IS_WALL == IS_WALL
+            || mobs.get(exit_xy).is_some()
+            {
+                exit_i += 1;
+                if exit_i >= length as usize {
+                    exit_i = 0;
+                }
             }
-        }
-
-        mobs.insert(
-            exit_xy,
-            Entity {
-                tile_sprite: EXIT_BASE,
-                gem_animation_state: <_>::default(),
-                exit_animation_state: <_>::default(),
+    
+            mobs.insert(
+                exit_xy,
+                Entity {
+                    tile_sprite: EXIT_BASE,
+                    gem_animation_state: <_>::default(),
+                    exit_animation_state: <_>::default(),
+                }
+            );
+    
+            let mut player_i = xs::range(rng, 0..length as u32) as usize;
+            let mut player_xy;
+    
+            // Assignment is meant here
+            while { player_xy = i_to_xy(width, player_i); false }
+            || tiles.cells[player_i] & IS_WALL == IS_WALL
+            || mobs.get(player_xy).is_some()
+            {
+                player_i += 1;
+                if player_i >= length as usize {
+                    player_i = 0;
+                }
             }
-        );
 
-        let mut player_i = xs::range(rng, 0..length as u32) as usize;
-        let mut player_xy;
+            player_xy
+        };
 
-        // Assignment is meant here
-        while { player_xy = i_to_xy(width, player_i); false }
-        || tiles.cells[player_i] & IS_WALL == IS_WALL
-        || mobs.get(player_xy).is_some()
-        {
-            player_i += 1;
-            if player_i >= length as usize {
-                player_i = 0;
-            }
-        }
-
+        // Fill remainder with dirt
         for x in 0..max_tile_w {
             for y in 0..max_tile_h {
                 let xy = XY{ x: X(x), y: Y(y) };

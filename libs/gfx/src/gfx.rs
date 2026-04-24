@@ -437,7 +437,13 @@ mod nine_slice_works {
 
     #[test]
     fn on_this_uneven_example() {
-        let mut commands = Commands::new(<_>::default());
+        let specs = sprite::Specs::default();
+
+        let mut commands = Commands::new(
+            <_>::default(),
+            specs.base_font,
+            specs.base_ui,
+        );
 
         commands.nine_slice(
             0,

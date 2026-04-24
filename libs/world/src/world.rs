@@ -87,7 +87,7 @@ mod entities {
 
     #[cfg(test)]
     mod entities_works {
-        use models::{xy::{x, y}};
+        use models::{xy::{self, x, y}};
         use super::*;
 
         #[test]
@@ -97,16 +97,13 @@ mod entities {
             let id = 0;
 
             let mut a = Entity::default();
-            a.x = x(1);
-            a.y = y(2);
+            a.xy = xy::XY { x: x(1), y: y(2) };
 
             let mut b = Entity::default();
-            b.x = x(3);
-            b.y = y(3);
+            b.xy = xy::XY { x: x(3), y: y(3) };
 
             let mut c = Entity::default();
-            c.x = x(1);
-            c.y = y(2);
+            c.xy = xy::XY { x: x(1), y: y(2) };
 
             entities.insert(id, a.clone());
             entities.insert(id, b.clone());
@@ -115,10 +112,10 @@ mod entities {
             let mut actual = vec![];
 
             for (_, v) in entities.for_id(id) {
-                actual.push(v.xy());
+                actual.push(v.xy);
             }
 
-            let expected = vec![a.xy(), b.xy()];
+            let expected = vec![a.xy, b.xy];
 
             assert_eq!(actual, expected);
         }

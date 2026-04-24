@@ -220,10 +220,12 @@ mod platform {
 fn something_gets_drawn() {
     let seed = <_>::default();
 
-    let mut state = State::new(seed);
+    let specs = sprite::Specs::default();
 
-    let mut commands = Commands::new(seed);
-    let spec = Specs::default().ice_puzzles;
+    let mut state = State::new(seed, &specs.ice_puzzles);
+
+    let mut commands = Commands::new(seed, specs.base_font, specs.base_ui);
+    
     let input = <_>::default();
     let mut speaker = <_>::default();
 
@@ -231,7 +233,7 @@ fn something_gets_drawn() {
 
     State::update_and_render(
         &mut commands,
-        &spec,
+        &specs.ice_puzzles,
         &mut state,
         input,
         &mut speaker,
