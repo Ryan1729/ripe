@@ -188,6 +188,31 @@ impl <Element, Width> Grid1<Element, Width> {
     pub fn last(&self) -> &Element {
         self.cells.last()
     }
+
+    pub fn distinct_far_away_index(&self, base_index: usize, is_unacceptable: impl Fn(usize, &Element) -> bool) -> usize {
+        let mut output_index = base_index;
+        output_index += self.cells.len() / 2;
+
+        while output_index >= self.cells.len() {
+            output_index -= self.cells.len();
+        }
+
+        while is_unacceptable(output_index, &self.cells[output_index])
+        {
+            output_index += 1;
+
+            while output_index >= self.cells.len() {
+                output_index -= self.cells.len();
+            }
+
+            // We've looped around. Give up instead of infinite looping
+            if output_index == base_index {
+                break
+            }
+        }
+
+        output_index
+    }
 }
 
 impl <Element, Width> Grid1<Element, Width> 
@@ -238,7 +263,7 @@ impl<'a, Element, Width> IntoIterator for &'a Grid1<Element, Width> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Grid1Spec<Width> {
     pub width: Width,
     pub len: usize,
@@ -251,5 +276,125 @@ where Width: Clone {
             width: self.width.clone(),
             len: self.cells.len(),
         }
+    }
+}
+
+
+// We'll see if it seems reasonable to keep this module's content private
+mod xy {
+    use super::{Grid1Spec, Path};
+
+    // TODO? Should this be something like u64 to avoid issues in cases where usize is small?
+    type Inner = usize;
+
+    type X = Inner;
+    type Y = Inner;
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub(crate) struct XY {
+        x: X,
+        y: Y,
+    }
+
+    pub(crate) type Width = Inner;
+
+    pub(crate) fn i_to_xy(width: Width, index: usize) -> XY {
+        XY {
+            x: index % width,
+            y: index / width,
+        }
+    }
+
+    #[derive(Debug)]
+    enum XYToIError {
+        XPastWidth,
+        ITooLarge,
+    }
+    
+    fn xy_to_i(spec: Grid1Spec<Width>, xy: XY) -> Result<usize, XYToIError> {    
+        if xy.x >= spec.width {
+            return Err(XYToIError::XPastWidth);
+        }
+    
+        let i = xy.y * spec.width + xy.x;
+
+        if i >= spec.len {
+            return Err(XYToIError::ITooLarge);
+        }
+
+        Ok(i)
+    }
+
+    enum Dir {
+        Up,
+        Down,
+        Left,
+        Right,
+    }
+
+    impl XY {
+        fn checked_push(self, dir: Dir) -> Option<XY> {
+            use Dir::*;
+            Some(match dir.into() {
+                Up => XY { x: self.x, y: self.y.checked_sub(1)? },
+                Right => XY { x: self.x.checked_add(1)?, y: self.y },
+                Down => XY { x: self.x, y: self.y.checked_add(1)? },
+                Left => XY { x: self.x.checked_sub(1)?, y: self.y },
+            })
+        }
+    }
+
+    pub(crate) fn find_all_paths_helper(
+        spec: Grid1Spec<Width>,
+        current_xy: XY,
+        exit_xy: XY,
+        is_walkable: impl Copy + Fn(usize) -> bool,
+        mut current_path: Path,
+        paths: &mut Vec<Path>,
+    ) {
+        if let Ok(current_i) = xy_to_i(spec, current_xy)
+        && !current_path.contains(&current_i)
+        && is_walkable(current_i) {
+            current_path.push(current_i);
+
+            if current_xy == exit_xy {
+                paths.push(current_path);
+            } else {
+                if let Some(xy) = current_xy.checked_push(Dir::Left) {
+                    find_all_paths_helper(spec, xy, exit_xy, is_walkable, current_path.clone(), paths);
+                }
+                if let Some(xy) = current_xy.checked_push(Dir::Right) {
+                    find_all_paths_helper(spec, xy, exit_xy, is_walkable, current_path.clone(), paths);
+                }
+                if let Some(xy) = current_xy.checked_push(Dir::Up) {
+                    find_all_paths_helper(spec, xy, exit_xy, is_walkable, current_path.clone(), paths);
+                }
+                if let Some(xy) = current_xy.checked_push(Dir::Down) {
+                    find_all_paths_helper(spec, xy, exit_xy, is_walkable, current_path/* take ownership */, paths);
+                }
+            }
+        }
+    }
+}
+
+pub type Path = Vec<usize>;
+
+impl Grid1Spec<xy::Width>
+{
+    pub fn find_all_paths(
+        self,
+        current_i: usize,
+        target_i: usize,
+        is_walkable: impl Copy + Fn(usize) -> bool,
+        paths: &mut Vec<Path>,
+    ) {
+        xy::find_all_paths_helper(
+            self,
+            xy::i_to_xy(self.width, current_i),
+            xy::i_to_xy(self.width, target_i),
+            is_walkable,
+            vec![],
+            paths,
+        )
     }
 }

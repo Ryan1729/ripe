@@ -2368,35 +2368,15 @@ impl State {
             // Pick sections for things to be placed in
             //
 
-//            let start_index = tiles.distinct_far_away_index(exit_index);
-
-            //fn distinct_far_away_index(&self, base_index: Index) -> Index {
-//
-            //}
-
-            let start_index = {
-                let mut start_index = exit_index;
-                start_index += tiles.len() / 2;
-
-                while start_index >= tiles.len() {
-                    start_index -= tiles.len();
+            let start_index = tiles.distinct_far_away_index(
+                exit_index,
+                |_i, tile| {
+                    tile.sprite_index != F
+                    || tile.flags & TILE_REQUIRED != 0
                 }
-
-                while tiles[start_index].sprite_index != F
-                || tiles[start_index].flags & TILE_REQUIRED != 0
-                {
-                    start_index += 1;
-
-                    while start_index >= tiles.len() {
-                        start_index -= tiles.len();
-                    }
-                }
-
-                start_index
-            };
+            );
 
             let start_xy = i_to_xy(width, start_index);
-            let exit_xy = i_to_xy(width, exit_index);
 
             let mut paths = Vec::with_capacity(16 /* not thought about too hard */);
 
@@ -2417,39 +2397,17 @@ impl State {
             // * Add new `maze` crate, move new module to there
             //     * depend on that dir crate
 
-            fn find_all_paths(
-                tiles: &[Tile],
-                width: TilesWidth,
-                current_xy: XY,
-                exit_xy: XY,
-                mut current_path: Path,
-                paths: &mut Vec<Path>,
-            ) {
-                if let Ok(current_i) = xy_to_i(width, current_xy)
-                && !current_path.contains(&current_i)
-                && let Some(Floor) = tiles.get(current_i).map(|t| t.sprite_index) {
-                    current_path.push(current_i);
+            let spec = Grid1Spec {
+                len: tiles.len(),
+                width: tiles.width.get().into(),
+            };
 
-                    if current_xy == exit_xy {
-                        paths.push(current_path);
-                    } else {
-                        if let Some(xy) = current_xy.checked_push(Dir::Left) {
-                            find_all_paths(&tiles, width, xy, exit_xy, current_path.clone(), paths);
-                        }
-                        if let Some(xy) = current_xy.checked_push(Dir::Right) {
-                            find_all_paths(&tiles, width, xy, exit_xy, current_path.clone(), paths);
-                        }
-                        if let Some(xy) = current_xy.checked_push(Dir::Up) {
-                            find_all_paths(&tiles, width, xy, exit_xy, current_path.clone(), paths);
-                        }
-                        if let Some(xy) = current_xy.checked_push(Dir::Down) {
-                            find_all_paths(&tiles, width, xy, exit_xy, current_path/* take ownership */, paths);
-                        }
-                    }
-                }
-            }
-
-            find_all_paths(tiles.slice().0, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
+            spec.find_all_paths(
+                start_index,
+                exit_index,
+                |i| { matches!(tiles.get(i).map(|t| t.sprite_index), Some(Floor)) },
+                &mut paths,
+            );
 
             // Currently there's always only one path. Might pick the longest path among multiple later.
             let path: Path = paths.swap_remove(0);
@@ -2612,7 +2570,7 @@ impl State {
             }
 
             enum Complication {
-                // Can we extend the path in an intereting way? Perhaps from the middle?
+                // Can we extend the path in an interesting way? Perhaps from the middle?
                 //ExtendPath,
                 AddSwitchDoor,
                 //MoveSwitch,

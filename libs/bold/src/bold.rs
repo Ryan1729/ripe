@@ -923,7 +923,17 @@ impl State {
         #[cfg(false)] 
         let player_xy = {
             let (player_xy, exit_xy) = {
-                
+                let start_index = tiles.distinct_far_away_index(
+                    exit_index,
+                    |i, tile| {
+                        (tile & IS_WALL == IS_WALL)
+                        || {
+                            let xy = i_to_xy(i);
+                            mobs.get(xy).is_some()
+                        }
+                    }
+                );
+
                 find_all_paths(&tiles, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
 
                 // Currently there's always only one path. Might pick the longest path among multiple later.
