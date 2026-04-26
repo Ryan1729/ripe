@@ -875,10 +875,10 @@ impl State {
 
         let mut mobs = Mobs::default();
 
-        let mut placed: GemCount = 0;
+        let mut gems_placed: GemCount = 0;
 
-        for x in 0..max_tile_w {
-            for y in 0..max_tile_h {
+        for y in 0..max_tile_h {
+            for x in 0..max_tile_w {
                 if xs::range(rng, 0..4) > 0 {
                     continue
                 }
@@ -906,7 +906,7 @@ impl State {
                             exit_animation_state: <_>::default(),
                         }
                     );
-                    placed += 1;
+                    gems_placed += 1;
                 } else {
                     mobs.insert(
                         xy,
@@ -920,24 +920,91 @@ impl State {
             }
         }
 
-        #[cfg(false)] 
+        #[cfg(true)]
+        // Proposed new version
         let player_xy = {
             let (player_xy, exit_xy) = {
-                let start_index = tiles.distinct_far_away_index(
-                    exit_index,
-                    |i, tile| {
-                        (tile & IS_WALL == IS_WALL)
-                        || {
-                            let xy = i_to_xy(i);
-                            mobs.get(xy).is_some()
+                let mut exit_index;
+                let mut start_index;
+
+                let mut paths = Vec::with_capacity(16);
+
+                let mut tries = 16;
+
+                while {
+                    exit_index = xs::range(rng, 0..length as u32) as usize;
+
+                    start_index = tiles.distinct_far_away_index(
+                        exit_index,
+                        |i, tile| {
+                            (tile & IS_WALL == IS_WALL)
+                            || {
+                                let xy = i_to_xy(width, i);
+                                mobs.get(xy).is_some()
+                            }
+                        }
+                    );
+
+                    tries > 0
+                } {
+                    dbg!("pre find");
+                    let before = std::time::Instant::now();
+    
+                    paths.clear();
+
+                    let spec = Grid1Spec {
+                        len: tiles.len(),
+                        width: tiles.width.get().into(),
+                    };
+
+                    if true { panic!("this will take too long without more restrictions!") }
+                    // FIXME do something that doesn't take forever. Since we don't use the path, we can work with an
+                    // existence proof of there being a path, even if it is a boring one, given that it's likely a more
+                    // interesting one exists
+                    spec.find_all_paths(
+                        start_index,
+                        exit_index,
+                        // TODO extend this to account for boulder physics and enemies if we get around to making those
+                        |i| {
+                            tiles.get(i).map(|t| t & IS_WALL == 0).unwrap_or(false)
+                            && { let xy = i_to_xy(width, i); mobs.get(xy).is_none() }
+                        },
+                        &mut paths
+                    );
+                    eprintln!("post find {}", before.elapsed().as_secs());
+    
+                    if paths.len() > 0 {
+                        break
+                    }
+
+                    tries -= 1;
+                }
+                if tries == 0 {
+                    // Fallback to a room full of gems
+                    mobs = <_>::default();
+                    exit_index = 0;
+                    start_index = 1;
+                    for y in 1..max_tile_h {
+                        for x in 0..max_tile_w {
+                            let xy = XY{ x: X(x), y: Y(y) };
+
+                            mobs.insert(
+                                xy,
+                                Entity {
+                                    tile_sprite: GEM_BASE,
+                                    gem_animation_state: gem_animation::gen_state(rng),
+                                    exit_animation_state: <_>::default(),
+                                }
+                            );
+                            gems_placed += 1;
                         }
                     }
-                );
+                }
+            
+                let exit_xy = i_to_xy(width, exit_index);
+                let start_xy = i_to_xy(width, start_index);
 
-                find_all_paths(&tiles, sizes.tiles_width, start_xy, exit_xy, vec![], &mut paths);
-
-                // Currently there's always only one path. Might pick the longest path among multiple later.
-                let path: Path = paths.swap_remove(0);
+                (start_xy, exit_xy)
             };
 
             mobs.insert(
@@ -952,7 +1019,8 @@ impl State {
             player_xy
         };
 
-        #[cfg(true)] 
+        #[cfg(false)] 
+        // Old version
         let player_xy = {
             let mut exit_i = xs::range(rng, 0..length as u32) as usize;
             let mut exit_xy;
@@ -1036,7 +1104,7 @@ impl State {
             mobs,
             collection: Collection {
                 current: 0,
-                target: placed / 2,
+                target: gems_placed / 2,
             },
             player_xy,
             player_animation_state: <_>::default(),
