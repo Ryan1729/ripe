@@ -947,7 +947,6 @@ impl State {
 
                     tries > 0
                 } {
-                    dbg!("pre find");
                     let before = std::time::Instant::now();
     
                     paths.clear();
@@ -957,11 +956,7 @@ impl State {
                         width: tiles.width.get().into(),
                     };
 
-                    if true { panic!("this will take too long without more restrictions!") }
-                    // FIXME do something that doesn't take forever. Since we don't use the path, we can work with an
-                    // existence proof of there being a path, even if it is a boring one, given that it's likely a more
-                    // interesting one exists
-                    spec.find_all_paths(
+                    spec.find_any_path(
                         start_index,
                         exit_index,
                         // TODO extend this to account for boulder physics and enemies if we get around to making those
@@ -971,7 +966,6 @@ impl State {
                         },
                         &mut paths
                     );
-                    eprintln!("post find {}", before.elapsed().as_secs());
     
                     if paths.len() > 0 {
                         break

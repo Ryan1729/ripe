@@ -344,33 +344,57 @@ mod xy {
         }
     }
 
-    pub(crate) fn find_all_paths_helper(
+    #[derive(Debug)]
+    pub(crate) enum Mode {
+        All,
+        // TODO faster hash?
+        N(u8, std::collections::HashSet<usize>),
+    }
+
+    pub(crate) fn find_paths_helper(
         spec: Grid1Spec<Width>,
         current_xy: XY,
         exit_xy: XY,
         is_walkable: impl Copy + Fn(usize) -> bool,
         mut current_path: Path,
         paths: &mut Vec<Path>,
+        mode: &mut Mode,
     ) {
         if let Ok(current_i) = xy_to_i(spec, current_xy)
         && !current_path.contains(&current_i)
         && is_walkable(current_i) {
+            if let Mode::N(left, seen) = mode
+            && (*left == 0 || seen.contains(&current_i)) {
+                return
+            }
+
             current_path.push(current_i);
+
+            if let Mode::N(_, seen) = mode {
+                seen.insert(current_i);
+            }
 
             if current_xy == exit_xy {
                 paths.push(current_path);
+                
+                match mode {
+                    Mode::All => {},
+                    Mode::N(left, _) => {
+                        *left = left.saturating_sub(1);
+                    }
+                }
             } else {
                 if let Some(xy) = current_xy.checked_push(Dir::Left) {
-                    find_all_paths_helper(spec, xy, exit_xy, is_walkable, current_path.clone(), paths);
+                    find_paths_helper(spec, xy, exit_xy, is_walkable, current_path.clone(), paths, mode);
                 }
                 if let Some(xy) = current_xy.checked_push(Dir::Right) {
-                    find_all_paths_helper(spec, xy, exit_xy, is_walkable, current_path.clone(), paths);
+                    find_paths_helper(spec, xy, exit_xy, is_walkable, current_path.clone(), paths, mode);
                 }
                 if let Some(xy) = current_xy.checked_push(Dir::Up) {
-                    find_all_paths_helper(spec, xy, exit_xy, is_walkable, current_path.clone(), paths);
+                    find_paths_helper(spec, xy, exit_xy, is_walkable, current_path.clone(), paths, mode);
                 }
                 if let Some(xy) = current_xy.checked_push(Dir::Down) {
-                    find_all_paths_helper(spec, xy, exit_xy, is_walkable, current_path/* take ownership */, paths);
+                    find_paths_helper(spec, xy, exit_xy, is_walkable, current_path/* take ownership */, paths, mode);
                 }
             }
         }
@@ -388,13 +412,36 @@ impl Grid1Spec<xy::Width>
         is_walkable: impl Copy + Fn(usize) -> bool,
         paths: &mut Vec<Path>,
     ) {
-        xy::find_all_paths_helper(
+        let mut mode = xy::Mode::All;
+
+        xy::find_paths_helper(
             self,
             xy::i_to_xy(self.width, current_i),
             xy::i_to_xy(self.width, target_i),
             is_walkable,
             vec![],
             paths,
+            &mut mode,
+        )
+    }
+
+    pub fn find_any_path(
+        self,
+        current_i: usize,
+        target_i: usize,
+        is_walkable: impl Copy + Fn(usize) -> bool,
+        paths: &mut Vec<Path>,
+    ) {
+        let mut mode = xy::Mode::N(1, <_>::default());
+
+        xy::find_paths_helper(
+            self,
+            xy::i_to_xy(self.width, current_i),
+            xy::i_to_xy(self.width, target_i),
+            is_walkable,
+            vec![],
+            paths,
+            &mut mode,
         )
     }
 }
