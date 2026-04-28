@@ -6,7 +6,7 @@
 use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
 use vec1::{Grid1, Grid1Spec, vec1, Vec1};
-use xs::Xs;
+use xs::{Seed, Xs};
 
 use std::collections::BTreeMap;
 use std::num::TryFromIntError;
@@ -395,7 +395,7 @@ mod gem_animation {
         GEM_FRAME_COUNT,
     };
 
-    type StateInner = u16;    
+    type StateInner = u16;
 
     const STATE_MAX: StateInner = 180;
 
@@ -470,8 +470,12 @@ mod player_animation {
     }
 
     impl State {
+        pub fn is_idle(&self) -> bool {
+            matches!(self, State::Idle(_))
+        }
+
         pub fn idle(&mut self) {
-            if let State::Idle(_) = self {
+            if self.is_idle() {
                 return
             }
 
@@ -815,6 +819,7 @@ pub struct Collection {
 
 #[derive(Clone, Debug)]
 pub struct State {
+    pub seed: Seed, // For restarting
     pub rng: Xs,
     pub tiles: Tiles,
     pub mobs: Mobs,
@@ -827,6 +832,15 @@ pub struct State {
 
 impl State {
     pub fn new(rng: &mut Xs, bold_spec: &sprite::Spec::<sprite::BOLD>) -> Self {
+        let seed = xs::new_seed(rng);
+
+        Self::init(seed, bold_spec)
+    }
+
+    fn init(seed: Seed, bold_spec: &sprite::Spec::<sprite::BOLD>) -> Self {
+        let mut rng_ = xs::from_seed(seed);
+        let rng = &mut rng_;
+
         let (mut max_tile_w, mut max_tile_h) = bold_spec.max_tile_counts();
 
         if max_tile_w == 0 {
@@ -920,8 +934,6 @@ impl State {
             }
         }
 
-        #[cfg(true)]
-        // Proposed new version
         let player_xy = {
             let (player_xy, exit_xy) = {
                 let mut exit_index;
@@ -948,7 +960,7 @@ impl State {
                     tries > 0
                 } {
                     let before = std::time::Instant::now();
-    
+
                     paths.clear();
 
                     let spec = Grid1Spec {
@@ -966,7 +978,7 @@ impl State {
                         },
                         &mut paths
                     );
-    
+
                     if paths.len() > 0 {
                         break
                     }
@@ -994,7 +1006,7 @@ impl State {
                         }
                     }
                 }
-            
+
                 let exit_xy = i_to_xy(width, exit_index);
                 let start_xy = i_to_xy(width, start_index);
 
@@ -1009,48 +1021,6 @@ impl State {
                     exit_animation_state: <_>::default(),
                 }
             );
-
-            player_xy
-        };
-
-        #[cfg(false)] 
-        // Old version
-        let player_xy = {
-            let mut exit_i = xs::range(rng, 0..length as u32) as usize;
-            let mut exit_xy;
-            // Assignment is meant here
-            while { exit_xy = i_to_xy(width, exit_i); false }
-            || tiles.cells[exit_i] & IS_WALL == IS_WALL
-            || mobs.get(exit_xy).is_some()
-            {
-                exit_i += 1;
-                if exit_i >= length as usize {
-                    exit_i = 0;
-                }
-            }
-    
-            mobs.insert(
-                exit_xy,
-                Entity {
-                    tile_sprite: EXIT_BASE,
-                    gem_animation_state: <_>::default(),
-                    exit_animation_state: <_>::default(),
-                }
-            );
-    
-            let mut player_i = xs::range(rng, 0..length as u32) as usize;
-            let mut player_xy;
-    
-            // Assignment is meant here
-            while { player_xy = i_to_xy(width, player_i); false }
-            || tiles.cells[player_i] & IS_WALL == IS_WALL
-            || mobs.get(player_xy).is_some()
-            {
-                player_i += 1;
-                if player_i >= length as usize {
-                    player_i = 0;
-                }
-            }
 
             player_xy
         };
@@ -1093,7 +1063,8 @@ impl State {
         // TODO implement enemies; place them sparsely, and not along the path traced to place other things
 
         Self {
-            rng: xs::from_seed(xs::new_seed(rng)),
+            seed,
+            rng: rng_,
             tiles,
             mobs,
             collection: Collection {
@@ -1105,6 +1076,10 @@ impl State {
             left_was_last_x_dir_pressed: false,
             gem_hud_buffer: String::with_capacity(16),
         }
+    }
+
+    fn restart(&mut self, bold_spec: &sprite::Spec::<sprite::BOLD>) {
+        *self = Self::init(self.seed, bold_spec);
     }
 
     pub fn is_complete(&self) -> bool {
@@ -1253,13 +1228,13 @@ impl State {
                 }
             } else if can_walk_onto(&self.tiles, &self.mobs, targeting) {
                 self.player_xy = new_xy;
-               
+
                 if self.left_was_last_x_dir_pressed {
                     self.player_animation_state.left()
                 } else {
                     self.player_animation_state.right()
                 }
-    
+
                 match self.mobs.remove(self.player_xy) {
                     Some(mob) if mob.is_dirt() => {}, // Expected
                     Some(mob) if mob.is_gem() => {
@@ -1276,10 +1251,14 @@ impl State {
             } else {
                 skip_animation_section = false;
             }
+        } else if input.pressed_this_frame(Button::START) {
+            self.restart(bold_spec);
+        } else {
+            skip_animation_section = false;
         }
 
         if !skip_animation_section {
-            if input.contains_dir().is_none() {
+            if input.contains_dir().is_none() && !self.player_animation_state.is_idle() {
                 self.player_animation_state.idle();
             } else {
                 self.player_animation_state.advance();
