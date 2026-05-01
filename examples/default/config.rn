@@ -132,10 +132,14 @@ pub fn main() /* -> Result<Object, String> */ {
                 kind: HW::SWORD,
                 // TODO configuration of SWORD.
             },
-            */
             #{
                 kind: HW::BOLD,
                 // TODO configuration of BOLD.
+            },
+            */
+            #{
+                kind: HW::HEX_HOP,
+                // TODO configuration of Hex Hop.
             },
         ],
         entities: entities,

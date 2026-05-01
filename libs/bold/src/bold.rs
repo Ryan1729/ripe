@@ -136,47 +136,6 @@ pub mod xy {
         pub y: Y,
     }
 
-    //impl From<XY> for offset::Point {
-        //fn from(XY { x, y }: XY) -> Self {
-            //(offset::Inner::from(x.0), offset::Inner::from(y.0))
-        //}
-    //}
-//
-    //impl XY {
-        //pub fn checked_push(self, dir: impl Into<crate::Dir8>) -> Option<XY> {
-            //use crate::Dir8::*;
-            //Some(match dir.into() {
-                //UpLeft => XY { x: self.x.checked_sub(W::ONE)?, y: self.y.checked_sub(H::ONE)? },
-                //Up => XY { x: self.x, y: self.y.checked_sub(H::ONE)? },
-                //UpRight => XY { x: self.x.checked_add(W::ONE)?, y: self.y.checked_sub(H::ONE)? },
-                //Right => XY { x: self.x.checked_add(W::ONE)?, y: self.y },
-                //DownRight => XY { x: self.x.checked_add(W::ONE)?, y: self.y.checked_add(H::ONE)? },
-                //Down => XY { x: self.x, y: self.y.checked_add(H::ONE)? },
-                //DownLeft => XY { x: self.x.checked_sub(W::ONE)?, y: self.y.checked_add(H::ONE)? },
-                //Left => XY { x: self.x.checked_sub(W::ONE)?, y: self.y },
-            //})
-        //}
-    //}
-//
-    //use crate::{EdgeHitKind, TilesWidth, xy_to_i, xy_in_dir};
-//
-    //impl pathfinding::XYTrait<TilesWidth, platform_types::Dir> for XY {
-        //fn to_i(self, &width: &TilesWidth) -> usize {
-            //xy_to_i(width, self).unwrap_or(usize::MAX)
-        //}
-        //fn apply_dir(self, dir: platform_types::Dir) -> Option<Self> {
-            //if let (xy, EdgeHitKind::Neither) = xy_in_dir(self, dir) {
-                //Some(xy)
-            //} else {
-                //None
-            //}
-        //}
-        //fn chebyshev_distance_to(self, other: Self) -> usize {
-            //core::cmp::max((other.x.diff() - self.x.diff()).abs(), (other.y.diff() - self.y.diff()).abs())
-                //.try_into().unwrap_or(usize::MAX)
-        //}
-    //}
-//
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct WH {
         pub w: W,

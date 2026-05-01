@@ -140,6 +140,7 @@ pub mod hallway {
         // or
         // Boulders Often Lope Downwards
         BOLD(bold::State),
+        HexHop(hex_hop::State),
     }
 
     impl State {
@@ -149,6 +150,7 @@ pub mod hallway {
                 IcePuzzle(inner) => inner.is_complete(),
                 SWORD(inner) => inner.is_complete(),
                 BOLD(inner) => inner.is_complete(),
+                HexHop(inner) => inner.is_complete(),
             }
         }
     }
@@ -951,29 +953,19 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
 
                 use models::config::HallwaySpec;
 
-                match hallway {
-                    HallwaySpec::None => {},
-                    HallwaySpec::IcePuzzle => {
-                        hallway_states.insert(
-                            key_i,
-                            key_j,
-                            hallway::State::IcePuzzle(ice_puzzle::State::new(rng, &specs.ice_puzzles)),
-                        );
-                    },
-                    HallwaySpec::SWORD => {
-                        hallway_states.insert(
-                            key_i,
-                            key_j,
-                            hallway::State::SWORD(sword::State::new(rng, &specs.wall)),
-                        );
-                    },
-                    HallwaySpec::BOLD => {
-                        hallway_states.insert(
-                            key_i,
-                            key_j,
-                            hallway::State::BOLD(bold::State::new(rng, &specs.bold)),
-                        );
-                    },
+
+                'insert: {
+                    hallway_states.insert(
+                        key_i,
+                        key_j,
+                        match hallway {
+                            HallwaySpec::None => { break 'insert },
+                            HallwaySpec::IcePuzzle => hallway::State::IcePuzzle(ice_puzzle::State::new(rng, &specs.ice_puzzles)),
+                            HallwaySpec::SWORD => hallway::State::SWORD(sword::State::new(rng, &specs.wall)),
+                            HallwaySpec::BOLD => hallway::State::BOLD(bold::State::new(rng, &specs.bold)),
+                            HallwaySpec::HexHop => hallway::State::HexHop(hex_hop::State::new(rng, &specs.hex_pieces)),
+                        }
+                    );
                 }
 
                 assert_door_targets_seem_right!();

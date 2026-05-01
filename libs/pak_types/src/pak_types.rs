@@ -970,6 +970,7 @@ pub mod sprite {
         pub floor: Spec<Floor>,
         pub toggle_wall: Spec<ToggleWall>,
         pub bold: Spec<BOLD>,
+        pub hex_pieces: Spec<HexPieces>,
     }
 
     impl Default for Specs {
@@ -1022,6 +1023,11 @@ pub mod sprite {
                     offset: WH{ w: W(256), h: H(256) },
                     tile: WH{ w: W(16), h: H(16) },
                     tiles_per_row: 8,
+                }),
+                hex_pieces: spec::<HexPieces>(SpecPieces{
+                    offset: WH{ w: W(384), h: H(256) },
+                    tile: WH{ w: W(40), h: H(11) },
+                    tiles_per_row: 3,
                 }),
             }
         }
@@ -1136,6 +1142,7 @@ mod hallway_spec {
         IcePuzzle ICE_PUZZLE = 1,
         SWORD SWORD = 2,
         BOLD BOLD = 3,
+        HexHop HEX_HOP = 4,
     }
 }
 pub use hallway_spec::const_to_hallway_spec;

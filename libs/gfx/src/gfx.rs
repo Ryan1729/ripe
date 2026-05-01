@@ -3,6 +3,7 @@ use models::{ShakeAmount, Speech};
 
 pub mod to_tile;
 
+use gfx_sizes::ARGB;
 use pak_types::{sprite::{self, Renderable, BaseFont, BaseUI},};
 use platform_types::{Command, PALETTE, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex};
 use text::byte_slice as text;
@@ -115,10 +116,11 @@ impl Commands {
         }
     }
 
-    pub fn sspr(
+    pub fn sspr_override(
         &mut self,
         sprite_xy: sprite::XY<Renderable>,
         rect: command::Rect,
+        colour_override: ARGB,
     ) {
         push_with_screenshake(
             &mut self.commands,
@@ -127,8 +129,20 @@ impl Commands {
             Command {
                 sprite_xy,
                 rect,
-                colour_override: 0,
+                colour_override,
             }
+        );
+    }
+
+    pub fn sspr(
+        &mut self,
+        sprite_xy: sprite::XY<Renderable>,
+        rect: command::Rect,
+    ) {
+        self.sspr_override(
+            sprite_xy,
+            rect,
+            0,
         );
     }
 

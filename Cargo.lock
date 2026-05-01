@@ -713,6 +713,7 @@ dependencies = [
 name = "gfx"
 version = "0.1.0"
 dependencies = [
+ "gfx_sizes",
  "models",
  "pak_types",
  "platform_types",
@@ -768,6 +769,17 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "hex_hop"
+version = "0.1.0"
+dependencies = [
+ "gfx",
+ "gfx_sizes",
+ "platform_types",
+ "vec1",
+ "xs",
+]
 
 [[package]]
 name = "hot-lib-reloader"
@@ -2906,6 +2918,7 @@ version = "0.1.0"
 dependencies = [
  "bold",
  "features",
+ "hex_hop",
  "ice_puzzle",
  "models",
  "sword",

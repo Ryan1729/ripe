@@ -633,7 +633,7 @@ mod rune_based {
 
             let key = "kind";
 
-            let kind: models::consts::HallwayKind = get_int!(hallway, key, parent_key);
+            let kind: pak_types::consts::HallwayKind = get_int!(hallway, key, parent_key);
 
             let spec = match pak_types::const_to_hallway_spec(kind) {
                 Some(spec) => spec,

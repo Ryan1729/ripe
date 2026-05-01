@@ -236,6 +236,14 @@ fn game_update(commands: &mut Commands, specs: &Specs, state: &mut game::State, 
                         speaker,
                     );
                 },
+                Some(HallwayState::HexHop(hex_hop)) => {
+                    hex_hop.update_and_render(
+                        commands,
+                        &specs.hex_pieces,
+                        input,
+                        speaker,
+                    );
+                },
                 None => {
                     invariant_assert!(false, "Hallway was not found while in Hallway mode!");
                     state.mode = Mode::Walking;

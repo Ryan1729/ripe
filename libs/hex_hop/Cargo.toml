@@ -1,0 +1,25 @@
+[package]
+name = "hex_hop"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/hex_hop.rs"
+
+[dependencies]
+
+[dependencies.gfx]
+path = "../gfx"
+
+[dependencies.gfx_sizes]
+path = "../gfx_sizes"
+
+[dependencies.platform_types]
+path = "../platform_types"
+
+[dependencies.vec1]
+path = "../vec1"
+
+[dependencies.xs]
+path = "../xs"
+
