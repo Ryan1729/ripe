@@ -9,6 +9,8 @@ use std::num::TryFromIntError;
 
 type Index = usize;
 
+type TileSprite = u16;
+
 pub type TilesWidthInner = xy::Inner;
 pub type TilesWidth = std::num::NonZeroU16;
 
@@ -332,19 +334,144 @@ impl State {
         // Draw Hexes
         //
 
-        for i in 0..7 {
-            let sprite = i * hex_pieces_spec.tiles_per_row();
+        let darken = |colour: ARGB| {
+            let alpha = colour & 0xFF00_0000;
 
-            let base_xy = unscaled::XY {
-                x: unscaled::X(unscaled::Inner::from(0u16) * tile_w.get()),
-                y: unscaled::Y(unscaled::Inner::from(i) * tile_h.get())
+            let mut r = colour & 0xFF_0000;
+            r = r.saturating_div(2);
+            r &= 0xFF_0000;
+            let mut g = colour & 0xFF00;
+            g = g.saturating_div(2);
+            g &= 0xFF00;
+            let mut b = colour & 0xFF;
+            b = b.saturating_div(2);
+
+            alpha | r | g | b
+        };
+
+        let brighten = |colour: ARGB| {
+            let alpha = colour & 0xFF00_0000;
+
+            let mut r = colour & 0xFF_0000;
+            r = r.saturating_mul(2);
+            r &= 0xFF_0000;
+            let mut g = colour & 0xFF00;
+            g = g.saturating_mul(2);
+            g &= 0xFF00;
+ 
+            let mut b = colour & 0xFF;
+            b = b.saturating_div(2);
+            b &= 0xFF;
+
+            alpha | r | g | b
+        };
+
+        let mut draw_hex = |/*at, */height, base_colour: ARGB| {
+            // TODO respect parameters
+
+            let outline_colour: ARGB = 0xFF00_0000;
+            let top_face_colour: ARGB = base_colour;
+            let top_lower_edge_colour: ARGB = brighten(base_colour);
+            let left_face_colour: ARGB = brighten(base_colour);
+            let center_face_colour: ARGB = base_colour;
+            let right_face_colour: ARGB = darken(base_colour);
+
+            const TOP_LINE: TileSprite = 0;
+            const LEFT_RIGHT_EDGES: TileSprite = 3;
+            const TOP_FACE: TileSprite = 6;
+            const BOTTOM_FULL_LINE: TileSprite = 9;
+            const BOTTOM_LEFT_LINE: TileSprite = 12;
+            const BOTTOM_RIGHT_LINE: TileSprite = 15;
+            const BOTTOM_CENTER_LINE: TileSprite = 18;
+
+            let mut xy = unscaled::XY {
+                x: unscaled::X(0),
+                y: unscaled::Y(0),
             };
 
+            for _ in 0..2 {
+                commands.sspr_override(
+                    hex_pieces_spec.xy_from_tile_sprite(TOP_LINE),
+                    command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                    outline_colour,
+                );
+
+                xy += unscaled::H(1);
+            }
+
             commands.sspr_override(
-                hex_pieces_spec.xy_from_tile_sprite(sprite),
-                command::Rect::from_unscaled(hex_pieces_spec.rect(base_xy)),
-                0xFFDE4949,
+                hex_pieces_spec.xy_from_tile_sprite(TOP_FACE),
+                command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                top_face_colour,
             );
+
+            xy += (tile_h / 2);
+            xy -= unscaled::H(1);
+
+            macro_rules! left_right_edges {
+                () => {
+                    commands.sspr_override(
+                        hex_pieces_spec.xy_from_tile_sprite(LEFT_RIGHT_EDGES),
+                        command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                        outline_colour,
+                    );
+                }
+            }
+
+            for _ in 0..2 {
+                left_right_edges!();
+
+                xy += unscaled::H(1);
+            }
+
+            commands.sspr_override(
+                hex_pieces_spec.xy_from_tile_sprite(BOTTOM_FULL_LINE),
+                command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                top_lower_edge_colour,
+            );
+            left_right_edges!();
+
+            xy += unscaled::H(1);
+
+            for _ in 0..height {
+                commands.sspr_override(
+                    hex_pieces_spec.xy_from_tile_sprite(BOTTOM_LEFT_LINE),
+                    command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                    left_face_colour,
+                );
+                commands.sspr_override(
+                    hex_pieces_spec.xy_from_tile_sprite(BOTTOM_CENTER_LINE),
+                    command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                    center_face_colour,
+                );
+                commands.sspr_override(
+                    hex_pieces_spec.xy_from_tile_sprite(BOTTOM_RIGHT_LINE),
+                    command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                    right_face_colour,
+                );
+                left_right_edges!();
+    
+                xy += unscaled::H(1);
+            }
+
+            left_right_edges!();
+            for _ in 0..2 {
+                commands.sspr_override(
+                    hex_pieces_spec.xy_from_tile_sprite(BOTTOM_FULL_LINE),
+                    command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                    outline_colour,
+                );
+                xy += unscaled::H(1);
+            }
+        };
+
+        for i in 0..3 {
+            // TODO better test params
+            draw_hex(
+                /*<_>::default(),*/
+                15 * i,
+                0xFFDE4949,
+            )
         }
 
         //
