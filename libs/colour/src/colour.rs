@@ -9,7 +9,7 @@ fn cbrt(x: Float) -> Float {
     Float::cbrt(x)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Oklab {
     l: Float,
     a: Float,
@@ -21,8 +21,8 @@ impl Oklab {
 
     fn from_argb(argb: ARGB) -> Self {
         let r = (((argb & 0xFF_0000) >> 16) as Float) / 255.0;
-        let g = (((argb & 0xFF_0000) >> 8) as Float) / 255.0;
-        let b = ((argb & 0xFF_0000) as Float) / 255.0;
+        let g = (((argb & 0xFF_00) >> 8) as Float) / 255.0;
+        let b = ((argb & 0xFF) as Float) / 255.0;
 
         // Original RGB to LMS matrix coefficients
         let l: Float = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
@@ -90,5 +90,33 @@ impl From<ARGB> for DarkMiddleBright<ARGB> {
             middle,
             bright,
         }
+    }
+}
+
+#[cfg(test)]
+mod dark_middle_bright_works_on {
+    use super::*;
+
+    #[test]
+    fn de4949() {
+        let c = 0xFFde4949;
+
+        let DarkMiddleBright { dark, middle, bright } = DarkMiddleBright::from(c);
+
+        // We got 0xFFFF00FF for all values before.
+        const FOOF: ARGB = 0xFFFF00FF;
+        assert_ne!(dark, FOOF);
+        assert_ne!(middle, FOOF);
+        assert_ne!(bright, FOOF);
+
+        // We got 0xFFFF00FF for all values before, after the version that got foof.
+        const FOOOIE: ARGB = 0xFF00_0000;
+        assert_ne!(dark, FOOOIE);
+        assert_ne!(middle, FOOOIE);
+        assert_ne!(bright, FOOOIE);
+
+        assert_ne!(dark, middle);
+        assert_ne!(middle, bright);
+        assert_ne!(dark, bright);
     }
 }
