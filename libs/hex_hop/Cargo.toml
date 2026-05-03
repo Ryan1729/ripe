@@ -8,6 +8,9 @@ path = "src/hex_hop.rs"
 
 [dependencies]
 
+[dependencies.colour]
+path = "../colour"
+
 [dependencies.gfx]
 path = "../gfx"
 

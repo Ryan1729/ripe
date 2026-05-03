@@ -1,5 +1,5 @@
 [workspace]
-members = ["libs/bold","libs/gfx_sizes", "libs/hex_hop","libs/ice_puzzle", "libs/offset", "libs/pak", "libs/pak_types", "libs/pathfinding", "libs/sword","libs/text", "libs/vec1", "libs/world",
+members = ["libs/bold", "libs/colour","libs/gfx_sizes", "libs/hex_hop","libs/ice_puzzle", "libs/offset", "libs/pak", "libs/pak_types", "libs/pathfinding", "libs/sword","libs/text", "libs/vec1", "libs/world",
     "ripe",
     "run-wasm"
 , "tooling/ripe-pack", "tooling/tile-viewer"]

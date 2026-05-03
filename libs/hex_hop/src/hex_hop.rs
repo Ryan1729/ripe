@@ -334,6 +334,9 @@ impl State {
         // Draw Hexes
         //
 
+        // TODO move these to a `colour` crate, find a good colour space or whatever to
+        // make these not fuck up the hue. Do not move the ARGB type alias there, but
+        // making a copy of it is fine.
         let darken = |colour: ARGB| {
             let alpha = colour & 0xFF00_0000;
 
@@ -370,11 +373,15 @@ impl State {
             // TODO respect parameters
 
             let outline_colour: ARGB = 0xFF00_0000;
-            let top_face_colour: ARGB = base_colour;
-            let top_lower_edge_colour: ARGB = brighten(base_colour);
-            let left_face_colour: ARGB = brighten(base_colour);
-            let center_face_colour: ARGB = base_colour;
-            let right_face_colour: ARGB = darken(base_colour);
+            // TODO? cache this across frames? It is a few cbrts.
+            let colour::DarkMiddleBright{ dark, middle, bright }
+                = colour::DarkMiddleBright::from(base_colour);
+
+            let top_face_colour: ARGB = middle;
+            let top_lower_edge_colour: ARGB = bright;
+            let left_face_colour: ARGB = bright;
+            let center_face_colour: ARGB = middle;
+            let right_face_colour: ARGB = dark;
 
             const TOP_LINE: TileSprite = 0;
             const LEFT_RIGHT_EDGES: TileSprite = 3;
