@@ -14,6 +14,198 @@ type TileSprite = u16;
 pub type TilesWidthInner = xy::Inner;
 pub type TilesWidth = std::num::NonZeroU16;
 
+/// Hexagonal coordinates.
+/// We follow the q, r, and s naming convention used in https://www.redblobgames.com/grids/hexagons/
+mod qrs {
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum Dir {
+        #[default]
+        DecRIncS,
+        DecRIncQ,
+        DecSIncQ,
+        DecSIncR,
+        DecQIncR,
+        DecQIncS,
+    }
+
+    impl Dir {
+        pub const ALL: [Dir; 6] = [
+            Dir::DecRIncS,
+            Dir::DecRIncQ,
+            Dir::DecSIncQ,
+            Dir::DecSIncR,
+            Dir::DecQIncR,
+            Dir::DecQIncS,
+        ];
+
+        fn basis(self) -> QRSD {
+            match self {
+                Dir::DecRIncS => QRSD { qd: QD(0),  rd: RD(-1) },
+                Dir::DecRIncQ => QRSD { qd: QD(1),  rd: RD(-1) },
+                Dir::DecSIncQ => QRSD { qd: QD(1),  rd: RD(0)  },
+                Dir::DecSIncR => QRSD { qd: QD(0),  rd: RD(1)  },
+                Dir::DecQIncR => QRSD { qd: QD(-1), rd: RD(1)  },
+                Dir::DecQIncS => QRSD { qd: QD(-1), rd: RD(0)  },
+            }
+        }
+    }
+
+    pub type Inner = i16;
+
+    pub type Distance = u8;
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct Q(pub Inner);
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct R(pub Inner);
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct S(pub Inner);
+
+    // We will attempt to keep the fact that we skip storing `s` hidden from the interface.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct QRS {
+        q: Q,
+        r: R,
+    }
+
+    type NeighborError = ();
+
+    impl QRS {
+        fn neighbor(self, dir: Dir) -> Self {
+            self + dir.basis()
+        }
+    }
+
+    /// A delta in Q space, as opposed to a Q, which is a point.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct QD(pub Inner);
+
+    /// A delta in R space, as opposed to an R, which is a point.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct RD(pub Inner);
+
+    /// A delta in S space, as opposed to an S, which is a point.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct SD(pub Inner);
+
+    macro_rules! shared_d_def {
+        ($($name: ident)+) => {
+            $(
+                impl $name {
+                    fn scale(self, radius: Distance) -> Self {
+                        Self(self.0.saturating_mul(radius.into()))
+                    }
+                }
+            )+
+        }
+    }
+
+    shared_d_def!{
+        QD
+        RD
+        SD
+    }
+
+    impl core::ops::AddAssign<QD> for Q {
+        fn add_assign(&mut self, other: QD) {
+            self.0 += other.0;
+        }
+    }
+
+    impl core::ops::Add<QD> for Q {
+        type Output = Self;
+
+        fn add(mut self, other: QD) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    impl core::ops::AddAssign<RD> for R {
+        fn add_assign(&mut self, other: RD) {
+            self.0 += other.0;
+        }
+    }
+
+    impl core::ops::Add<RD> for R {
+        type Output = Self;
+
+        fn add(mut self, other: RD) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    impl core::ops::AddAssign<SD> for S {
+        fn add_assign(&mut self, other: SD) {
+            self.0 += other.0;
+        }
+    }
+
+    impl core::ops::Add<SD> for S {
+        type Output = Self;
+
+        fn add(mut self, other: SD) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    /// A delta in QRS space, as opposed to a QRS, which is a point.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct QRSD {
+        qd: QD,
+        rd: RD,
+    }
+
+    impl core::ops::AddAssign<QRSD> for QRS {
+        fn add_assign(&mut self, other: QRSD) {
+            self.q += other.qd;
+            self.r += other.rd;
+        }
+    }
+
+    impl core::ops::Add<QRSD> for QRS {
+        type Output = Self;
+
+        fn add(mut self, other: QRSD) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    impl QRSD {
+        fn scale(self, radius: Distance) -> Self {
+            Self {
+                qd: self.qd.scale(radius),
+                rd: self.rd.scale(radius),
+            }
+        }
+    }
+
+    pub fn spiral(radius: Distance, center: QRS) -> impl Iterator<Item = QRS> {
+        // See https://www.redblobgames.com/grids/hexagons/#rings for capacity formula
+        let mut output = Vec::with_capacity(1 + 3 * radius as usize * (radius as usize + 1));
+
+        output.push(center);
+
+        for ring_i in 1..=radius {
+            let mut hex = center + Dir::default().basis().scale(radius);
+            
+            for dir in Dir::ALL {
+                for _ in 0..ring_i {
+                    output.push(hex);
+                    hex = hex.neighbor(dir);
+                }
+            }
+        }
+
+        output.into_iter()
+    }
+}
+
 pub mod xy {
     pub type Inner = u16;
     /// A signed type large enough to hold the difference between two Inner
@@ -472,13 +664,13 @@ impl State {
             }
         };
 
-        for i in 0..3 {
+        for qrs in qrs::spiral(2, <_>::default()) {
             // TODO better test params
             draw_hex(
                 /*<_>::default(),*/
-                15 * i,
+                15,
                 0xFFDE4949,
-            )
+            );
         }
 
         //
