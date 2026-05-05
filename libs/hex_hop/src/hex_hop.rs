@@ -72,9 +72,28 @@ mod qrs {
 
     type NeighborError = ();
 
+    type Float = f32;
+
+    const SQRT_3: Float = 1.732050807568877293527446341505872367;
+
+    const X_Q_FACTOR: Float = 3./2.;
+    const X_R_FACTOR: Float = 0.;
+
+    const Y_Q_FACTOR: Float = SQRT_3 / 2.;
+    const Y_R_FACTOR: Float = SQRT_3;
+
+
     impl QRS {
         fn neighbor(self, dir: Dir) -> Self {
             self + dir.basis()
+        }
+
+        /// Converts to x and y on a conceptual infinite hex-grid. Will likely
+        /// need further processing for any real use-case.
+        pub fn to_unit_grid(self) -> (Float, Float) {
+            let x = X_Q_FACTOR * self.q.0 as Float + X_R_FACTOR * self.r.0 as Float;
+            let y = Y_Q_FACTOR * self.q.0 as Float + Y_R_FACTOR * self.r.0 as Float;
+            (x, y)
         }
     }
 
@@ -192,8 +211,8 @@ mod qrs {
         output.push(center);
 
         for ring_i in 1..=radius {
-            let mut hex = center + Dir::default().basis().scale(radius);
-            
+            let mut hex = center + Dir::ALL[4].basis().scale(radius);
+
             for dir in Dir::ALL {
                 for _ in 0..ring_i {
                     output.push(hex);
@@ -203,6 +222,73 @@ mod qrs {
         }
 
         output.into_iter()
+    }
+
+    #[cfg(test)]
+    mod spiral_works {
+        use super::*;
+
+        #[test]
+        fn on_the_basic_1_case() {
+            let actual: Vec<_> = spiral(1, <_>::default()).collect();
+
+            assert_eq!(actual.len(), 7);
+
+            macro_rules! a {
+                ($expected_element: expr) => {
+                    assert!(
+                        actual.contains(&$expected_element)
+                    );
+                }
+            }
+
+            a!(QRS { q: Q(0), r: R(0), });
+
+            a!(QRS { q: Q(1), r: R(0), });
+            a!(QRS { q: Q(1), r: R(-1), });
+            a!(QRS { q: Q(0), r: R(-1), });
+            a!(QRS { q: Q(-1), r: R(0), });
+            a!(QRS { q: Q(-1), r: R(1), });
+            a!(QRS { q: Q(0), r: R(1), });
+        }
+
+        #[test]
+        fn on_the_basic_2_case() {
+            let actual: Vec<_> = spiral(2, <_>::default()).collect();
+
+            assert_eq!(actual.len(), 19);
+
+            macro_rules! a {
+                ($expected_element: expr) => {
+                    assert!(
+                        actual.contains(&$expected_element)
+                    );
+                }
+            }
+
+            a!(QRS { q: Q(0), r: R(0), });
+
+            a!(QRS { q: Q(1), r: R(0), });
+            a!(QRS { q: Q(1), r: R(-1), });
+            a!(QRS { q: Q(0), r: R(-1), });
+            a!(QRS { q: Q(-1), r: R(0), });
+            a!(QRS { q: Q(-1), r: R(1), });
+            a!(QRS { q: Q(0), r: R(1), });
+
+            a!(QRS { q: Q(0), r: R(-2), });
+            a!(QRS { q: Q(1), r: R(-2), });
+            a!(QRS { q: Q(2), r: R(-2), });
+            a!(QRS { q: Q(2), r: R(-1), });
+            a!(QRS { q: Q(2), r: R(0), });
+            a!(QRS { q: Q(0), r: R(-1), });
+            a!(QRS { q: Q(1), r: R(1), });
+            a!(QRS { q: Q(0), r: R(2), });
+            a!(QRS { q: Q(-1), r: R(2), });
+            a!(QRS { q: Q(-2), r: R(2), });
+            a!(QRS { q: Q(-2), r: R(1), });
+            a!(QRS { q: Q(-2), r: R(0), });
+            a!(QRS { q: Q(-1), r: R(-1), });
+        }
     }
 }
 
@@ -494,7 +580,7 @@ impl State {
     }
 
     fn tick(&mut self) {
-        
+
     }
 
     pub fn update_and_render(
@@ -553,7 +639,7 @@ impl State {
             let mut g = colour & 0xFF00;
             g = g.saturating_mul(2);
             g &= 0xFF00;
- 
+
             let mut b = colour & 0xFF;
             b = b.saturating_div(2);
             b &= 0xFF;
@@ -561,7 +647,7 @@ impl State {
             alpha | r | g | b
         };
 
-        let mut draw_hex = |/*at, */height, base_colour: ARGB| {
+        let mut draw_hex = |at, height, base_colour: ARGB| {
             // TODO respect parameters
 
             let outline_colour: ARGB = 0xFF00_0000;
@@ -583,10 +669,7 @@ impl State {
             const BOTTOM_RIGHT_LINE: TileSprite = 15;
             const BOTTOM_CENTER_LINE: TileSprite = 18;
 
-            let mut xy = unscaled::XY {
-                x: unscaled::X(0),
-                y: unscaled::Y(0),
-            };
+            let mut xy = at;
 
             for _ in 0..2 {
                 commands.sspr_override(
@@ -649,7 +732,7 @@ impl State {
                     right_face_colour,
                 );
                 left_right_edges!();
-    
+
                 xy += unscaled::H(1);
             }
 
@@ -664,10 +747,23 @@ impl State {
             }
         };
 
+        const HEX_X_SCALE: f32 = 25.0;
+        const HEX_Y_SCALE: f32 = 20.0;
+        const HEX_X_OFFSET: f32 = 5.0;
+        const HEX_Y_OFFSET: f32 = 5.0;
+
+
         for qrs in qrs::spiral(2, <_>::default()) {
-            // TODO better test params
+            let (x, y) = qrs.to_unit_grid();
+
+            let xy = unscaled::XY {
+                x: unscaled::X(((x + HEX_X_OFFSET) * HEX_X_SCALE) as unscaled::Inner),
+                y: unscaled::Y(((y + HEX_Y_OFFSET) * HEX_Y_SCALE) as unscaled::Inner),
+            };
+
+            // TODO better test params, like different heights and colours.
             draw_hex(
-                /*<_>::default(),*/
+                xy,
                 15,
                 0xFFDE4949,
             );
