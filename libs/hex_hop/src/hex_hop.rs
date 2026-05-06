@@ -211,7 +211,7 @@ mod qrs {
         output.push(center);
 
         for ring_i in 1..=radius {
-            let mut hex = center + Dir::ALL[4].basis().scale(radius);
+            let mut hex = center + Dir::ALL[4].basis().scale(ring_i);
 
             for dir in Dir::ALL {
                 for _ in 0..ring_i {
@@ -265,7 +265,7 @@ mod qrs {
                     );
                 }
             }
-
+            dbg!(&actual);
             a!(QRS { q: Q(0), r: R(0), });
 
             a!(QRS { q: Q(1), r: R(0), });
