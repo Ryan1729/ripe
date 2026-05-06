@@ -66,15 +66,16 @@ mod qrs {
     // We will attempt to keep the fact that we skip storing `s` hidden from the interface.
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct QRS {
-        q: Q,
+        // We put R first so the default sorting layers the hexes from back to front.
         r: R,
+        q: Q,
     }
 
     type NeighborError = ();
 
     type Float = f32;
 
-    const SQRT_3: Float = 1.732050807568877293527446341505872367;
+    pub const SQRT_3: Float = 1.732050807568877293527446341505872367;
 
     const X_Q_FACTOR: Float = 3./2.;
     const X_R_FACTOR: Float = 0.;
@@ -747,13 +748,24 @@ impl State {
             }
         };
 
-        const HEX_X_SCALE: f32 = 25.0;
-        const HEX_Y_SCALE: f32 = 20.0;
+        const HEX_X_SCALE: f32 = 15.0 * qrs::SQRT_3;
+        const HEX_Y_SCALE: f32 = 15.0;
         const HEX_X_OFFSET: f32 = 5.0;
         const HEX_Y_OFFSET: f32 = 5.0;
 
+        let heights = [0,1,2,3,4,5,6,7,8,9,10];
+        let palette = [
+            0xFF3352E1,
+            0xFF30B06E,
+            0xFFDE4949,
+            0xFFFFB937,
+            0xFF533354,
+            0xFF5A7D8B,
+            0xFFEEEEEE,
+            0xFF222222,
+        ];
 
-        for qrs in qrs::spiral(2, <_>::default()) {
+        for (i, qrs) in qrs::spiral(2, <_>::default()).enumerate() {
             let (x, y) = qrs.to_unit_grid();
 
             let xy = unscaled::XY {
@@ -761,11 +773,10 @@ impl State {
                 y: unscaled::Y(((y + HEX_Y_OFFSET) * HEX_Y_SCALE) as unscaled::Inner),
             };
 
-            // TODO better test params, like different heights and colours.
             draw_hex(
                 xy,
-                15,
-                0xFFDE4949,
+                heights[i % heights.len()],
+                palette[i % palette.len()],
             );
         }
 
