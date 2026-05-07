@@ -14,6 +14,7 @@ type TileSprite = u16;
 pub type TilesWidthInner = xy::Inner;
 pub type TilesWidth = std::num::NonZeroU16;
 
+
 /// Hexagonal coordinates.
 /// We follow the q, r, and s naming convention used in https://www.redblobgames.com/grids/hexagons/
 mod qrs {
@@ -63,12 +64,12 @@ mod qrs {
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct S(pub Inner);
 
-    // We will attempt to keep the fact that we skip storing `s` hidden from the interface.
+    /// We can avoid storing `S` by computing it as needed based only on q and r.
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct QRS {
         // We put R first so the default sorting layers the hexes from back to front.
-        r: R,
-        q: Q,
+        pub r: R,
+        pub q: Q,
     }
 
     type NeighborError = ();
@@ -292,6 +293,7 @@ mod qrs {
         }
     }
 }
+use qrs::{QRS, Q, R};
 
 pub mod xy {
     pub type Inner = u16;
@@ -496,11 +498,21 @@ pub fn xy_to_i(width: impl Into<TilesWidth>, xy: XY) -> Result<Index, XYToIError
     Ok(xy.y.usize() * width_usize + x_usize)
 }
 
+type HexHeight = u8;
+
+#[derive(Clone, Copy, Debug)]
+pub struct Tile {
+    pub height: HexHeight,
+    pub colour: ARGB
+}
+
+pub type Key = QRS;
+
+pub type Tiles = BTreeMap<Key, Tile>;
+
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
 }
-
-pub type Key = XY;
 
 mod mobs {
     use super::*;
@@ -549,6 +561,7 @@ use mobs::Mobs;
 pub struct State {
     pub seed: Seed, // For restarting
     pub rng: Xs,
+    pub tiles: Tiles,
     pub mobs: Mobs,
 }
 
@@ -563,11 +576,92 @@ impl State {
         let mut rng_ = xs::from_seed(seed);
         let rng = &mut rng_;
 
+        let mut tiles = Tiles::default();
+
+        // TODO? Is this actually going to be useful elsewhere? And will it stick around?
+        macro_rules! qr {
+            ($q_inner: literal $r_inner: literal) => {
+                QRS {
+                    q: Q($q_inner),
+                    r: R($r_inner),
+                }
+            }
+        }
+        
+        // TODO Generate the layout instead.
+        let coords = [
+            qr!(0 0),
+            qr!(1 0),
+            qr!(1 -1),
+
+            qr!(-1 0),
+            qr!(-1 1),
+            qr!(0 1),
+            qr!(1 -2),
+            qr!(2 -2),
+            qr!(2 -1),
+
+            qr!(1 2),
+            qr!(1 1),
+            qr!(0 2),
+            qr!(-1 2),
+            qr!(-1 3),
+            qr!(0 3),
+
+            qr!(-2 -2),
+            qr!(-2 -1),
+            qr!(-2 0),
+            qr!(-2 1),
+            qr!(-2 2),
+            qr!(-1 -1),
+
+            qr!(2 0),
+            qr!(2 1),
+            qr!(2 2),
+
+            qr!(3 -3),
+            qr!(3 -2),
+            qr!(3 -1),
+
+            qr!(-3 0),
+            qr!(-3 1),
+            qr!(-3 2),
+
+            qr!(0 -4),
+            qr!(0 -3),
+            qr!(0 -2),
+            qr!(0 -1),// Above visible problem
+
+        ];
+
+        let heights = [0];//[0, 0, 0, 0, 0, 0, 0, 20, 20, 20];
+        let palette = [
+            0xFF3352E1,
+            0xFF30B06E,
+            0xFFDE4949,
+            0xFFFFB937,
+            0xFF533354,
+            0xFF5A7D8B,
+            0xFFEEEEEE,
+            0xFF222222,
+        ];
+
+        for i in 0..coords.len() {
+            tiles.insert(
+                coords[i],
+                Tile {
+                    height: heights[i % heights.len()],
+                    colour: palette[i % palette.len()],
+                },
+            );
+        }
+
         let mut mobs = Mobs::default();
 
         Self {
             seed,
             rng: rng_,
+            tiles,
             mobs,
         }
     }
@@ -648,8 +742,23 @@ impl State {
             alpha | r | g | b
         };
 
-        let mut draw_hex = |at, height, base_colour: ARGB| {
-            // TODO respect parameters
+        const HEX_Y_SCALE: f32 = 11.0;
+        const HEX_X_SCALE: f32 = (HEX_Y_SCALE * 3./2.);
+        const HEX_X_OFFSET: f32 = 5.0;
+        const HEX_Y_OFFSET: f32 = 10.0;
+
+        let mut draw_hex = |qrs: QRS, Tile { height, colour: base_colour }| {
+            // Getting weird spacing issues around 0.
+            // TODO convert all the math here to fixed point and see if that fixes it?
+            //     Hypothesis: we are etting rounding differences around 0 because float
+            //        has more precision there. Fixed point acts the same regarding
+            //        rounding at every spot: It truncates
+            let (x, y) = qrs.to_unit_grid();
+
+            let at: unscaled::XY = unscaled::XY {
+                x: unscaled::X(((x + HEX_X_OFFSET) * HEX_X_SCALE) as unscaled::Inner),
+                y: unscaled::Y(((y + HEX_Y_OFFSET) * HEX_Y_SCALE) as unscaled::Inner),
+            };
 
             let outline_colour: ARGB = 0xFF00_0000;
             // TODO? cache this across frames? It is a few cbrts.
@@ -671,6 +780,7 @@ impl State {
             const BOTTOM_CENTER_LINE: TileSprite = 18;
 
             let mut xy = at;
+            xy.y -= unscaled::H(height.into());
 
             for _ in 0..2 {
                 commands.sspr_override(
@@ -748,35 +858,10 @@ impl State {
             }
         };
 
-        const HEX_X_SCALE: f32 = 15.0 * qrs::SQRT_3;
-        const HEX_Y_SCALE: f32 = 15.0;
-        const HEX_X_OFFSET: f32 = 5.0;
-        const HEX_Y_OFFSET: f32 = 5.0;
-
-        let heights = [0,1,2,3,4,5,6,7,8,9,10];
-        let palette = [
-            0xFF3352E1,
-            0xFF30B06E,
-            0xFFDE4949,
-            0xFFFFB937,
-            0xFF533354,
-            0xFF5A7D8B,
-            0xFFEEEEEE,
-            0xFF222222,
-        ];
-
-        for (i, qrs) in qrs::spiral(2, <_>::default()).enumerate() {
-            let (x, y) = qrs.to_unit_grid();
-
-            let xy = unscaled::XY {
-                x: unscaled::X(((x + HEX_X_OFFSET) * HEX_X_SCALE) as unscaled::Inner),
-                y: unscaled::Y(((y + HEX_Y_OFFSET) * HEX_Y_SCALE) as unscaled::Inner),
-            };
-
+        for (&qrs, &tile) in self.tiles.iter() {
             draw_hex(
-                xy,
-                heights[i % heights.len()],
-                palette[i % palette.len()],
+                qrs,
+                tile,
             );
         }
 
