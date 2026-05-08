@@ -14,10 +14,157 @@ type TileSprite = u16;
 pub type TilesWidthInner = xy::Inner;
 pub type TilesWidth = std::num::NonZeroU16;
 
+mod fixed {
+    type Inner = i32;
+
+    /// signed 16.16 fixed point
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct Fixed(Inner);
+
+    const SCALE: Inner = 16;
+
+    pub const fn add_assign(a: &mut Fixed, b: Fixed) {
+        a.0 += b.0
+    }
+
+    pub const fn add(mut a: Fixed, b: Fixed) -> Fixed {
+        add_assign(&mut a, b);
+        a
+    }
+
+    impl core::ops::AddAssign for Fixed {
+        fn add_assign(&mut self, other: Fixed) {
+            add_assign(self, other);
+        }
+    }
+
+    impl core::ops::Add for Fixed {
+        type Output = Self;
+
+        fn add(mut self, other: Fixed) -> Self::Output {
+            add(self, other)
+        }
+    }
+
+    type WiderInner = i64;
+
+    pub const fn mul_assign(a: &mut Fixed, b: Fixed) {
+        a.0 = ((a.0 as WiderInner * b.0 as WiderInner) >> SCALE) as Inner
+    }
+
+    pub const fn mul(mut a: Fixed, b: Fixed) -> Fixed {
+        mul_assign(&mut a, b);
+        a
+    }
+
+    impl core::ops::MulAssign for Fixed {
+        fn mul_assign(&mut self, other: Fixed) {
+            mul_assign(self, other)
+        }
+    }
+
+    impl core::ops::Mul for Fixed {
+        type Output = Self;
+
+        fn mul(mut self, other: Fixed) -> Self::Output {
+            mul(self, other)
+        }
+    }
+
+    pub const fn div_assign(a: &mut Fixed, b: Fixed) {
+        a.0 = (((a.0 as WiderInner) << SCALE) / b.0 as WiderInner) as Inner
+    }
+
+    pub const fn div(mut a: Fixed, b: Fixed) -> Fixed {
+        div_assign(&mut a, b);
+        a
+    }
+
+    impl core::ops::DivAssign for Fixed {
+        fn div_assign(&mut self, other: Fixed) {
+            div_assign(self, other)
+        }
+    }
+
+    impl core::ops::Div for Fixed {
+        type Output = Self;
+
+        fn div(mut self, other: Fixed) -> Self::Output {
+            div(self, other)
+        }
+    }
+
+    impl Fixed {
+        pub const fn from_i16(n: i16) -> Fixed {
+            Fixed((n as i32) << SCALE)
+        }
+
+        pub const fn truncate(self) -> i16 {
+            (self.0 >> SCALE) as i16
+        }
+    }
+
+    impl From<i16> for Fixed {
+        fn from(n: i16) -> Self {
+            Self::from_i16(n)
+        }
+    }
+
+    #[cfg(test)]
+    mod from_i16_works {
+        use super::*;
+
+        #[test]
+        fn on_these_basic_examples() {
+            assert_eq!(from_i16(0), 0);
+
+            let one = from_i16(1);
+
+            assert_eq!(one, 0x1_0000);
+
+            let minus_one = 0 - from_i16(1);
+
+            assert_eq!(from_i16(-1), minus_one);
+
+            assert_eq!(minus_one + one, 0);
+            assert_eq!(minus_one + one + one, one);
+
+            assert_eq!(minus_one * minus_one, one);
+
+            assert_eq!(one * minus_one, minus_one);
+
+            let two = from_i16(2);
+
+            assert_eq!(two, one + one);
+
+            assert_eq!(two, one * two);
+            assert_eq!(two, two * one);
+
+            let minus_two = from_i16(-2);
+
+            assert_eq!(minus_two, minus_one + minus_one);
+
+            assert_eq!(minus_two, minus_one * two);
+            assert_eq!(minus_two, minus_two * one);
+
+            let three = from_i16(3);
+
+            assert_eq!(three, one + two);
+
+            assert_eq!(three / two, 0b1_1000_0000_0000_0000);
+        }
+    }
+
+    // f32 literal with more precision than represented here: 1.732050807568877293527446341505872367...
+    pub const SQRT_3: Fixed = Fixed(0b0000_0000_0000_0001__1011_1011_0110_0111);
+}
+use fixed::Fixed;
 
 /// Hexagonal coordinates.
 /// We follow the q, r, and s naming convention used in https://www.redblobgames.com/grids/hexagons/
 mod qrs {
+    use crate::fixed::{self, Fixed};
+
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum Dir {
         #[default]
@@ -74,27 +221,27 @@ mod qrs {
 
     type NeighborError = ();
 
-    type Float = f32;
-
-    pub const SQRT_3: Float = 1.732050807568877293527446341505872367;
-
-    const X_Q_FACTOR: Float = 3./2.;
-    const X_R_FACTOR: Float = 0.;
-
-    const Y_Q_FACTOR: Float = SQRT_3 / 2.;
-    const Y_R_FACTOR: Float = SQRT_3;
-
-
     impl QRS {
         fn neighbor(self, dir: Dir) -> Self {
             self + dir.basis()
         }
+    }
 
+    const X_Q_FACTOR: Fixed = fixed::div(Fixed::from_i16(3), Fixed::from_i16(2));
+    const X_R_FACTOR: Fixed = Fixed::from_i16(0);
+
+    const Y_Q_FACTOR: Fixed = fixed::div(fixed::SQRT_3, Fixed::from_i16(2));
+    const Y_R_FACTOR: Fixed = fixed::SQRT_3;
+    
+    impl QRS {
         /// Converts to x and y on a conceptual infinite hex-grid. Will likely
         /// need further processing for any real use-case.
-        pub fn to_unit_grid(self) -> (Float, Float) {
-            let x = X_Q_FACTOR * self.q.0 as Float + X_R_FACTOR * self.r.0 as Float;
-            let y = Y_Q_FACTOR * self.q.0 as Float + Y_R_FACTOR * self.r.0 as Float;
+        pub fn to_unit_grid(self) -> (Fixed, Fixed) {
+            let q = Fixed::from_i16(self.q.0);
+            let r = Fixed::from_i16(self.r.0);
+
+            let x = X_Q_FACTOR * q + X_R_FACTOR * r;
+            let y = Y_Q_FACTOR * q + Y_R_FACTOR * r;
             (x, y)
         }
     }
@@ -742,10 +889,10 @@ impl State {
             alpha | r | g | b
         };
 
-        const HEX_Y_SCALE: f32 = 11.0;
-        const HEX_X_SCALE: f32 = (HEX_Y_SCALE * 3./2.);
-        const HEX_X_OFFSET: f32 = 5.0;
-        const HEX_Y_OFFSET: f32 = 10.0;
+        const HEX_Y_SCALE: Fixed = Fixed::from_i16(11);
+        const HEX_X_SCALE: Fixed = fixed::mul(HEX_Y_SCALE, fixed::div(Fixed::from_i16(3), Fixed::from_i16(2)));
+        const HEX_X_OFFSET: Fixed = Fixed::from_i16(5);
+        const HEX_Y_OFFSET: Fixed = Fixed::from_i16(10);
 
         let mut draw_hex = |qrs: QRS, Tile { height, colour: base_colour }| {
             // Getting weird spacing issues around 0.
@@ -756,8 +903,8 @@ impl State {
             let (x, y) = qrs.to_unit_grid();
 
             let at: unscaled::XY = unscaled::XY {
-                x: unscaled::X(((x + HEX_X_OFFSET) * HEX_X_SCALE) as unscaled::Inner),
-                y: unscaled::Y(((y + HEX_Y_OFFSET) * HEX_Y_SCALE) as unscaled::Inner),
+                x: unscaled::X(((x + HEX_X_OFFSET) * HEX_X_SCALE).truncate().try_into().unwrap_or(0)),
+                y: unscaled::Y(((y + HEX_Y_OFFSET) * HEX_Y_SCALE).truncate().try_into().unwrap_or(0)),
             };
 
             let outline_colour: ARGB = 0xFF00_0000;
