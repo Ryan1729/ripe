@@ -46,6 +46,29 @@ mod fixed {
         }
     }
 
+    pub const fn sub_assign(a: &mut Fixed, b: Fixed) {
+        a.0 -= b.0
+    }
+
+    pub const fn sub(mut a: Fixed, b: Fixed) -> Fixed {
+        sub_assign(&mut a, b);
+        a
+    }
+
+    impl core::ops::SubAssign for Fixed {
+        fn sub_assign(&mut self, other: Fixed) {
+            sub_assign(self, other);
+        }
+    }
+
+    impl core::ops::Sub for Fixed {
+        type Output = Self;
+
+        fn sub(mut self, other: Fixed) -> Self::Output {
+            sub(self, other)
+        }
+    }
+
     type WiderInner = i64;
 
     pub const fn mul_assign(a: &mut Fixed, b: Fixed) {
@@ -99,9 +122,17 @@ mod fixed {
             Fixed((n as i32) << SCALE)
         }
 
-        pub const fn truncate(self) -> i16 {
-            (self.0 >> SCALE) as i16
+        pub const fn round(self) -> i16 {
+            if self.0 < 0 {
+                (self.0 >> SCALE) as i16 + 1
+            } else {
+                (self.0 >> SCALE) as i16
+            }
         }
+    }
+
+    pub fn from_i16(n: i16) -> Fixed {
+        Fixed::from_i16(n)
     }
 
     impl From<i16> for Fixed {
@@ -116,17 +147,17 @@ mod fixed {
 
         #[test]
         fn on_these_basic_examples() {
-            assert_eq!(from_i16(0), 0);
+            assert_eq!(from_i16(0), Fixed(0));
 
             let one = from_i16(1);
 
-            assert_eq!(one, 0x1_0000);
+            assert_eq!(one, Fixed(0x1_0000));
 
-            let minus_one = 0 - from_i16(1);
+            let minus_one = Fixed(0) - from_i16(1);
 
             assert_eq!(from_i16(-1), minus_one);
 
-            assert_eq!(minus_one + one, 0);
+            assert_eq!(minus_one + one, Fixed(0));
             assert_eq!(minus_one + one + one, one);
 
             assert_eq!(minus_one * minus_one, one);
@@ -151,12 +182,88 @@ mod fixed {
 
             assert_eq!(three, one + two);
 
-            assert_eq!(three / two, 0b1_1000_0000_0000_0000);
+            assert_eq!(three / two, Fixed(0b1_1000_0000_0000_0000));
         }
     }
 
     // f32 literal with more precision than represented here: 1.732050807568877293527446341505872367...
     pub const SQRT_3: Fixed = Fixed(0b0000_0000_0000_0001__1011_1011_0110_0111);
+
+    #[cfg(test)]
+    mod round_works {
+        use super::*;
+
+        #[test]
+        fn on_these_found_examples_we_want_to_be_evenly_spaced() {
+            {
+                let n = 113511;
+                let low = Fixed(-n);
+                let middle = Fixed(0);
+                let high = Fixed(n);
+                
+                let low_rounded = low.round();
+                let middle_rounded = middle.round();
+                let high_rounded = high.round();
+    
+                assert_eq!(middle_rounded - low_rounded, high_rounded - middle_rounded, "n = {n}");
+            }
+            {
+                let low = Fixed(5960339);
+                let middle = Fixed(7208960);
+                let high = Fixed(8457581);
+
+                assert_eq!(middle.0 - low.0, high.0 - middle.0);
+                
+                let low_rounded = low.round();
+                let middle_rounded = middle.round();
+                let high_rounded = high.round();
+    
+                assert_eq!(middle_rounded - low_rounded, high_rounded - middle_rounded, "({low_rounded:?}, {high_rounded:?})");
+            }
+        }
+
+        #[test]
+        fn by_making_every_negatable_number_below_two_round_to_the_same_value_both_ways() {
+            for n in Fixed(1).0..Fixed(2).0 {
+                let low = Fixed(-n);
+                let middle = Fixed(0);
+                let high = Fixed(n);
+                
+                let low_rounded = low.round();
+                let middle_rounded = middle.round();
+                let high_rounded = high.round();
+
+                assert_eq!(middle_rounded - low_rounded, high_rounded - middle_rounded, "n = {n} ({low_rounded:?}, {high_rounded:?})");
+            }
+        }
+
+        #[test]
+        fn by_making_every_negatable_number_in_this_range_round_to_the_same_distance_apart_when_this_number_is_added() {
+            const FOUND_OFFSET: Inner = 7208960 - 5960339;
+            // This is the first one in the range that current works: 5963776
+            // Maybe that's interesting?
+            println!("{:#b} {:#b} {:#b}", 5960339, 5960339 + FOUND_OFFSET, 5960339 + FOUND_OFFSET + FOUND_OFFSET);
+            let low = Fixed(5960339);
+            let middle = Fixed(low.0 + FOUND_OFFSET);
+            let high = Fixed(middle.0 + FOUND_OFFSET);
+            
+            let low_rounded = low.round();
+            let middle_rounded = middle.round();
+            let high_rounded = high.round();
+            dbg!(low, middle, high, low_rounded, middle_rounded, high_rounded, );
+            for n in Fixed(5960339).0..Fixed(5960339 + (2 << 16)).0 {
+                let low = Fixed(n);
+                let middle = Fixed(low.0 + FOUND_OFFSET);
+                let high = Fixed(middle.0 + FOUND_OFFSET);
+                
+                let low_rounded = low.round();
+                let middle_rounded = middle.round();
+                let high_rounded = high.round();
+
+                assert_eq!(middle_rounded - low_rounded, high_rounded - middle_rounded, "n = {n} ({low_rounded:?}, {high_rounded:?})");
+            }
+        }
+    }
 }
 use fixed::Fixed;
 
@@ -236,6 +343,7 @@ mod qrs {
     impl QRS {
         /// Converts to x and y on a conceptual infinite hex-grid. Will likely
         /// need further processing for any real use-case.
+        #[allow(unused)]
         pub fn to_unit_grid(self) -> (Fixed, Fixed) {
             let q = Fixed::from_i16(self.q.0);
             let r = Fixed::from_i16(self.r.0);
@@ -414,7 +522,7 @@ mod qrs {
                     );
                 }
             }
-            dbg!(&actual);
+
             a!(QRS { q: Q(0), r: R(0), });
 
             a!(QRS { q: Q(1), r: R(0), });
@@ -736,6 +844,7 @@ impl State {
         }
         
         // TODO Generate the layout instead.
+        #[cfg(false)]
         let coords = [
             qr!(0 0),
             qr!(1 0),
@@ -778,7 +887,13 @@ impl State {
             qr!(0 -3),
             qr!(0 -2),
             qr!(0 -1),// Above visible problem
+        ];
 
+        #[cfg(true)]
+        let coords = [
+            qr!(0 -1),
+            qr!(0 0),
+            qr!(0 1),
         ];
 
         let heights = [0];//[0, 0, 0, 0, 0, 0, 0, 20, 20, 20];
@@ -889,23 +1004,43 @@ impl State {
             alpha | r | g | b
         };
 
-        const HEX_Y_SCALE: Fixed = Fixed::from_i16(11);
-        const HEX_X_SCALE: Fixed = fixed::mul(HEX_Y_SCALE, fixed::div(Fixed::from_i16(3), Fixed::from_i16(2)));
+        const HEX_Y_SCALE: Fixed = Fixed::from_i16(12);
+
+        const HEX_X_SCALE: Fixed = Fixed::from_i16(12);
+
         const HEX_X_OFFSET: Fixed = Fixed::from_i16(5);
         const HEX_Y_OFFSET: Fixed = Fixed::from_i16(10);
 
+        const X_Q_FACTOR: Fixed = fixed::div(Fixed::from_i16(3), Fixed::from_i16(2));
+        const X_R_FACTOR: Fixed = Fixed::from_i16(0);
+    
+        const Y_Q_FACTOR: Fixed = fixed::div(fixed::SQRT_3, Fixed::from_i16(2));
+        const Y_R_FACTOR: Fixed = fixed::SQRT_3;
+
         let mut draw_hex = |qrs: QRS, Tile { height, colour: base_colour }| {
             // Getting weird spacing issues around 0.
-            // TODO convert all the math here to fixed point and see if that fixes it?
-            //     Hypothesis: we are etting rounding differences around 0 because float
-            //        has more precision there. Fixed point acts the same regarding
-            //        rounding at every spot: It truncates
-            let (x, y) = qrs.to_unit_grid();
+            // TODO Okay, the issue seems to be just inherent in the fact that we are rounding
+            // when we are deciding which pixel to render things in, and starting from 
+            // the technically correct sqrt(3) based spacing. So we can instead just place 
+            // things an integer distance apart, perhaps by rounding sqrt(3) at the right spot
+            
+            let q = Fixed::from_i16(qrs.q.0);
+            let r = Fixed::from_i16(qrs.r.0);
 
+            let x = X_Q_FACTOR * q + X_R_FACTOR * r;
+            let y = Y_Q_FACTOR * q + Y_R_FACTOR * r;
+            
+            //dbg!((
+                //((x + HEX_X_OFFSET) * HEX_X_SCALE).round(),
+                //((y + HEX_Y_OFFSET) * HEX_Y_SCALE).round()
+            //));
             let at: unscaled::XY = unscaled::XY {
-                x: unscaled::X(((x + HEX_X_OFFSET) * HEX_X_SCALE).truncate().try_into().unwrap_or(0)),
-                y: unscaled::Y(((y + HEX_Y_OFFSET) * HEX_Y_SCALE).truncate().try_into().unwrap_or(0)),
+                x: unscaled::X(((x + HEX_X_OFFSET) * HEX_X_SCALE).round().try_into().unwrap_or(0)),
+                y: unscaled::Y(((y + HEX_Y_OFFSET) * HEX_Y_SCALE).round().try_into().unwrap_or(0)),
             };
+            //dbg!(at);
+            //dbg!(y, ((y + HEX_Y_OFFSET) * HEX_Y_SCALE), at.y);
+            //dbg!(((y + HEX_Y_OFFSET) * HEX_Y_SCALE), ((y + HEX_Y_OFFSET) * HEX_Y_SCALE).round());
 
             let outline_colour: ARGB = 0xFF00_0000;
             // TODO? cache this across frames? It is a few cbrts.
