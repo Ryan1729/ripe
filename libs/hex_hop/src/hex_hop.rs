@@ -200,11 +200,11 @@ mod fixed {
                 let low = Fixed(-n);
                 let middle = Fixed(0);
                 let high = Fixed(n);
-                
+
                 let low_rounded = low.round();
                 let middle_rounded = middle.round();
                 let high_rounded = high.round();
-    
+
                 assert_eq!(middle_rounded - low_rounded, high_rounded - middle_rounded, "n = {n}");
             }
             {
@@ -213,11 +213,11 @@ mod fixed {
                 let high = Fixed(8457581);
 
                 assert_eq!(middle.0 - low.0, high.0 - middle.0);
-                
+
                 let low_rounded = low.round();
                 let middle_rounded = middle.round();
                 let high_rounded = high.round();
-    
+
                 assert_eq!(middle_rounded - low_rounded, high_rounded - middle_rounded, "({low_rounded:?}, {high_rounded:?})");
             }
         }
@@ -228,7 +228,7 @@ mod fixed {
                 let low = Fixed(-n);
                 let middle = Fixed(0);
                 let high = Fixed(n);
-                
+
                 let low_rounded = low.round();
                 let middle_rounded = middle.round();
                 let high_rounded = high.round();
@@ -246,7 +246,7 @@ mod fixed {
             let low = Fixed(5960339);
             let middle = Fixed(low.0 + FOUND_OFFSET);
             let high = Fixed(middle.0 + FOUND_OFFSET);
-            
+
             let low_rounded = low.round();
             let middle_rounded = middle.round();
             let high_rounded = high.round();
@@ -255,7 +255,7 @@ mod fixed {
                 let low = Fixed(n);
                 let middle = Fixed(low.0 + FOUND_OFFSET);
                 let high = Fixed(middle.0 + FOUND_OFFSET);
-                
+
                 let low_rounded = low.round();
                 let middle_rounded = middle.round();
                 let high_rounded = high.round();
@@ -339,7 +339,7 @@ mod qrs {
 
     const Y_Q_FACTOR: Fixed = fixed::div(fixed::SQRT_3, Fixed::from_i16(2));
     const Y_R_FACTOR: Fixed = fixed::SQRT_3;
-    
+
     impl QRS {
         /// Converts to x and y on a conceptual infinite hex-grid. Will likely
         /// need further processing for any real use-case.
@@ -842,9 +842,9 @@ impl State {
                 }
             }
         }
-        
+
         // TODO Generate the layout instead.
-        #[cfg(false)]
+        #[cfg(true)]
         let coords = [
             qr!(0 0),
             qr!(1 0),
@@ -889,7 +889,7 @@ impl State {
             qr!(0 -1),// Above visible problem
         ];
 
-        #[cfg(true)]
+        #[cfg(false)]
         let coords = [
             qr!(0 -1),
             qr!(0 0),
@@ -1004,43 +1004,30 @@ impl State {
             alpha | r | g | b
         };
 
-        const HEX_Y_SCALE: Fixed = Fixed::from_i16(12);
+        const HEX_Y_SCALE: i16 = 8;
 
-        const HEX_X_SCALE: Fixed = Fixed::from_i16(12);
+        const HEX_X_SCALE: i16 = 13;
 
-        const HEX_X_OFFSET: Fixed = Fixed::from_i16(5);
-        const HEX_Y_OFFSET: Fixed = Fixed::from_i16(10);
+        const HEX_X_OFFSET: i16 = 160;
+        const HEX_Y_OFFSET: i16 = 110;
 
-        const X_Q_FACTOR: Fixed = fixed::div(Fixed::from_i16(3), Fixed::from_i16(2));
-        const X_R_FACTOR: Fixed = Fixed::from_i16(0);
-    
-        const Y_Q_FACTOR: Fixed = fixed::div(fixed::SQRT_3, Fixed::from_i16(2));
-        const Y_R_FACTOR: Fixed = fixed::SQRT_3;
+        const X_Q_FACTOR: i16 = 2;
+        const X_R_FACTOR: i16 = 0;
+
+        const Y_Q_FACTOR: i16 = 1;
+        const Y_R_FACTOR: i16 = 2;
 
         let mut draw_hex = |qrs: QRS, Tile { height, colour: base_colour }| {
-            // Getting weird spacing issues around 0.
-            // TODO Okay, the issue seems to be just inherent in the fact that we are rounding
-            // when we are deciding which pixel to render things in, and starting from 
-            // the technically correct sqrt(3) based spacing. So we can instead just place 
-            // things an integer distance apart, perhaps by rounding sqrt(3) at the right spot
-            
-            let q = Fixed::from_i16(qrs.q.0);
-            let r = Fixed::from_i16(qrs.r.0);
+            let q = qrs.q.0;
+            let r = qrs.r.0;
 
-            let x = X_Q_FACTOR * q + X_R_FACTOR * r;
-            let y = Y_Q_FACTOR * q + Y_R_FACTOR * r;
-            
-            //dbg!((
-                //((x + HEX_X_OFFSET) * HEX_X_SCALE).round(),
-                //((y + HEX_Y_OFFSET) * HEX_Y_SCALE).round()
-            //));
+            let x = (X_Q_FACTOR * q + X_R_FACTOR * r) * 13 + HEX_X_OFFSET;
+            let y = (Y_Q_FACTOR * q + Y_R_FACTOR * r) * 8 + HEX_Y_OFFSET;
+
             let at: unscaled::XY = unscaled::XY {
-                x: unscaled::X(((x + HEX_X_OFFSET) * HEX_X_SCALE).round().try_into().unwrap_or(0)),
-                y: unscaled::Y(((y + HEX_Y_OFFSET) * HEX_Y_SCALE).round().try_into().unwrap_or(0)),
+                x: unscaled::X(x.try_into().unwrap_or(0)),
+                y: unscaled::Y(y.try_into().unwrap_or(0)),
             };
-            //dbg!(at);
-            //dbg!(y, ((y + HEX_Y_OFFSET) * HEX_Y_SCALE), at.y);
-            //dbg!(((y + HEX_Y_OFFSET) * HEX_Y_SCALE), ((y + HEX_Y_OFFSET) * HEX_Y_SCALE).round());
 
             let outline_colour: ARGB = 0xFF00_0000;
             // TODO? cache this across frames? It is a few cbrts.
