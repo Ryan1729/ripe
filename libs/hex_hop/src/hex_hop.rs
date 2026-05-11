@@ -818,6 +818,7 @@ pub struct State {
     pub rng: Xs,
     pub tiles: Tiles,
     pub mobs: Mobs,
+    pub player_qrs: QRS
 }
 
 impl State {
@@ -919,12 +920,14 @@ impl State {
         }
 
         let mut mobs = Mobs::default();
+        let player_qrs = <_>::default();
 
         Self {
             seed,
             rng: rng_,
             tiles,
             mobs,
+            player_qrs,
         }
     }
 
@@ -944,6 +947,7 @@ impl State {
         &mut self,
         commands: &mut Commands,
         hex_pieces_spec: &sprite::Spec::<sprite::HexPieces>,
+        hex_hop_mobs_spec: &sprite::Spec::<sprite::HexHopMobs>,
         input: Input,
         _speaker: &mut Speaker,
     ) {
@@ -1017,17 +1021,21 @@ impl State {
         const Y_Q_FACTOR: i16 = 1;
         const Y_R_FACTOR: i16 = 2;
 
-        let mut draw_hex = |qrs: QRS, Tile { height, colour: base_colour }| {
+        let qrs_to_unscaled = |qrs: QRS| {
             let q = qrs.q.0;
             let r = qrs.r.0;
 
             let x = (X_Q_FACTOR * q + X_R_FACTOR * r) * 13 + HEX_X_OFFSET;
             let y = (Y_Q_FACTOR * q + Y_R_FACTOR * r) * 8 + HEX_Y_OFFSET;
 
-            let at: unscaled::XY = unscaled::XY {
+            unscaled::XY {
                 x: unscaled::X(x.try_into().unwrap_or(0)),
                 y: unscaled::Y(y.try_into().unwrap_or(0)),
-            };
+            }
+        };
+
+        let mut draw_hex = |qrs: QRS, Tile { height, colour: base_colour }| {
+            let at: unscaled::XY = qrs_to_unscaled(qrs);
 
             let outline_colour: ARGB = 0xFF00_0000;
             // TODO? cache this across frames? It is a few cbrts.
@@ -1041,12 +1049,12 @@ impl State {
             let right_face_colour: ARGB = dark;
 
             const TOP_LINE: TileSprite = 0;
-            const LEFT_RIGHT_EDGES: TileSprite = 3;
-            const TOP_FACE: TileSprite = 6;
-            const BOTTOM_FULL_LINE: TileSprite = 9;
-            const BOTTOM_LEFT_LINE: TileSprite = 12;
-            const BOTTOM_RIGHT_LINE: TileSprite = 15;
-            const BOTTOM_CENTER_LINE: TileSprite = 18;
+            const LEFT_RIGHT_EDGES: TileSprite = 1;
+            const TOP_FACE: TileSprite = 2;
+            const BOTTOM_FULL_LINE: TileSprite = 3;
+            const BOTTOM_LEFT_LINE: TileSprite = 4;
+            const BOTTOM_RIGHT_LINE: TileSprite = 5;
+            const BOTTOM_CENTER_LINE: TileSprite = 6;
 
             let mut xy = at;
             xy.y -= unscaled::H(height.into());
@@ -1146,6 +1154,28 @@ impl State {
         // Draw player
         //
 
-        // TODO
+        const PLAYER: TileSprite = 0;
+        const PLAYER_SHADOW: TileSprite = 5;
+
+        // TODO: Compute where we are along a fixed jump arc and draw there
+        let player_hex_upper_left: unscaled::XY = qrs_to_unscaled(self.player_qrs);
+
+        let player_at = player_hex_upper_left + unscaled::WH {
+            w: unscaled::W(10),
+            h: unscaled::H(4),
+        };
+
+        let mut player_shadow_at = player_at;
+        player_shadow_at += unscaled::H(4);
+
+        commands.sspr(
+            hex_hop_mobs_spec.xy_from_tile_sprite(PLAYER_SHADOW),
+            command::Rect::from_unscaled(hex_hop_mobs_spec.rect(player_shadow_at)),
+        );
+
+        commands.sspr(
+            hex_hop_mobs_spec.xy_from_tile_sprite(PLAYER),
+            command::Rect::from_unscaled(hex_hop_mobs_spec.rect(player_at)),
+        );
     }
 }

@@ -240,6 +240,7 @@ fn game_update(commands: &mut Commands, specs: &Specs, state: &mut game::State, 
                     hex_hop.update_and_render(
                         commands,
                         &specs.hex_pieces,
+                        &specs.hex_hop_mobs,
                         input,
                         speaker,
                     );

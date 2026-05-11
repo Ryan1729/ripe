@@ -971,6 +971,7 @@ pub mod sprite {
         pub toggle_wall: Spec<ToggleWall>,
         pub bold: Spec<BOLD>,
         pub hex_pieces: Spec<HexPieces>,
+        pub hex_hop_mobs: Spec<HexHopMobs>,
     }
 
     impl Default for Specs {
@@ -1027,7 +1028,12 @@ pub mod sprite {
                 hex_pieces: spec::<HexPieces>(SpecPieces{
                     offset: WH{ w: W(384), h: H(256) },
                     tile: WH{ w: W(40), h: H(11) },
-                    tiles_per_row: 3,
+                    tiles_per_row: 1,
+                }),
+                hex_hop_mobs: spec::<HexHopMobs>(SpecPieces{
+                    offset: WH{ w: W(384 + 40), h: H(256) },
+                    tile: WH{ w: W(20), h: H(20) },
+                    tiles_per_row: 5,
                 }),
             }
         }
