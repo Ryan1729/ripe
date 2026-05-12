@@ -367,11 +367,76 @@ mod qrs {
     pub struct SD(pub Inner);
 
     macro_rules! shared_d_def {
-        ($($name: ident)+) => {
+        (
+            [$self: ident $other: ident]
+            $($d_name: ident $base_name: ident $plus_code: block $minus_code: block)+
+        ) => {
             $(
-                impl $name {
+                impl $d_name {
                     fn scale(self, radius: Distance) -> Self {
                         Self(self.0.saturating_mul(radius.into()))
+                    }
+                }
+
+                impl core::ops::AddAssign<$d_name> for $base_name {
+                    fn add_assign(&mut self, other: $d_name) {
+                        self.0 += other.0;
+                    }
+                }
+            
+                impl core::ops::Add<$d_name> for $base_name {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $d_name) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+
+                impl core::ops::SubAssign<$d_name> for $base_name {
+                    fn sub_assign(&mut self, other: $d_name) {
+                        self.0 -= other.0;
+                    }
+                }
+            
+                impl core::ops::Sub<$d_name> for $base_name {
+                    type Output = Self;
+            
+                    fn sub(mut self, other: $d_name) -> Self::Output {
+                        self -= other;
+                        self
+                    }
+                }
+
+                // D with QRS section
+
+                impl core::ops::AddAssign<$d_name> for QRS {
+                    fn add_assign(&mut $self, $other: $d_name) {
+                        $plus_code
+                    }
+                }
+            
+                impl core::ops::Add<$d_name> for QRS {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $d_name) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+
+                impl core::ops::SubAssign<$d_name> for QRS {
+                    fn sub_assign(&mut $self, $other: $d_name) {
+                        $minus_code
+                    }
+                }
+            
+                impl core::ops::Sub<$d_name> for QRS {
+                    type Output = Self;
+            
+                    fn sub(mut self, other: $d_name) -> Self::Output {
+                        self -= other;
+                        self
                     }
                 }
             )+
@@ -379,54 +444,10 @@ mod qrs {
     }
 
     shared_d_def!{
-        QD
-        RD
-        SD
-    }
-
-    impl core::ops::AddAssign<QD> for Q {
-        fn add_assign(&mut self, other: QD) {
-            self.0 += other.0;
-        }
-    }
-
-    impl core::ops::Add<QD> for Q {
-        type Output = Self;
-
-        fn add(mut self, other: QD) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::AddAssign<RD> for R {
-        fn add_assign(&mut self, other: RD) {
-            self.0 += other.0;
-        }
-    }
-
-    impl core::ops::Add<RD> for R {
-        type Output = Self;
-
-        fn add(mut self, other: RD) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::AddAssign<SD> for S {
-        fn add_assign(&mut self, other: SD) {
-            self.0 += other.0;
-        }
-    }
-
-    impl core::ops::Add<SD> for S {
-        type Output = Self;
-
-        fn add(mut self, other: SD) -> Self::Output {
-            self += other;
-            self
-        }
+        [self other]
+        QD Q {self.q += other;} {self.q -= other;}
+        RD R {self.r += other;} {self.r -= other;}
+        SD S {self.q.0 += other.0; self.r.0 -= other.0;} {self.q.0 -= other.0; self.r.0 += other.0;}
     }
 
     /// A delta in QRS space, as opposed to a QRS, which is a point.
@@ -956,6 +977,24 @@ impl State {
         // Update Section
         //
         //
+
+        if input.pressed_this_frame(Button::UP) {
+            if input.gamepad.contains(Button::LEFT) {
+                self.player_qrs -= qrs::QD(1);
+            } else if input.gamepad.contains(Button::RIGHT) {
+                self.player_qrs += qrs::SD(1);
+            } else {
+                self.player_qrs -= qrs::RD(1);
+            }
+        } else if input.pressed_this_frame(Button::DOWN) {
+            if input.gamepad.contains(Button::LEFT) {
+                self.player_qrs -= qrs::SD(1);
+            } else if input.gamepad.contains(Button::RIGHT) {
+                self.player_qrs += qrs::QD(1);
+            } else {
+                self.player_qrs += qrs::RD(1);
+            }
+        }
 
         self.tick();
 
