@@ -369,7 +369,7 @@ mod qrs {
     macro_rules! shared_d_def {
         (
             [$self: ident $other: ident]
-            $($d_name: ident $base_name: ident $plus_code: block $minus_code: block)+
+            $($d_name: ident $base_name: ident $plus_code_qrs: block $minus_code_qrs: block $plus_code_qrsd: block $minus_code_qrsd: block)+
         ) => {
             $(
                 impl $d_name {
@@ -377,6 +377,40 @@ mod qrs {
                         Self(self.0.saturating_mul(radius.into()))
                     }
                 }
+
+                // D with self section
+
+                impl core::ops::AddAssign<$d_name> for $d_name {
+                    fn add_assign(&mut self, other: $d_name) {
+                        self.0 += other.0;
+                    }
+                }
+            
+                impl core::ops::Add<$d_name> for $d_name {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $d_name) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+
+                impl core::ops::SubAssign<$d_name> for $d_name {
+                    fn sub_assign(&mut self, other: $d_name) {
+                        self.0 -= other.0;
+                    }
+                }
+            
+                impl core::ops::Sub<$d_name> for $d_name {
+                    type Output = Self;
+            
+                    fn sub(mut self, other: $d_name) -> Self::Output {
+                        self -= other;
+                        self
+                    }
+                }
+
+                // D with Base section
 
                 impl core::ops::AddAssign<$d_name> for $base_name {
                     fn add_assign(&mut self, other: $d_name) {
@@ -412,7 +446,7 @@ mod qrs {
 
                 impl core::ops::AddAssign<$d_name> for QRS {
                     fn add_assign(&mut $self, $other: $d_name) {
-                        $plus_code
+                        $plus_code_qrs
                     }
                 }
             
@@ -427,11 +461,43 @@ mod qrs {
 
                 impl core::ops::SubAssign<$d_name> for QRS {
                     fn sub_assign(&mut $self, $other: $d_name) {
-                        $minus_code
+                        $minus_code_qrs
                     }
                 }
             
                 impl core::ops::Sub<$d_name> for QRS {
+                    type Output = Self;
+            
+                    fn sub(mut self, other: $d_name) -> Self::Output {
+                        self -= other;
+                        self
+                    }
+                }
+
+                // D with QRSD section
+
+                impl core::ops::AddAssign<$d_name> for QRSD {
+                    fn add_assign(&mut $self, $other: $d_name) {
+                        $plus_code_qrsd
+                    }
+                }
+            
+                impl core::ops::Add<$d_name> for QRSD {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $d_name) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+
+                impl core::ops::SubAssign<$d_name> for QRSD {
+                    fn sub_assign(&mut $self, $other: $d_name) {
+                        $minus_code_qrsd
+                    }
+                }
+            
+                impl core::ops::Sub<$d_name> for QRSD {
                     type Output = Self;
             
                     fn sub(mut self, other: $d_name) -> Self::Output {
@@ -445,9 +511,9 @@ mod qrs {
 
     shared_d_def!{
         [self other]
-        QD Q {self.q += other;} {self.q -= other;}
-        RD R {self.r += other;} {self.r -= other;}
-        SD S {self.q.0 += other.0; self.r.0 -= other.0;} {self.q.0 -= other.0; self.r.0 += other.0;}
+        QD Q {self.q += other;} {self.q -= other;} {self.qd += other;} {self.qd -= other;}
+        RD R {self.r += other;} {self.r -= other;} {self.rd += other;} {self.rd -= other;}
+        SD S {self.q.0 += other.0; self.r.0 -= other.0;} {self.q.0 -= other.0; self.r.0 += other.0;} {self.qd.0 += other.0; self.rd.0 -= other.0;} {self.qd.0 -= other.0; self.rd.0 += other.0;}
     }
 
     /// A delta in QRS space, as opposed to a QRS, which is a point.
@@ -455,6 +521,30 @@ mod qrs {
     pub struct QRSD {
         qd: QD,
         rd: RD,
+    }
+
+    impl From<QD> for QRSD {
+        fn from(d: QD) -> Self {
+            let mut output = Self::default();
+            output += d;
+            output
+        }
+    }
+
+    impl From<RD> for QRSD {
+        fn from(d: RD) -> Self {
+            let mut output = Self::default();
+            output += d;
+            output
+        }
+    }
+
+    impl From<SD> for QRSD {
+        fn from(d: SD) -> Self {
+            let mut output = Self::default();
+            output += d;
+            output
+        }
     }
 
     impl core::ops::AddAssign<QRSD> for QRS {
@@ -569,7 +659,7 @@ mod qrs {
         }
     }
 }
-use qrs::{QRS, Q, R};
+use qrs::{QRS, QRSD, Q, R};
 
 pub mod xy {
     pub type Inner = u16;
@@ -786,8 +876,37 @@ pub type Key = QRS;
 
 pub type Tiles = BTreeMap<Key, Tile>;
 
+mod offset {
+    use platform_types::unscaled;
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct Offset {
+    }
+
+    impl Offset {
+        pub fn wh(&self) -> unscaled::WH {
+            <_>::default()
+        }
+
+        pub fn advance(&mut self) {
+            // TODO: Compute where we are along a fixed jump arc
+        }
+    }
+}
+use offset::Offset;
+
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
+    pub qrs: QRS,
+    pub offset: Offset,
+}
+
+impl Entity {
+    fn apply_delta(&mut self, qrsd: QRSD) {
+        self.qrs += qrsd;
+
+        // TODO set the offset, so we can animate
+    }
 }
 
 mod mobs {
@@ -795,10 +914,19 @@ mod mobs {
 
     #[derive(Clone, Debug, Default)]
     pub struct Mobs {
+        player: Entity,
         entities: BTreeMap<Key, Entity>,
     }
 
     impl Mobs {
+        pub fn player(&self) -> &Entity {
+            &self.player
+        }
+
+        pub fn player_mut(&mut self) -> &mut Entity {
+            &mut self.player
+        }
+
         pub fn get(&self, key: Key) -> Option<&Entity> {
             self.entities.get(&key)
         }
@@ -833,13 +961,14 @@ mod mobs {
 }
 use mobs::Mobs;
 
+
+
 #[derive(Clone, Debug)]
 pub struct State {
     pub seed: Seed, // For restarting
     pub rng: Xs,
     pub tiles: Tiles,
     pub mobs: Mobs,
-    pub player_qrs: QRS
 }
 
 impl State {
@@ -941,14 +1070,12 @@ impl State {
         }
 
         let mut mobs = Mobs::default();
-        let player_qrs = <_>::default();
 
         Self {
             seed,
             rng: rng_,
             tiles,
-            mobs,
-            player_qrs,
+            mobs
         }
     }
 
@@ -961,7 +1088,9 @@ impl State {
     }
 
     fn tick(&mut self) {
-
+        for mob in self.mobs.entities_mut() {
+            mob.offset.advance();
+        }
     }
 
     pub fn update_and_render(
@@ -979,21 +1108,23 @@ impl State {
         //
 
         if input.pressed_this_frame(Button::UP) {
-            if input.gamepad.contains(Button::LEFT) {
-                self.player_qrs -= qrs::QD(1);
+            let delta = if input.gamepad.contains(Button::LEFT) {
+                qrs::QRSD::from(qrs::QD(-1))
             } else if input.gamepad.contains(Button::RIGHT) {
-                self.player_qrs += qrs::SD(1);
+                qrs::QRSD::from(qrs::SD(1))
             } else {
-                self.player_qrs -= qrs::RD(1);
-            }
+                qrs::QRSD::from(qrs::RD(-1))
+            };
+            self.mobs.player_mut().apply_delta(delta);
         } else if input.pressed_this_frame(Button::DOWN) {
-            if input.gamepad.contains(Button::LEFT) {
-                self.player_qrs -= qrs::SD(1);
+            let delta = if input.gamepad.contains(Button::LEFT) {
+                qrs::QRSD::from(qrs::SD(-1))
             } else if input.gamepad.contains(Button::RIGHT) {
-                self.player_qrs += qrs::QD(1);
+                qrs::QRSD::from(qrs::QD(1))
             } else {
-                self.player_qrs += qrs::RD(1);
-            }
+                qrs::QRSD::from(qrs::RD(1))
+            };
+            self.mobs.player_mut().apply_delta(delta);
         }
 
         self.tick();
@@ -1196,13 +1327,14 @@ impl State {
         const PLAYER: TileSprite = 0;
         const PLAYER_SHADOW: TileSprite = 5;
 
-        // TODO: Compute where we are along a fixed jump arc and draw there
-        let player_hex_upper_left: unscaled::XY = qrs_to_unscaled(self.player_qrs);
+        let player = self.mobs.player();
+
+        let player_hex_upper_left: unscaled::XY = qrs_to_unscaled(player.qrs);
 
         let player_at = player_hex_upper_left + unscaled::WH {
             w: unscaled::W(10),
             h: unscaled::H(4),
-        };
+        } + player.offset.wh();
 
         let mut player_shadow_at = player_at;
         player_shadow_at += unscaled::H(4);

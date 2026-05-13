@@ -467,7 +467,7 @@ pub mod unscaled {
         X Y W H
     }
 
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct WH {
         pub w: W,
         pub h: H,
