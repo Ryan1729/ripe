@@ -483,114 +483,131 @@ pub mod unscaled {
         }
     }
 
-    impl core::ops::AddAssign for WH {
-        fn add_assign(&mut self, other: WH) {
-            self.w += other.w;
-            self.h += other.h;
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct XYD {
+        pub xd: XD,
+        pub yd: YD,
+    }
+
+    macro_rules! shared_delta_impl {
+        ($($name: ident $component_1: ident : $type_1: ident  $component_2: ident : $type_2: ident $inner: ident),+ $(,)?) => {
+            $(
+                impl core::ops::AddAssign for $name {
+                    fn add_assign(&mut self, other: $name) {
+                        self.$component_1 += other.$component_1;
+                        self.$component_2 += other.$component_2;
+                    }
+                }
+            
+                impl core::ops::Add for $name {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $name) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+            
+                impl core::ops::SubAssign for $name {
+                    fn sub_assign(&mut self, other: $name) {
+                        self.$component_1 -= other.$component_1;
+                        self.$component_2 -= other.$component_2;
+                    }
+                }
+            
+                impl core::ops::Sub for $name {
+                    type Output = Self;
+            
+                    fn sub(mut self, other: $name) -> Self::Output {
+                        self -= other;
+                        self
+                    }
+                }
+            
+                impl core::ops::MulAssign<$inner> for $name {
+                    fn mul_assign(&mut self, inner: $inner) {
+                        self.$component_1 *= inner;
+                        self.$component_2 *= inner;
+                    }
+                }
+            
+                impl core::ops::Mul<$inner> for $name {
+                    type Output = Self;
+            
+                    fn mul(mut self, inner: $inner) -> Self::Output {
+                        self *= inner;
+                        self
+                    }
+                }
+            
+                impl core::ops::AddAssign<$name> for XY {
+                    fn add_assign(&mut self, other: $name) {
+                        self.x += other.$component_1;
+                        self.y += other.$component_2;
+                    }
+                }
+            
+                impl core::ops::Add<$name> for XY {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $name) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+            
+                impl core::ops::SubAssign<$name> for XY {
+                    fn sub_assign(&mut self, other: $name) {
+                        self.x -= other.$component_1;
+                        self.y -= other.$component_2;
+                    }
+                }
+            
+                impl core::ops::Sub<$name> for XY {
+                    type Output = Self;
+            
+                    fn sub(mut self, other: $name) -> Self::Output {
+                        self -= other;
+                        self
+                    }
+                }
+            
+                impl core::ops::AddAssign<$type_1> for $name {
+                    fn add_assign(&mut self, other: $type_1) {
+                        self.$component_1 += other;
+                    }
+                }
+            
+                impl core::ops::Add<$type_1> for $name {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $type_1) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+            
+                impl core::ops::AddAssign<$type_2> for $name {
+                    fn add_assign(&mut self, other: $type_2) {
+                        self.$component_2 += other;
+                    }
+                }
+            
+                impl core::ops::Add<$type_2> for $name {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $type_2) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+            )+
         }
     }
 
-    impl core::ops::Add for WH {
-        type Output = Self;
-
-        fn add(mut self, other: WH) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::SubAssign for WH {
-        fn sub_assign(&mut self, other: WH) {
-            self.w -= other.w;
-            self.h -= other.h;
-        }
-    }
-
-    impl core::ops::Sub for WH {
-        type Output = Self;
-
-        fn sub(mut self, other: WH) -> Self::Output {
-            self -= other;
-            self
-        }
-    }
-
-    impl core::ops::MulAssign<Inner> for WH {
-        fn mul_assign(&mut self, inner: Inner) {
-            self.w *= inner;
-            self.h *= inner;
-        }
-    }
-
-    impl core::ops::Mul<Inner> for WH {
-        type Output = Self;
-
-        fn mul(mut self, inner: Inner) -> Self::Output {
-            self *= inner;
-            self
-        }
-    }
-
-    impl core::ops::AddAssign<WH> for XY {
-        fn add_assign(&mut self, other: WH) {
-            self.x += other.w;
-            self.y += other.h;
-        }
-    }
-
-    impl core::ops::Add<WH> for XY {
-        type Output = Self;
-
-        fn add(mut self, other: WH) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::SubAssign<WH> for XY {
-        fn sub_assign(&mut self, other: WH) {
-            self.x -= other.w;
-            self.y -= other.h;
-        }
-    }
-
-    impl core::ops::Sub<WH> for XY {
-        type Output = Self;
-
-        fn sub(mut self, other: WH) -> Self::Output {
-            self -= other;
-            self
-        }
-    }
-
-    impl core::ops::AddAssign<W> for WH {
-        fn add_assign(&mut self, other: W) {
-            self.w += other;
-        }
-    }
-
-    impl core::ops::Add<W> for WH {
-        type Output = Self;
-
-        fn add(mut self, other: W) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::AddAssign<H> for WH {
-        fn add_assign(&mut self, other: H) {
-            self.h += other;
-        }
-    }
-
-    impl core::ops::Add<H> for WH {
-        type Output = Self;
-
-        fn add(mut self, other: H) -> Self::Output {
-            self += other;
-            self
-        }
+    shared_delta_impl!{
+        WH w: W h: H Inner,
+        XYD xd: XD yd: YD SignedInner,
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]

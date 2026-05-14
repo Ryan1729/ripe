@@ -523,6 +523,12 @@ mod qrs {
         rd: RD,
     }
 
+    impl From<Dir> for QRSD {
+        fn from(dir: Dir) -> Self {
+            dir.basis()
+        }
+    }
+
     impl From<QD> for QRSD {
         fn from(d: QD) -> Self {
             let mut output = Self::default();
@@ -876,20 +882,88 @@ pub type Key = QRS;
 
 pub type Tiles = BTreeMap<Key, Tile>;
 
+const HEX_X_SCALE: i16 = 13;
+const HEX_Y_SCALE: i16 = 8;
+
+const X_Q_FACTOR: i16 = 2;
+const X_R_FACTOR: i16 = 0;
+
+const Y_Q_FACTOR: i16 = 1;
+const Y_R_FACTOR: i16 = 2;
+
+
 mod offset {
     use platform_types::unscaled;
+    use crate::qrs;
+
+    use super::*;
+    
+    #[derive(Clone, Copy, Debug, Default)]
+    enum Kind {
+        #[default]
+        Still,
+        JumpArc { target: unscaled::XYD, velocity: unscaled::XYD, acceleration: unscaled::XYD },
+        // We expect different mobs to have other movement patterns
+        // that will require other variants here.
+    }
 
     #[derive(Clone, Copy, Debug, Default)]
     pub struct Offset {
+        kind: Kind,
+        xyd: unscaled::XYD,
     }
 
     impl Offset {
-        pub fn wh(&self) -> unscaled::WH {
-            <_>::default()
+        pub fn xyd(&self) -> unscaled::XYD {
+            self.xyd
         }
 
         pub fn advance(&mut self) {
-            // TODO: Compute where we are along a fixed jump arc
+            match &mut self.kind {
+                Kind::Still => {}
+                Kind::JumpArc { target, velocity, acceleration } => {
+                    if (velocity.xd > unscaled::XD(0) && target.xd >= self.xyd.xd) 
+                    || (velocity.xd < unscaled::XD(0) && target.xd <= self.xyd.xd)
+                    || velocity.xd == unscaled::XD(0) {
+                        self.xyd = *target;
+                        return
+                    }
+
+                    self.xyd += *velocity;
+                    *velocity += *acceleration;
+                }
+            }
+        }
+    }
+
+    pub fn jump_arc(dir: qrs::Dir) -> Offset {
+        use qrs::Dir::*;
+        let (target, velocity, acceleration) = match dir {
+            _ => { <_>::default() }
+            //DecRIncS => {},
+            //DecRIncQ => {},
+            //DecSIncQ => {},
+            //DecSIncR => {},
+            //DecQIncR => {},
+            // Up-Left
+            DecQIncS => {
+                let target = unscaled::XYD {
+                    xd: unscaled::XD((X_Q_FACTOR * -1 + X_R_FACTOR * 0) * HEX_X_SCALE),
+                    yd: unscaled::YD((Y_Q_FACTOR * -1 + Y_R_FACTOR * 0) * HEX_Y_SCALE),
+                };
+
+                (
+                    target,
+                    target, // TODO some scaled down version of target. Say let velocity = target / 30;
+                    <_>::default(), // TODO a downward acceleration that causes the velocity to reverse
+                                    //      halfway through the arc
+                )
+            },
+        };
+
+        Offset {
+            kind: Kind::JumpArc { target, velocity, acceleration },
+            xyd: <_>::default()
         }
     }
 }
@@ -902,10 +976,10 @@ pub struct Entity {
 }
 
 impl Entity {
-    fn apply_delta(&mut self, qrsd: QRSD) {
-        self.qrs += qrsd;
+    fn apply_dir(&mut self, dir: qrs::Dir) {
+        self.qrs += QRSD::from(dir);
 
-        // TODO set the offset, so we can animate
+        self.offset = offset::jump_arc(dir);
     }
 }
 
@@ -1108,23 +1182,23 @@ impl State {
         //
 
         if input.pressed_this_frame(Button::UP) {
-            let delta = if input.gamepad.contains(Button::LEFT) {
-                qrs::QRSD::from(qrs::QD(-1))
+            let dir = if input.gamepad.contains(Button::LEFT) {
+                qrs::Dir::DecQIncS
             } else if input.gamepad.contains(Button::RIGHT) {
-                qrs::QRSD::from(qrs::SD(1))
+                qrs::Dir::DecRIncQ
             } else {
-                qrs::QRSD::from(qrs::RD(-1))
+                qrs::Dir::DecRIncS
             };
-            self.mobs.player_mut().apply_delta(delta);
+            self.mobs.player_mut().apply_dir(dir);
         } else if input.pressed_this_frame(Button::DOWN) {
-            let delta = if input.gamepad.contains(Button::LEFT) {
-                qrs::QRSD::from(qrs::SD(-1))
+            let dir = if input.gamepad.contains(Button::LEFT) {
+                qrs::Dir::DecQIncR
             } else if input.gamepad.contains(Button::RIGHT) {
-                qrs::QRSD::from(qrs::QD(1))
+                qrs::Dir::DecSIncQ
             } else {
-                qrs::QRSD::from(qrs::RD(1))
+                qrs::Dir::DecSIncR
             };
-            self.mobs.player_mut().apply_delta(delta);
+            self.mobs.player_mut().apply_dir(dir);
         }
 
         self.tick();
@@ -1178,25 +1252,15 @@ impl State {
             alpha | r | g | b
         };
 
-        const HEX_Y_SCALE: i16 = 8;
-
-        const HEX_X_SCALE: i16 = 13;
-
         const HEX_X_OFFSET: i16 = 160;
         const HEX_Y_OFFSET: i16 = 110;
-
-        const X_Q_FACTOR: i16 = 2;
-        const X_R_FACTOR: i16 = 0;
-
-        const Y_Q_FACTOR: i16 = 1;
-        const Y_R_FACTOR: i16 = 2;
 
         let qrs_to_unscaled = |qrs: QRS| {
             let q = qrs.q.0;
             let r = qrs.r.0;
 
-            let x = (X_Q_FACTOR * q + X_R_FACTOR * r) * 13 + HEX_X_OFFSET;
-            let y = (Y_Q_FACTOR * q + Y_R_FACTOR * r) * 8 + HEX_Y_OFFSET;
+            let x = (X_Q_FACTOR * q + X_R_FACTOR * r) * HEX_X_SCALE + HEX_X_OFFSET;
+            let y = (Y_Q_FACTOR * q + Y_R_FACTOR * r) * HEX_Y_SCALE + HEX_Y_OFFSET;
 
             unscaled::XY {
                 x: unscaled::X(x.try_into().unwrap_or(0)),
@@ -1334,7 +1398,7 @@ impl State {
         let player_at = player_hex_upper_left + unscaled::WH {
             w: unscaled::W(10),
             h: unscaled::H(4),
-        } + player.offset.wh();
+        } + player.offset.xyd();
 
         let mut player_shadow_at = player_at;
         player_shadow_at += unscaled::H(4);
