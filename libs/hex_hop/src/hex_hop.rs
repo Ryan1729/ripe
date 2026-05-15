@@ -902,7 +902,7 @@ mod offset {
     enum Kind {
         #[default]
         Still,
-        JumpArc { target: unscaled::XYD, velocity: unscaled::XYD, acceleration: unscaled::XYD },
+        JumpArc { velocity: unscaled::XYD, acceleration: unscaled::XYD },
         // We expect different mobs to have other movement patterns
         // that will require other variants here.
     }
@@ -921,11 +921,16 @@ mod offset {
         pub fn advance(&mut self) {
             match &mut self.kind {
                 Kind::Still => {}
-                Kind::JumpArc { target, velocity, acceleration } => {
-                    if (velocity.xd > unscaled::XD(0) && target.xd >= self.xyd.xd) 
-                    || (velocity.xd < unscaled::XD(0) && target.xd <= self.xyd.xd)
-                    || velocity.xd == unscaled::XD(0) {
-                        self.xyd = *target;
+                Kind::JumpArc { velocity, acceleration } => {
+                    const X_ZERO: unscaled::XD = unscaled::XD(0);
+                    const Y_ZERO: unscaled::YD = unscaled::YD(0);
+
+                    if (velocity.xd > X_ZERO && self.xyd.xd >= X_ZERO) 
+                    || (velocity.xd < X_ZERO && self.xyd.xd <= X_ZERO)
+                    || (velocity.yd > Y_ZERO && self.xyd.yd >= Y_ZERO)
+                    || (velocity.yd < Y_ZERO && self.xyd.yd <= Y_ZERO)
+                    || (velocity.xd == X_ZERO && velocity.yd == Y_ZERO) {
+                        self.xyd = unscaled::XYD::default();
                         return
                     }
 
@@ -938,32 +943,56 @@ mod offset {
 
     pub fn jump_arc(dir: qrs::Dir) -> Offset {
         use qrs::Dir::*;
-        let (target, velocity, acceleration) = match dir {
-            _ => { <_>::default() }
-            //DecRIncS => {},
-            //DecRIncQ => {},
-            //DecSIncQ => {},
-            //DecSIncR => {},
-            //DecQIncR => {},
+        let basis = match dir {
+            // Up
+            DecRIncS => unscaled::XYD {
+                xd: unscaled::XD((X_Q_FACTOR * 0 + X_R_FACTOR * -1)),
+                yd: unscaled::YD((Y_Q_FACTOR * 0 + Y_R_FACTOR * -1)),
+            },
+            // Up-Right
+            DecRIncQ => unscaled::XYD {
+                xd: unscaled::XD((X_Q_FACTOR * 1 + X_R_FACTOR * -1)),
+                yd: unscaled::YD((Y_Q_FACTOR * 1 + Y_R_FACTOR * -1)),
+            },
+            // Down-Right
+            DecSIncQ => unscaled::XYD {
+                xd: unscaled::XD((X_Q_FACTOR * 1 + X_R_FACTOR * 0)),
+                yd: unscaled::YD((Y_Q_FACTOR * 1 + Y_R_FACTOR * 0)),
+            },
+            // Down
+            DecSIncR => unscaled::XYD {
+                xd: unscaled::XD((X_Q_FACTOR * 0 + X_R_FACTOR * 1)),
+                yd: unscaled::YD((Y_Q_FACTOR * 0 + Y_R_FACTOR * 1)),
+            },
+            // Down-Left
+            DecQIncR => unscaled::XYD {
+                xd: unscaled::XD((X_Q_FACTOR * -1 + X_R_FACTOR * 1)),
+                yd: unscaled::YD((Y_Q_FACTOR * -1 + Y_R_FACTOR * 1)),
+            },
             // Up-Left
-            DecQIncS => {
-                let target = unscaled::XYD {
-                    xd: unscaled::XD((X_Q_FACTOR * -1 + X_R_FACTOR * 0) * HEX_X_SCALE),
-                    yd: unscaled::YD((Y_Q_FACTOR * -1 + Y_R_FACTOR * 0) * HEX_Y_SCALE),
-                };
-
-                (
-                    target,
-                    target, // TODO some scaled down version of target. Say let velocity = target / 30;
-                    <_>::default(), // TODO a downward acceleration that causes the velocity to reverse
-                                    //      halfway through the arc
-                )
+            DecQIncS => unscaled::XYD {
+                xd: unscaled::XD((X_Q_FACTOR * -1 + X_R_FACTOR * 0)),
+                yd: unscaled::YD((Y_Q_FACTOR * -1 + Y_R_FACTOR * 0)),
             },
         };
 
+        // Point the other way because so we start exactly where we visually were before the move
+        let xyd = unscaled::XYD {
+            xd: basis.xd * -1 * HEX_X_SCALE,
+            yd: basis.yd * -1 * HEX_Y_SCALE,
+        };
+
+        let velocity = unscaled::XYD {
+            xd: basis.xd,
+            yd: basis.yd, // TODO more height
+        };
+
+        let acceleration = <_>::default(); // TODO a downward acceleration that causes the velocity to reverse
+                                           //      halfway through the arc
+
         Offset {
-            kind: Kind::JumpArc { target, velocity, acceleration },
-            xyd: <_>::default()
+            kind: Kind::JumpArc { velocity, acceleration },
+            xyd,
         }
     }
 }
@@ -1021,15 +1050,15 @@ mod mobs {
         }
 
         pub fn entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
-            self.entities.values_mut()
+            std::iter::once(&mut self.player).chain(self.entities.values_mut())
         }
 
         pub fn all(&self) -> impl Iterator<Item = (&Key, &Entity)> {
-            self.entities.iter()
+            std::iter::once((&self.player.qrs, &self.player)).chain(self.entities.iter())
         }
 
         pub fn keys(&self) -> impl Iterator<Item = &Key> {
-            self.entities.keys()
+            std::iter::once(&self.player.qrs).chain(self.entities.keys())
         }
     }
 }

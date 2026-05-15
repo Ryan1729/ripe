@@ -539,6 +539,22 @@ pub mod unscaled {
                         self
                     }
                 }
+
+                impl core::ops::DivAssign<$inner> for $name {
+                    fn div_assign(&mut self, inner: $inner) {
+                        self.$component_1 /= inner;
+                        self.$component_2 /= inner;
+                    }
+                }
+            
+                impl core::ops::Div<$inner> for $name {
+                    type Output = Self;
+            
+                    fn div(mut self, inner: $inner) -> Self::Output {
+                        self /= inner;
+                        self
+                    }
+                }
             
                 impl core::ops::AddAssign<$name> for XY {
                     fn add_assign(&mut self, other: $name) {
