@@ -41,7 +41,7 @@ mod fixed {
     impl core::ops::Add for Fixed {
         type Output = Self;
 
-        fn add(mut self, other: Fixed) -> Self::Output {
+        fn add(self, other: Fixed) -> Self::Output {
             add(self, other)
         }
     }
@@ -64,7 +64,7 @@ mod fixed {
     impl core::ops::Sub for Fixed {
         type Output = Self;
 
-        fn sub(mut self, other: Fixed) -> Self::Output {
+        fn sub(self, other: Fixed) -> Self::Output {
             sub(self, other)
         }
     }
@@ -89,7 +89,7 @@ mod fixed {
     impl core::ops::Mul for Fixed {
         type Output = Self;
 
-        fn mul(mut self, other: Fixed) -> Self::Output {
+        fn mul(self, other: Fixed) -> Self::Output {
             mul(self, other)
         }
     }
@@ -112,7 +112,7 @@ mod fixed {
     impl core::ops::Div for Fixed {
         type Output = Self;
 
-        fn div(mut self, other: Fixed) -> Self::Output {
+        fn div(self, other: Fixed) -> Self::Output {
             div(self, other)
         }
     }
@@ -315,6 +315,7 @@ mod qrs {
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct R(pub Inner);
 
+    #[allow(unused)]
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct S(pub Inner);
 
@@ -325,8 +326,6 @@ mod qrs {
         pub r: R,
         pub q: Q,
     }
-
-    type NeighborError = ();
 
     impl QRS {
         fn neighbor(self, dir: Dir) -> Self {
@@ -373,6 +372,7 @@ mod qrs {
         ) => {
             $(
                 impl $d_name {
+                    #[allow(unused)]
                     fn scale(self, radius: Distance) -> Self {
                         Self(self.0.saturating_mul(radius.into()))
                     }
@@ -578,6 +578,7 @@ mod qrs {
         }
     }
 
+    #[allow(unused)]
     pub fn spiral(radius: Distance, center: QRS) -> impl Iterator<Item = QRS> {
         // See https://www.redblobgames.com/grids/hexagons/#rings for capacity formula
         let mut output = Vec::with_capacity(1 + 3 * radius as usize * (radius as usize + 1));
@@ -902,7 +903,7 @@ mod offset {
     enum Kind {
         #[default]
         Still,
-        JumpArc { velocity: unscaled::XYD, acceleration: unscaled::XYD },
+        JumpArc { steps_left: u16, velocity: unscaled::XYD, acceleration: unscaled::XYD },
         // We expect different mobs to have other movement patterns
         // that will require other variants here.
     }
@@ -921,15 +922,25 @@ mod offset {
         pub fn advance(&mut self) {
             match &mut self.kind {
                 Kind::Still => {}
-                Kind::JumpArc { velocity, acceleration } => {
+                Kind::JumpArc { steps_left, velocity, acceleration } => {
+                    if *steps_left == 0 {
+                        self.xyd = unscaled::XYD::default();
+                        return
+                    }
+                    *steps_left -= 1;
+
                     const X_ZERO: unscaled::XD = unscaled::XD(0);
                     const Y_ZERO: unscaled::YD = unscaled::YD(0);
 
-                    if (velocity.xd > X_ZERO && self.xyd.xd >= X_ZERO) 
-                    || (velocity.xd < X_ZERO && self.xyd.xd <= X_ZERO)
-                    || (velocity.yd > Y_ZERO && self.xyd.yd >= Y_ZERO)
-                    || (velocity.yd < Y_ZERO && self.xyd.yd <= Y_ZERO)
-                    || (velocity.xd == X_ZERO && velocity.yd == Y_ZERO) {
+                    if (
+                        velocity.yd > Y_ZERO // we have passed the middle of the arc
+                        && (
+                            (velocity.xd > X_ZERO && self.xyd.xd >= X_ZERO) 
+                            || (velocity.xd < X_ZERO && self.xyd.xd <= X_ZERO)
+                            || (self.xyd.yd >= Y_ZERO)
+                        )
+                    ) || (velocity.xd == X_ZERO && velocity.yd == Y_ZERO)
+                    {
                         self.xyd = unscaled::XYD::default();
                         return
                     }
@@ -946,33 +957,33 @@ mod offset {
         let basis = match dir {
             // Up
             DecRIncS => unscaled::XYD {
-                xd: unscaled::XD((X_Q_FACTOR * 0 + X_R_FACTOR * -1)),
-                yd: unscaled::YD((Y_Q_FACTOR * 0 + Y_R_FACTOR * -1)),
+                xd: unscaled::XD(X_Q_FACTOR * 0 + X_R_FACTOR * -1),
+                yd: unscaled::YD(Y_Q_FACTOR * 0 + Y_R_FACTOR * -1),
             },
             // Up-Right
             DecRIncQ => unscaled::XYD {
-                xd: unscaled::XD((X_Q_FACTOR * 1 + X_R_FACTOR * -1)),
-                yd: unscaled::YD((Y_Q_FACTOR * 1 + Y_R_FACTOR * -1)),
+                xd: unscaled::XD(X_Q_FACTOR * 1 + X_R_FACTOR * -1),
+                yd: unscaled::YD(Y_Q_FACTOR * 1 + Y_R_FACTOR * -1),
             },
             // Down-Right
             DecSIncQ => unscaled::XYD {
-                xd: unscaled::XD((X_Q_FACTOR * 1 + X_R_FACTOR * 0)),
-                yd: unscaled::YD((Y_Q_FACTOR * 1 + Y_R_FACTOR * 0)),
+                xd: unscaled::XD(X_Q_FACTOR * 1 + X_R_FACTOR * 0),
+                yd: unscaled::YD(Y_Q_FACTOR * 1 + Y_R_FACTOR * 0),
             },
             // Down
             DecSIncR => unscaled::XYD {
-                xd: unscaled::XD((X_Q_FACTOR * 0 + X_R_FACTOR * 1)),
-                yd: unscaled::YD((Y_Q_FACTOR * 0 + Y_R_FACTOR * 1)),
+                xd: unscaled::XD(X_Q_FACTOR * 0 + X_R_FACTOR * 1),
+                yd: unscaled::YD(Y_Q_FACTOR * 0 + Y_R_FACTOR * 1),
             },
             // Down-Left
             DecQIncR => unscaled::XYD {
-                xd: unscaled::XD((X_Q_FACTOR * -1 + X_R_FACTOR * 1)),
-                yd: unscaled::YD((Y_Q_FACTOR * -1 + Y_R_FACTOR * 1)),
+                xd: unscaled::XD(X_Q_FACTOR * -1 + X_R_FACTOR * 1),
+                yd: unscaled::YD(Y_Q_FACTOR * -1 + Y_R_FACTOR * 1),
             },
             // Up-Left
             DecQIncS => unscaled::XYD {
-                xd: unscaled::XD((X_Q_FACTOR * -1 + X_R_FACTOR * 0)),
-                yd: unscaled::YD((Y_Q_FACTOR * -1 + Y_R_FACTOR * 0)),
+                xd: unscaled::XD(X_Q_FACTOR * -1 + X_R_FACTOR * 0),
+                yd: unscaled::YD(Y_Q_FACTOR * -1 + Y_R_FACTOR * 0),
             },
         };
 
@@ -984,19 +995,38 @@ mod offset {
 
         let velocity = unscaled::XYD {
             xd: basis.xd,
-            yd: basis.yd, // TODO more height
+            yd: basis.yd + unscaled::YD(-5),
         };
 
-        let acceleration = <_>::default(); // TODO a downward acceleration that causes the velocity to reverse
-                                           //      halfway through the arc
+        let acceleration = unscaled::XYD {
+            xd: <_>::default(),
+            yd: unscaled::YD(1),
+        };
 
         Offset {
-            kind: Kind::JumpArc { velocity, acceleration },
+            kind: Kind::JumpArc { steps_left: 16, velocity, acceleration },
             xyd,
         }
     }
 }
 use offset::Offset;
+
+#[cfg(test)]
+mod offset_jump_arc_works {
+    use super::*;
+
+    #[test]
+    fn on_dec_q_inc_s() {
+        let mut offset = offset::jump_arc(qrs::Dir::DecQIncS);
+
+        assert_ne!(offset.xyd(), <_>::default());
+
+        while offset.xyd() != <_>::default() {
+            offset.advance();
+        }
+        // If the test terminates, it passed
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
@@ -1338,7 +1368,7 @@ impl State {
                 top_face_colour,
             );
 
-            xy += (tile_h / 2);
+            xy += tile_h / 2;
             xy -= unscaled::H(1);
 
             macro_rules! left_right_edges {
@@ -1409,7 +1439,7 @@ impl State {
         // Draw Mobs
         //
 
-        for (&key, mob) in self.mobs.all() {
+        for (&_key, _mob) in self.mobs.all() {
             // TODO
         }
 
