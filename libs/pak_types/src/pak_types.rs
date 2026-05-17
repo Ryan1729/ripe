@@ -243,66 +243,6 @@ pub mod unscaled {
         pub y: Y,
     }
 
-    impl core::ops::AddAssign<W> for XY {
-        fn add_assign(&mut self, other: W) {
-            self.x += other;
-        }
-    }
-
-    impl core::ops::Add<W> for XY {
-        type Output = Self;
-
-        fn add(mut self, other: W) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::AddAssign<H> for XY {
-        fn add_assign(&mut self, other: H) {
-            self.y += other;
-        }
-    }
-
-    impl core::ops::Add<H> for XY {
-        type Output = Self;
-
-        fn add(mut self, other: H) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::SubAssign<W> for XY {
-        fn sub_assign(&mut self, other: W) {
-            self.x -= other;
-        }
-    }
-
-    impl core::ops::Sub<W> for XY {
-        type Output = Self;
-
-        fn sub(mut self, other: W) -> Self::Output {
-            self -= other;
-            self
-        }
-    }
-
-    impl core::ops::SubAssign<H> for XY {
-        fn sub_assign(&mut self, other: H) {
-            self.y -= other;
-        }
-    }
-
-    impl core::ops::Sub<H> for XY {
-        type Output = Self;
-
-        fn sub(mut self, other: H) -> Self::Output {
-            self -= other;
-            self
-        }
-    }
-
     impl core::ops::Sub for XY {
         type Output = WH;
 
@@ -588,6 +528,68 @@ pub mod unscaled {
                     }
                 }
             
+                impl core::ops::AddAssign<$type_1> for XY {
+                    fn add_assign(&mut self, other: $type_1) {
+                        self.x += other;
+                    }
+                }
+            
+                impl core::ops::Add<$type_1> for XY {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $type_1) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+
+                impl core::ops::SubAssign<$type_1> for XY {
+                    fn sub_assign(&mut self, other: $type_1) {
+                        self.x -= other;
+                    }
+                }
+            
+                impl core::ops::Sub<$type_1> for XY {
+                    type Output = Self;
+            
+                    fn sub(mut self, other: $type_1) -> Self::Output {
+                        self -= other;
+                        self
+                    }
+                }
+            
+                impl core::ops::AddAssign<$type_2> for XY {
+                    fn add_assign(&mut self, other: $type_2) {
+                        self.y += other;
+                    }
+                }
+            
+                impl core::ops::Add<$type_2> for XY {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $type_2) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+
+                impl core::ops::SubAssign<$type_2> for XY {
+                    fn sub_assign(&mut self, other: $type_2) {
+                        self.y -= other;
+                    }
+                }
+            
+                impl core::ops::Sub<$type_2> for XY {
+                    type Output = Self;
+            
+                    fn sub(mut self, other: $type_2) -> Self::Output {
+                        self -= other;
+                        self
+                    }
+                }
+
+                // Add/Sub for $name section
+                
                 impl core::ops::AddAssign<$type_1> for $name {
                     fn add_assign(&mut self, other: $type_1) {
                         self.$component_1 += other;
@@ -599,6 +601,21 @@ pub mod unscaled {
             
                     fn add(mut self, other: $type_1) -> Self::Output {
                         self += other;
+                        self
+                    }
+                }
+
+                impl core::ops::SubAssign<$type_1> for $name {
+                    fn sub_assign(&mut self, other: $type_1) {
+                        self.$component_1 -= other;
+                    }
+                }
+            
+                impl core::ops::Sub<$type_1> for $name {
+                    type Output = Self;
+            
+                    fn sub(mut self, other: $type_1) -> Self::Output {
+                        self -= other;
                         self
                     }
                 }
@@ -614,6 +631,21 @@ pub mod unscaled {
             
                     fn add(mut self, other: $type_2) -> Self::Output {
                         self += other;
+                        self
+                    }
+                }
+
+                impl core::ops::SubAssign<$type_2> for $name {
+                    fn sub_assign(&mut self, other: $type_2) {
+                        self.$component_2 -= other;
+                    }
+                }
+            
+                impl core::ops::Sub<$type_2> for $name {
+                    type Output = Self;
+            
+                    fn sub(mut self, other: $type_2) -> Self::Output {
+                        self -= other;
                         self
                     }
                 }

@@ -1276,41 +1276,6 @@ impl State {
         // Draw Hexes
         //
 
-        // TODO move these to a `colour` crate, find a good colour space or whatever to
-        // make these not fuck up the hue. Do not move the ARGB type alias there, but
-        // making a copy of it is fine.
-        let darken = |colour: ARGB| {
-            let alpha = colour & 0xFF00_0000;
-
-            let mut r = colour & 0xFF_0000;
-            r = r.saturating_div(2);
-            r &= 0xFF_0000;
-            let mut g = colour & 0xFF00;
-            g = g.saturating_div(2);
-            g &= 0xFF00;
-            let mut b = colour & 0xFF;
-            b = b.saturating_div(2);
-
-            alpha | r | g | b
-        };
-
-        let brighten = |colour: ARGB| {
-            let alpha = colour & 0xFF00_0000;
-
-            let mut r = colour & 0xFF_0000;
-            r = r.saturating_mul(2);
-            r &= 0xFF_0000;
-            let mut g = colour & 0xFF00;
-            g = g.saturating_mul(2);
-            g &= 0xFF00;
-
-            let mut b = colour & 0xFF;
-            b = b.saturating_div(2);
-            b &= 0xFF;
-
-            alpha | r | g | b
-        };
-
         const HEX_X_OFFSET: i16 = 160;
         const HEX_Y_OFFSET: i16 = 110;
 
@@ -1459,7 +1424,7 @@ impl State {
             h: unscaled::H(4),
         } + player.offset.xyd();
 
-        let mut player_shadow_at = player_at;
+        let mut player_shadow_at = player_at - player.offset.xyd().yd;
         player_shadow_at += unscaled::H(4);
 
         commands.sspr(
