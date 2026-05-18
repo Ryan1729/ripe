@@ -919,6 +919,10 @@ mod offset {
             self.xyd
         }
 
+        pub fn is_settled(&self) -> bool {
+            self.xyd == unscaled::XYD::default()
+        }
+
         pub fn advance(&mut self) {
             match &mut self.kind {
                 Kind::Still => {}
@@ -1028,10 +1032,19 @@ mod offset_jump_arc_works {
     }
 }
 
+type MobSprite = u16;
+
+const SHADOW_OFFSET: MobSprite = 5;
+
+const PLAYER: MobSprite = 0;
+
+const X_MOB: MobSprite = 10;
+
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
     pub qrs: QRS,
     pub offset: Offset,
+    pub sprite: MobSprite,
 }
 
 impl Entity {
@@ -1079,8 +1092,16 @@ mod mobs {
             );
         }
 
+        pub fn entities(&mut self) -> impl Iterator<Item = &Entity> {
+            std::iter::once(&self.player).chain(self.entities.values())
+        }
+
         pub fn entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
             std::iter::once(&mut self.player).chain(self.entities.values_mut())
+        }
+
+        pub fn non_player_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
+            self.entities.values_mut()
         }
 
         pub fn all(&self) -> impl Iterator<Item = (&Key, &Entity)> {
@@ -1204,6 +1225,12 @@ impl State {
 
         let mut mobs = Mobs::default();
 
+        mobs.insert(qr!(2 0), Entity {
+            qrs: qr!(2 0),
+            sprite: X_MOB,
+            ..<_>::default()
+        });
+
         Self {
             seed,
             rng: rng_,
@@ -1240,24 +1267,45 @@ impl State {
         //
         //
 
-        if input.pressed_this_frame(Button::UP) {
-            let dir = if input.gamepad.contains(Button::LEFT) {
-                qrs::Dir::DecQIncS
-            } else if input.gamepad.contains(Button::RIGHT) {
-                qrs::Dir::DecRIncQ
-            } else {
-                qrs::Dir::DecRIncS
-            };
-            self.mobs.player_mut().apply_dir(dir);
-        } else if input.pressed_this_frame(Button::DOWN) {
-            let dir = if input.gamepad.contains(Button::LEFT) {
-                qrs::Dir::DecQIncR
-            } else if input.gamepad.contains(Button::RIGHT) {
-                qrs::Dir::DecSIncQ
-            } else {
-                qrs::Dir::DecSIncR
-            };
-            self.mobs.player_mut().apply_dir(dir);
+        let mut player_moved = false;
+
+        if self.mobs.entities().all(|m| m.offset.is_settled()) {
+            // TODO? Only allow the player to mov if the mobs all have no offset?
+            if input.pressed_this_frame(Button::UP) {
+                player_moved = true;
+    
+                let dir = if input.gamepad.contains(Button::LEFT) {
+                    qrs::Dir::DecQIncS
+                } else if input.gamepad.contains(Button::RIGHT) {
+                    qrs::Dir::DecRIncQ
+                } else {
+                    qrs::Dir::DecRIncS
+                };
+                self.mobs.player_mut().apply_dir(dir);
+            } else if input.pressed_this_frame(Button::DOWN) {
+                player_moved = true;
+    
+                let dir = if input.gamepad.contains(Button::LEFT) {
+                    qrs::Dir::DecQIncR
+                } else if input.gamepad.contains(Button::RIGHT) {
+                    qrs::Dir::DecSIncQ
+                } else {
+                    qrs::Dir::DecSIncR
+                };
+                self.mobs.player_mut().apply_dir(dir);
+            }
+        }
+    
+        if player_moved {
+            assert!(self.mobs.non_player_entities_mut().all(|m| m.offset.is_settled()));
+
+            // other mobs take their turn
+            for mob in self.mobs.non_player_entities_mut() {
+                // TODO? make mobs move only once for two player turns?    
+                let dir = qrs::Dir::ALL[xs::range(&mut self.rng, 0..qrs::Dir::ALL.len() as u32) as usize];
+
+                mob.apply_dir(dir);
+            }
         }
 
         self.tick();
@@ -1401,40 +1449,29 @@ impl State {
         }
 
         //
-        // Draw Mobs
+        // Draw Mobs (including player)
         //
 
-        for (&_key, _mob) in self.mobs.all() {
-            // TODO
+        for (&_key, mob) in self.mobs.all() {
+            let mob_hex_upper_left: unscaled::XY = qrs_to_unscaled(mob.qrs);
+    
+            let mob_at = mob_hex_upper_left + unscaled::WH {
+                w: unscaled::W(10),
+                h: unscaled::H(4),
+            } + mob.offset.xyd();
+    
+            let mut mob_shadow_at = mob_at - mob.offset.xyd().yd;
+            mob_shadow_at += unscaled::H(4);
+    
+            commands.sspr(
+                hex_hop_mobs_spec.xy_from_tile_sprite(mob.sprite + SHADOW_OFFSET),
+                command::Rect::from_unscaled(hex_hop_mobs_spec.rect(mob_shadow_at)),
+            );
+    
+            commands.sspr(
+                hex_hop_mobs_spec.xy_from_tile_sprite(mob.sprite),
+                command::Rect::from_unscaled(hex_hop_mobs_spec.rect(mob_at)),
+            );
         }
-
-        //
-        // Draw player
-        //
-
-        const PLAYER: TileSprite = 0;
-        const PLAYER_SHADOW: TileSprite = 5;
-
-        let player = self.mobs.player();
-
-        let player_hex_upper_left: unscaled::XY = qrs_to_unscaled(player.qrs);
-
-        let player_at = player_hex_upper_left + unscaled::WH {
-            w: unscaled::W(10),
-            h: unscaled::H(4),
-        } + player.offset.xyd();
-
-        let mut player_shadow_at = player_at - player.offset.xyd().yd;
-        player_shadow_at += unscaled::H(4);
-
-        commands.sspr(
-            hex_hop_mobs_spec.xy_from_tile_sprite(PLAYER_SHADOW),
-            command::Rect::from_unscaled(hex_hop_mobs_spec.rect(player_shadow_at)),
-        );
-
-        commands.sspr(
-            hex_hop_mobs_spec.xy_from_tile_sprite(PLAYER),
-            command::Rect::from_unscaled(hex_hop_mobs_spec.rect(player_at)),
-        );
     }
 }
