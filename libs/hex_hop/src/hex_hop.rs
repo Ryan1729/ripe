@@ -873,7 +873,7 @@ pub fn xy_to_i(width: impl Into<TilesWidth>, xy: XY) -> Result<Index, XYToIError
 
 type HexHeight = u8;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Tile {
     pub height: HexHeight,
     pub colour: ARGB
@@ -1201,7 +1201,7 @@ impl State {
             qr!(0 1),
         ];
 
-        let heights = [0];//[0, 0, 0, 0, 0, 0, 0, 20, 20, 20];
+        let heights = [0, 0, 0, 0, 0, 0, 5, 10, 15, 20, 20, 20];
         let palette = [
             0xFF3352E1,
             0xFF30B06E,
@@ -1327,7 +1327,7 @@ impl State {
         const HEX_X_OFFSET: i16 = 160;
         const HEX_Y_OFFSET: i16 = 110;
 
-        let qrs_to_unscaled = |qrs: QRS| {
+        fn qrs_to_unscaled(qrs: QRS) -> unscaled::XY {
             let q = qrs.q.0;
             let r = qrs.r.0;
 
@@ -1338,15 +1338,19 @@ impl State {
                 x: unscaled::X(x.try_into().unwrap_or(0)),
                 y: unscaled::Y(y.try_into().unwrap_or(0)),
             }
-        };
+        }
 
-        let mut draw_hex = |qrs: QRS, Tile { height, colour: base_colour }| {
-            let at: unscaled::XY = qrs_to_unscaled(qrs);
+        fn tile_xy(qrs: QRS, Tile { height, .. }: &Tile) -> unscaled::XY {
+            let height = *height;
+            qrs_to_unscaled(qrs) - unscaled::H(height.into())
+        }
 
+        let mut draw_hex = |qrs: QRS, tile @ Tile { height, colour: base_colour }: &Tile| {
+            let height = *height;
             let outline_colour: ARGB = 0xFF00_0000;
             // TODO? cache this across frames? It is a few cbrts.
             let colour::DarkMiddleBright{ dark, middle, bright }
-                = colour::DarkMiddleBright::from(base_colour);
+                = colour::DarkMiddleBright::from(*base_colour);
 
             let top_face_colour: ARGB = middle;
             let top_lower_edge_colour: ARGB = bright;
@@ -1362,8 +1366,7 @@ impl State {
             const BOTTOM_RIGHT_LINE: TileSprite = 5;
             const BOTTOM_CENTER_LINE: TileSprite = 6;
 
-            let mut xy = at;
-            xy.y -= unscaled::H(height.into());
+            let mut xy = tile_xy(qrs, tile);
 
             for _ in 0..2 {
                 commands.sspr_override(
@@ -1441,7 +1444,9 @@ impl State {
             }
         };
 
-        for (&qrs, &tile) in self.tiles.iter() {
+        // TODO draw player and other mobs at proper layer
+
+        for (&qrs, tile) in self.tiles.iter() {
             draw_hex(
                 qrs,
                 tile,
@@ -1452,13 +1457,18 @@ impl State {
         // Draw Mobs (including player)
         //
 
-        for (&_key, mob) in self.mobs.all() {
-            let mob_hex_upper_left: unscaled::XY = qrs_to_unscaled(mob.qrs);
+        for (&key, mob) in self.mobs.all() {
+            let tile = self.tiles.get(&key).map(|&t| t).unwrap_or_else(|| {
+                dbg!("No tile for ", key);
+                <_>::default()
+            });
+
+            let mob_hex_upper_left: unscaled::XY = tile_xy(key, &tile);
     
-            let mob_at = mob_hex_upper_left + unscaled::WH {
-                w: unscaled::W(10),
-                h: unscaled::H(4),
-            } + mob.offset.xyd();
+            let mob_at = mob_hex_upper_left
+                + unscaled::W(10)
+                - unscaled::H(10)
+                + mob.offset.xyd();
     
             let mut mob_shadow_at = mob_at - mob.offset.xyd().yd;
             mob_shadow_at += unscaled::H(4);
