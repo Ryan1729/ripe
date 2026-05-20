@@ -328,7 +328,7 @@ mod qrs {
     }
 
     impl QRS {
-        fn neighbor(self, dir: Dir) -> Self {
+        pub fn neighbor(self, dir: Dir) -> Self {
             self + dir.basis()
         }
     }
@@ -385,10 +385,10 @@ mod qrs {
                         self.0 += other.0;
                     }
                 }
-            
+
                 impl core::ops::Add<$d_name> for $d_name {
                     type Output = Self;
-            
+
                     fn add(mut self, other: $d_name) -> Self::Output {
                         self += other;
                         self
@@ -400,10 +400,10 @@ mod qrs {
                         self.0 -= other.0;
                     }
                 }
-            
+
                 impl core::ops::Sub<$d_name> for $d_name {
                     type Output = Self;
-            
+
                     fn sub(mut self, other: $d_name) -> Self::Output {
                         self -= other;
                         self
@@ -417,10 +417,10 @@ mod qrs {
                         self.0 += other.0;
                     }
                 }
-            
+
                 impl core::ops::Add<$d_name> for $base_name {
                     type Output = Self;
-            
+
                     fn add(mut self, other: $d_name) -> Self::Output {
                         self += other;
                         self
@@ -432,10 +432,10 @@ mod qrs {
                         self.0 -= other.0;
                     }
                 }
-            
+
                 impl core::ops::Sub<$d_name> for $base_name {
                     type Output = Self;
-            
+
                     fn sub(mut self, other: $d_name) -> Self::Output {
                         self -= other;
                         self
@@ -449,10 +449,10 @@ mod qrs {
                         $plus_code_qrs
                     }
                 }
-            
+
                 impl core::ops::Add<$d_name> for QRS {
                     type Output = Self;
-            
+
                     fn add(mut self, other: $d_name) -> Self::Output {
                         self += other;
                         self
@@ -464,10 +464,10 @@ mod qrs {
                         $minus_code_qrs
                     }
                 }
-            
+
                 impl core::ops::Sub<$d_name> for QRS {
                     type Output = Self;
-            
+
                     fn sub(mut self, other: $d_name) -> Self::Output {
                         self -= other;
                         self
@@ -481,10 +481,10 @@ mod qrs {
                         $plus_code_qrsd
                     }
                 }
-            
+
                 impl core::ops::Add<$d_name> for QRSD {
                     type Output = Self;
-            
+
                     fn add(mut self, other: $d_name) -> Self::Output {
                         self += other;
                         self
@@ -496,10 +496,10 @@ mod qrs {
                         $minus_code_qrsd
                     }
                 }
-            
+
                 impl core::ops::Sub<$d_name> for QRSD {
                     type Output = Self;
-            
+
                     fn sub(mut self, other: $d_name) -> Self::Output {
                         self -= other;
                         self
@@ -898,7 +898,7 @@ mod offset {
     use crate::qrs;
 
     use super::*;
-    
+
     #[derive(Clone, Copy, Debug, Default)]
     enum Kind {
         #[default]
@@ -939,7 +939,7 @@ mod offset {
                     if (
                         velocity.yd > Y_ZERO // we have passed the middle of the arc
                         && (
-                            (velocity.xd > X_ZERO && self.xyd.xd >= X_ZERO) 
+                            (velocity.xd > X_ZERO && self.xyd.xd >= X_ZERO)
                             || (velocity.xd < X_ZERO && self.xyd.xd <= X_ZERO)
                             || (self.xyd.yd >= Y_ZERO)
                         )
@@ -1073,11 +1073,11 @@ mod mobs {
             &mut self.player
         }
 
-        pub fn get(&self, key: Key) -> Option<&Entity> {
+        pub fn non_player(&self, key: Key) -> Option<&Entity> {
             self.entities.get(&key)
         }
 
-        pub fn get_mut(&mut self, key: Key) -> Option<&mut Entity> {
+        pub fn non_player_mut(&mut self, key: Key) -> Option<&mut Entity> {
             self.entities.get_mut(&key)
         }
 
@@ -1270,10 +1270,10 @@ impl State {
         let mut player_moved = false;
 
         if self.mobs.entities().all(|m| m.offset.is_settled()) {
-            // TODO? Only allow the player to mov if the mobs all have no offset?
+            // TODO? Only allow the player to move if the mobs all have no offset?
             if input.pressed_this_frame(Button::UP) {
                 player_moved = true;
-    
+
                 let dir = if input.gamepad.contains(Button::LEFT) {
                     qrs::Dir::DecQIncS
                 } else if input.gamepad.contains(Button::RIGHT) {
@@ -1281,10 +1281,13 @@ impl State {
                 } else {
                     qrs::Dir::DecRIncS
                 };
-                self.mobs.player_mut().apply_dir(dir);
+                let target_qrs = self.mobs.player().qrs.neighbor(dir);
+                if self.tiles.get(&target_qrs).is_some() {
+                    self.mobs.player_mut().apply_dir(dir);
+                }
             } else if input.pressed_this_frame(Button::DOWN) {
                 player_moved = true;
-    
+
                 let dir = if input.gamepad.contains(Button::LEFT) {
                     qrs::Dir::DecQIncR
                 } else if input.gamepad.contains(Button::RIGHT) {
@@ -1292,19 +1295,28 @@ impl State {
                 } else {
                     qrs::Dir::DecSIncR
                 };
-                self.mobs.player_mut().apply_dir(dir);
+
+                let target_qrs = self.mobs.player().qrs.neighbor(dir);
+                if self.tiles.get(&target_qrs).is_some() {
+                    self.mobs.player_mut().apply_dir(dir);
+                }
             }
         }
-    
+
         if player_moved {
             assert!(self.mobs.non_player_entities_mut().all(|m| m.offset.is_settled()));
 
             // other mobs take their turn
             for mob in self.mobs.non_player_entities_mut() {
-                // TODO? make mobs move only once for two player turns?    
-                let dir = qrs::Dir::ALL[xs::range(&mut self.rng, 0..qrs::Dir::ALL.len() as u32) as usize];
+                // TODO? make mobs move only once for two player turns?
 
-                mob.apply_dir(dir);
+                let dir_index = xs::range(&mut self.rng, 0..qrs::Dir::ALL.len() as u32) as usize;
+                let dir = qrs::Dir::ALL[dir_index];
+
+                let target_qrs = mob.qrs.neighbor(dir);
+                if self.tiles.get(&target_qrs).is_some() {
+                    mob.apply_dir(dir);
+                }
             }
         }
 
@@ -1345,143 +1357,149 @@ impl State {
             qrs_to_unscaled(qrs) - unscaled::H(height.into())
         }
 
-        let mut draw_hex = |qrs: QRS, tile @ Tile { height, colour: base_colour }: &Tile| {
-            let height = *height;
-            let outline_colour: ARGB = 0xFF00_0000;
-            // TODO? cache this across frames? It is a few cbrts.
-            let colour::DarkMiddleBright{ dark, middle, bright }
-                = colour::DarkMiddleBright::from(*base_colour);
+        macro_rules! draw_hex {
+            ($xy: expr, $tile: expr $(,)? ) => {
+                let mut xy: unscaled::XY = $xy;
+                let Tile { height, colour: base_colour }: &Tile = $tile;
 
-            let top_face_colour: ARGB = middle;
-            let top_lower_edge_colour: ARGB = bright;
-            let left_face_colour: ARGB = bright;
-            let center_face_colour: ARGB = middle;
-            let right_face_colour: ARGB = dark;
+                let height = *height;
+                let outline_colour: ARGB = 0xFF00_0000;
+                // TODO? cache this across frames? It is a few cbrts.
+                let colour::DarkMiddleBright{ dark, middle, bright }
+                    = colour::DarkMiddleBright::from(*base_colour);
 
-            const TOP_LINE: TileSprite = 0;
-            const LEFT_RIGHT_EDGES: TileSprite = 1;
-            const TOP_FACE: TileSprite = 2;
-            const BOTTOM_FULL_LINE: TileSprite = 3;
-            const BOTTOM_LEFT_LINE: TileSprite = 4;
-            const BOTTOM_RIGHT_LINE: TileSprite = 5;
-            const BOTTOM_CENTER_LINE: TileSprite = 6;
+                let top_face_colour: ARGB = middle;
+                let top_lower_edge_colour: ARGB = bright;
+                let left_face_colour: ARGB = bright;
+                let center_face_colour: ARGB = middle;
+                let right_face_colour: ARGB = dark;
 
-            let mut xy = tile_xy(qrs, tile);
+                const TOP_LINE: TileSprite = 0;
+                const LEFT_RIGHT_EDGES: TileSprite = 1;
+                const TOP_FACE: TileSprite = 2;
+                const BOTTOM_FULL_LINE: TileSprite = 3;
+                const BOTTOM_LEFT_LINE: TileSprite = 4;
+                const BOTTOM_RIGHT_LINE: TileSprite = 5;
+                const BOTTOM_CENTER_LINE: TileSprite = 6;
 
-            for _ in 0..2 {
-                commands.sspr_override(
-                    hex_pieces_spec.xy_from_tile_sprite(TOP_LINE),
-                    command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
-                    outline_colour,
-                );
-
-                xy += unscaled::H(1);
-            }
-
-            commands.sspr_override(
-                hex_pieces_spec.xy_from_tile_sprite(TOP_FACE),
-                command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
-                top_face_colour,
-            );
-
-            xy += tile_h / 2;
-            xy -= unscaled::H(1);
-
-            macro_rules! left_right_edges {
-                () => {
+                for _ in 0..2 {
                     commands.sspr_override(
-                        hex_pieces_spec.xy_from_tile_sprite(LEFT_RIGHT_EDGES),
+                        hex_pieces_spec.xy_from_tile_sprite(TOP_LINE),
                         command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
                         outline_colour,
                     );
+
+                    xy += unscaled::H(1);
                 }
-            }
 
-            for _ in 0..2 {
-                left_right_edges!();
-
-                xy += unscaled::H(1);
-            }
-
-            commands.sspr_override(
-                hex_pieces_spec.xy_from_tile_sprite(BOTTOM_FULL_LINE),
-                command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
-                top_lower_edge_colour,
-            );
-            left_right_edges!();
-
-            xy += unscaled::H(1);
-
-            for _ in 0..height {
                 commands.sspr_override(
-                    hex_pieces_spec.xy_from_tile_sprite(BOTTOM_LEFT_LINE),
+                    hex_pieces_spec.xy_from_tile_sprite(TOP_FACE),
                     command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
-                    left_face_colour,
+                    top_face_colour,
                 );
-                commands.sspr_override(
-                    hex_pieces_spec.xy_from_tile_sprite(BOTTOM_CENTER_LINE),
-                    command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
-                    center_face_colour,
-                );
-                commands.sspr_override(
-                    hex_pieces_spec.xy_from_tile_sprite(BOTTOM_RIGHT_LINE),
-                    command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
-                    right_face_colour,
-                );
-                left_right_edges!();
 
-                xy += unscaled::H(1);
-            }
+                xy += tile_h / 2;
+                xy -= unscaled::H(1);
 
-            left_right_edges!();
-            for _ in 0..2 {
+                macro_rules! left_right_edges {
+                    () => {
+                        commands.sspr_override(
+                            hex_pieces_spec.xy_from_tile_sprite(LEFT_RIGHT_EDGES),
+                            command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                            outline_colour,
+                        );
+                    }
+                }
+
+                for _ in 0..2 {
+                    left_right_edges!();
+
+                    xy += unscaled::H(1);
+                }
+
                 commands.sspr_override(
                     hex_pieces_spec.xy_from_tile_sprite(BOTTOM_FULL_LINE),
                     command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
-                    outline_colour,
+                    top_lower_edge_colour,
                 );
+                left_right_edges!();
+
                 xy += unscaled::H(1);
+
+                for _ in 0..height {
+                    commands.sspr_override(
+                        hex_pieces_spec.xy_from_tile_sprite(BOTTOM_LEFT_LINE),
+                        command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                        left_face_colour,
+                    );
+                    commands.sspr_override(
+                        hex_pieces_spec.xy_from_tile_sprite(BOTTOM_CENTER_LINE),
+                        command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                        center_face_colour,
+                    );
+                    commands.sspr_override(
+                        hex_pieces_spec.xy_from_tile_sprite(BOTTOM_RIGHT_LINE),
+                        command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                        right_face_colour,
+                    );
+                    left_right_edges!();
+
+                    xy += unscaled::H(1);
+                }
+
+                left_right_edges!();
+                for _ in 0..2 {
+                    commands.sspr_override(
+                        hex_pieces_spec.xy_from_tile_sprite(BOTTOM_FULL_LINE),
+                        command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                        outline_colour,
+                    );
+                    xy += unscaled::H(1);
+                }
             }
-        };
+        }
 
-        // TODO draw player and other mobs at proper layer
+        macro_rules! draw_mob {
+            ($mob_hex_upper_left: expr, $mob: expr $(,)? ) => {
+                let mob_hex_upper_left: unscaled::XY= $mob_hex_upper_left;
+                let mob: &Entity = $mob;
 
-        for (&qrs, tile) in self.tiles.iter() {
-            draw_hex(
-                qrs,
-                tile,
-            );
+                let mob_at = mob_hex_upper_left
+                    + unscaled::W(10)
+                    - unscaled::H(10)
+                    + mob.offset.xyd();
+
+                let mut mob_shadow_at = mob_at - mob.offset.xyd().yd;
+                mob_shadow_at += unscaled::H(4);
+
+                commands.sspr(
+                    hex_hop_mobs_spec.xy_from_tile_sprite(mob.sprite + SHADOW_OFFSET),
+                    command::Rect::from_unscaled(hex_hop_mobs_spec.rect(mob_shadow_at)),
+                );
+
+                commands.sspr(
+                    hex_hop_mobs_spec.xy_from_tile_sprite(mob.sprite),
+                    command::Rect::from_unscaled(hex_hop_mobs_spec.rect(mob_at)),
+                );
+            }
         }
 
         //
-        // Draw Mobs (including player)
+        // Draw Tiles and Mobs (including player)
         //
 
-        for (&key, mob) in self.mobs.all() {
-            let tile = self.tiles.get(&key).map(|&t| t).unwrap_or_else(|| {
-                dbg!("No tile for ", key);
-                <_>::default()
-            });
+        for (&key, tile) in self.tiles.iter() {
+            let xy = tile_xy(key, tile);
 
-            let mob_hex_upper_left: unscaled::XY = tile_xy(key, &tile);
-    
-            let mob_at = mob_hex_upper_left
-                + unscaled::W(10)
-                - unscaled::H(10)
-                + mob.offset.xyd();
-    
-            let mut mob_shadow_at = mob_at - mob.offset.xyd().yd;
-            mob_shadow_at += unscaled::H(4);
-    
-            commands.sspr(
-                hex_hop_mobs_spec.xy_from_tile_sprite(mob.sprite + SHADOW_OFFSET),
-                command::Rect::from_unscaled(hex_hop_mobs_spec.rect(mob_shadow_at)),
-            );
-    
-            commands.sspr(
-                hex_hop_mobs_spec.xy_from_tile_sprite(mob.sprite),
-                command::Rect::from_unscaled(hex_hop_mobs_spec.rect(mob_at)),
-            );
+            draw_hex!(xy, tile);
+
+            if let Some(mob) = self.mobs.non_player(key) {
+                draw_mob!(xy, mob);
+            }
+
+            if self.mobs.player().qrs == key {
+                draw_mob!(xy, self.mobs.player());
+            }
         }
     }
 }
