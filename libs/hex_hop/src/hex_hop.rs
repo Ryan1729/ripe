@@ -1042,29 +1042,36 @@ const X_MOB: MobSprite = 10;
 
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
-    pub qrs: QRS,
     pub offset: Offset,
     pub sprite: MobSprite,
 }
 
 impl Entity {
-    fn apply_dir(&mut self, dir: qrs::Dir) {
-        self.qrs += QRSD::from(dir);
 
-        self.offset = offset::jump_arc(dir);
-    }
 }
 
 mod mobs {
     use super::*;
 
+    #[derive(Clone, Copy, Debug, Default)]
+    pub enum Target {
+        #[default]
+        Player,
+        NonPlayer(Key)
+    }
+
     #[derive(Clone, Debug, Default)]
     pub struct Mobs {
+        player_qrs: QRS,
         player: Entity,
         entities: BTreeMap<Key, Entity>,
     }
 
     impl Mobs {
+        pub fn player_qrs(&self) -> &QRS {
+            &self.player_qrs
+        }
+
         pub fn player(&self) -> &Entity {
             &self.player
         }
@@ -1092,24 +1099,50 @@ mod mobs {
             );
         }
 
-        pub fn entities(&mut self) -> impl Iterator<Item = &Entity> {
-            std::iter::once(&self.player).chain(self.entities.values())
+        pub fn apply_dir(&mut self, target: Target, dir: qrs::Dir) {
+            let Some((mut qrs, mut mob)) = (match target {
+                Target::Player => Some((self.player_qrs, self.player.clone())),
+                Target::NonPlayer(qrs) => self.remove(qrs).map(|mob| (qrs, mob)),
+            }) else {
+                return
+            };
+
+            qrs += QRSD::from(dir);
+            mob.offset = offset::jump_arc(dir);
+
+            match target {
+                Target::Player => {
+                    self.player_qrs = qrs;
+                    self.player = mob;
+                },
+                Target::NonPlayer(_) => {
+                    self.insert(qrs, mob);
+                }
+            }
         }
 
-        pub fn entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
-            std::iter::once(&mut self.player).chain(self.entities.values_mut())
+        pub fn entities(&mut self) -> impl Iterator<Item = (&Key, &Entity)> {
+            std::iter::once((&self.player_qrs, &self.player)).chain(self.entities.iter())
         }
 
-        pub fn non_player_entities_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
-            self.entities.values_mut()
+        pub fn entities_mut(&mut self) -> impl Iterator<Item = (&Key, &mut Entity)> {
+            std::iter::once((&self.player_qrs, &mut self.player)).chain(self.entities.iter_mut())
         }
 
-        pub fn all(&self) -> impl Iterator<Item = (&Key, &Entity)> {
-            std::iter::once((&self.player.qrs, &self.player)).chain(self.entities.iter())
+        pub fn non_player_entities(&mut self) -> impl Iterator<Item = (&Key, &Entity)> {
+            self.entities.iter()
+        }
+
+        pub fn non_player_entities_mut(&mut self) -> impl Iterator<Item = (&Key, &mut Entity)> {
+            self.entities.iter_mut()
         }
 
         pub fn keys(&self) -> impl Iterator<Item = &Key> {
-            std::iter::once(&self.player.qrs).chain(self.entities.keys())
+            std::iter::once(&self.player_qrs).chain(self.entities.keys())
+        }
+
+        pub fn non_player_keys(&self) -> impl Iterator<Item = &Key> {
+            self.entities.keys()
         }
     }
 }
@@ -1226,7 +1259,6 @@ impl State {
         let mut mobs = Mobs::default();
 
         mobs.insert(qr!(2 0), Entity {
-            qrs: qr!(2 0),
             sprite: X_MOB,
             ..<_>::default()
         });
@@ -1248,7 +1280,7 @@ impl State {
     }
 
     fn tick(&mut self) {
-        for mob in self.mobs.entities_mut() {
+        for (_key, mob) in self.mobs.entities_mut() {
             mob.offset.advance();
         }
     }
@@ -1269,7 +1301,7 @@ impl State {
 
         let mut player_moved = false;
 
-        if self.mobs.entities().all(|m| m.offset.is_settled()) {
+        if self.mobs.entities().all(|(_, m)| m.offset.is_settled()) {
             // TODO? Only allow the player to move if the mobs all have no offset?
             if input.pressed_this_frame(Button::UP) {
                 player_moved = true;
@@ -1281,9 +1313,9 @@ impl State {
                 } else {
                     qrs::Dir::DecRIncS
                 };
-                let target_qrs = self.mobs.player().qrs.neighbor(dir);
+                let target_qrs = self.mobs.player_qrs().neighbor(dir);
                 if self.tiles.get(&target_qrs).is_some() {
-                    self.mobs.player_mut().apply_dir(dir);
+                    self.mobs.apply_dir(mobs::Target::Player, dir);
                 }
             } else if input.pressed_this_frame(Button::DOWN) {
                 player_moved = true;
@@ -1296,27 +1328,47 @@ impl State {
                     qrs::Dir::DecSIncR
                 };
 
-                let target_qrs = self.mobs.player().qrs.neighbor(dir);
+                let target_qrs = self.mobs.player_qrs().neighbor(dir);
                 if self.tiles.get(&target_qrs).is_some() {
-                    self.mobs.player_mut().apply_dir(dir);
+                    self.mobs.apply_dir(mobs::Target::Player, dir);
                 }
             }
         }
 
         if player_moved {
-            assert!(self.mobs.non_player_entities_mut().all(|m| m.offset.is_settled()));
+            assert!(self.mobs.non_player_entities().all(|(_, m)| m.offset.is_settled()));
 
-            // other mobs take their turn
-            for mob in self.mobs.non_player_entities_mut() {
-                // TODO? make mobs move only once for two player turns?
+            let mut mutations_len = 0;
+            const MAX_MOB_COUNT: u8 = 16;
+            type Mutation = (QRS, qrs::Dir);
+            let mut mutations = [Mutation::default(); MAX_MOB_COUNT as usize];
 
-                let dir_index = xs::range(&mut self.rng, 0..qrs::Dir::ALL.len() as u32) as usize;
-                let dir = qrs::Dir::ALL[dir_index];
-
-                let target_qrs = mob.qrs.neighbor(dir);
-                if self.tiles.get(&target_qrs).is_some() {
-                    mob.apply_dir(dir);
+            for &qrs in self.mobs.non_player_keys() {
+                if mutations_len >= MAX_MOB_COUNT as usize {
+                    break
                 }
+                // TODO? make mobs move only once for two player turns?
+                let mut tries_left = 16;
+
+                while tries_left > 0 {
+                    let dir_index = xs::range(&mut self.rng, 0..qrs::Dir::ALL.len() as u32) as usize;
+                    let dir = qrs::Dir::ALL[dir_index];
+
+                    let target_qrs = qrs.neighbor(dir);
+                    if self.tiles.get(&target_qrs).is_some() {
+                        mutations[mutations_len] = (qrs, dir);
+                        mutations_len += 1;
+
+                        break
+                    }
+
+                    tries_left -= 1;
+                }
+            }
+
+            for i in 0..mutations_len {
+                let (old_qrs, dir) = mutations[i];
+                self.mobs.apply_dir(mobs::Target::NonPlayer(old_qrs), dir);
             }
         }
 
@@ -1497,7 +1549,7 @@ impl State {
                 draw_mob!(xy, mob);
             }
 
-            if self.mobs.player().qrs == key {
+            if self.mobs.player_qrs() == &key {
                 draw_mob!(xy, self.mobs.player());
             }
         }
