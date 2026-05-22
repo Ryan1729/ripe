@@ -1040,10 +1040,13 @@ const PLAYER: MobSprite = 0;
 
 const X_MOB: MobSprite = 10;
 
+type Energy = u8;
+
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
     pub offset: Offset,
     pub sprite: MobSprite,
+    pub energy: Energy,
 }
 
 impl Entity {
@@ -1109,6 +1112,7 @@ mod mobs {
 
             qrs += QRSD::from(dir);
             mob.offset = offset::jump_arc(dir);
+            mob.energy = 0;
 
             match target {
                 Target::Player => {
@@ -1276,12 +1280,24 @@ impl State {
     }
 
     pub fn is_complete(&self) -> bool {
-        false
+        self.tiles.iter().all(|(_, tile)| tile.height == 0)
     }
 
     fn tick(&mut self) {
+        let player_was_settled = self.mobs.player().offset.is_settled();
+
         for (_key, mob) in self.mobs.entities_mut() {
             mob.offset.advance();
+        }
+
+        let player_is_settled = self.mobs.player().offset.is_settled();
+
+        if !player_was_settled && player_is_settled {
+            if let Some(tile) = self.tiles.get_mut(self.mobs.player_qrs()) {
+                tile.height = tile.height.saturating_sub(5);
+            } else {
+                debug_assert!(false, "Player was not on a tile!");
+            }
         }
     }
 
@@ -1302,7 +1318,6 @@ impl State {
         let mut player_moved = false;
 
         if self.mobs.entities().all(|(_, m)| m.offset.is_settled()) {
-            // TODO? Only allow the player to move if the mobs all have no offset?
             if input.pressed_this_frame(Button::UP) {
                 player_moved = true;
 
@@ -1338,6 +1353,10 @@ impl State {
         if player_moved {
             assert!(self.mobs.non_player_entities().all(|(_, m)| m.offset.is_settled()));
 
+            for (_key, mob) in self.mobs.non_player_entities_mut() {
+                mob.energy += 1;
+            }
+
             let mut mutations_len = 0;
             const MAX_MOB_COUNT: u8 = 16;
             type Mutation = (QRS, qrs::Dir);
@@ -1347,7 +1366,12 @@ impl State {
                 if mutations_len >= MAX_MOB_COUNT as usize {
                     break
                 }
-                // TODO? make mobs move only once for two player turns?
+
+                // If the mob does not have enough energy to move
+                if self.mobs.non_player(qrs).map(|mob| mob.energy < 2).unwrap_or(false) {
+                    continue
+                }
+
                 let mut tries_left = 16;
 
                 while tries_left > 0 {
@@ -1373,6 +1397,20 @@ impl State {
         }
 
         self.tick();
+
+        let &player_qrs = self.mobs.player_qrs();
+        let mut colliding = false;
+        for &qrs in self.mobs.non_player_keys() {
+            if qrs == player_qrs {
+                colliding = true;
+                break
+            }
+        }
+        if colliding {
+            // TODO good place for SFX
+
+            self.restart(hex_pieces_spec);
+        }
 
         //
         //
