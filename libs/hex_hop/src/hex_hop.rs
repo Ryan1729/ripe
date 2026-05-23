@@ -1173,9 +1173,6 @@ impl State {
         let mut rng_ = xs::from_seed(seed);
         let rng = &mut rng_;
 
-        let mut tiles = Tiles::default();
-
-        // TODO? Is this actually going to be useful elsewhere? And will it stick around?
         macro_rules! qr {
             ($q_inner: literal $r_inner: literal) => {
                 QRS {
@@ -1185,87 +1182,110 @@ impl State {
             }
         }
 
-        // TODO Generate the layout instead.
-        #[cfg(true)]
-        let coords = [
-            qr!(0 0),
-            qr!(1 0),
-            qr!(1 -1),
+        let mut tiles = Tiles::default();
 
-            qr!(-1 0),
-            qr!(-1 1),
-            qr!(0 1),
-            qr!(1 -2),
-            qr!(2 -2),
-            qr!(2 -1),
+        let mut tries_left = 16;
 
-            qr!(1 2),
-            qr!(1 1),
-            qr!(0 2),
-            qr!(-1 2),
-            qr!(-1 3),
-            qr!(0 3),
+        while tries_left > 0 {
+            tiles.clear();
 
-            qr!(-2 -2),
-            qr!(-2 -1),
-            qr!(-2 0),
-            qr!(-2 1),
-            qr!(-2 2),
-            qr!(-1 -1),
+            // TODO generate the tiles here by making a spiral, 
+            // randomly removing some times, and checking that
+            // they are all connected, looping again if not
 
-            qr!(2 0),
-            qr!(2 1),
-            qr!(2 2),
+            tries_left -= 1;
+        }
 
-            qr!(3 -3),
-            qr!(3 -2),
-            qr!(3 -1),
+        if tries_left == 0 {
+            // put a default in
 
-            qr!(-3 0),
-            qr!(-3 1),
-            qr!(-3 2),
-
-            qr!(0 -4),
-            qr!(0 -3),
-            qr!(0 -2),
-            qr!(0 -1),// Above visible problem
-        ];
-
-        #[cfg(false)]
-        let coords = [
-            qr!(0 -1),
-            qr!(0 0),
-            qr!(0 1),
-        ];
-
-        let heights = [0, 0, 0, 0, 0, 0, 5, 10, 15, 20, 20, 20];
-        let palette = [
-            0xFF3352E1,
-            0xFF30B06E,
-            0xFFDE4949,
-            0xFFFFB937,
-            0xFF533354,
-            0xFF5A7D8B,
-            0xFFEEEEEE,
-            0xFF222222,
-        ];
-
-        for i in 0..coords.len() {
-            tiles.insert(
-                coords[i],
-                Tile {
-                    height: heights[i % heights.len()],
-                    colour: palette[i % palette.len()],
-                },
-            );
+            #[cfg(true)]
+            let coords = [
+                qr!(0 0),
+                qr!(1 0),
+                qr!(1 -1),
+    
+                qr!(-1 0),
+                qr!(-1 1),
+                qr!(0 1),
+                qr!(1 -2),
+                qr!(2 -2),
+                qr!(2 -1),
+    
+                qr!(1 2),
+                qr!(1 1),
+                qr!(0 2),
+                qr!(-1 2),
+                qr!(-1 3),
+                qr!(0 3),
+    
+                qr!(-2 -2),
+                qr!(-2 -1),
+                qr!(-2 0),
+                qr!(-2 1),
+                qr!(-2 2),
+                qr!(-1 -1),
+    
+                qr!(2 0),
+                qr!(2 1),
+                qr!(2 2),
+    
+                qr!(3 -3),
+                qr!(3 -2),
+                qr!(3 -1),
+    
+                qr!(-3 0),
+                qr!(-3 1),
+                qr!(-3 2),
+    
+                qr!(0 -4),
+                qr!(0 -3),
+                qr!(0 -2),
+                qr!(0 -1),// Above visible problem
+            ];
+    
+            #[cfg(false)]
+            let coords = [
+                qr!(0 -1),
+                qr!(0 0),
+                qr!(0 1),
+            ];
+    
+            let heights = [0, 0, 0, 0, 0, 0, 5, 10, 15, 20, 20, 20];
+            let palette = [
+                0xFF3352E1,
+                0xFF30B06E,
+                0xFFDE4949,
+                0xFFFFB937,
+                0xFF533354,
+                0xFF5A7D8B,
+                0xFFEEEEEE,
+                0xFF222222,
+            ];
+    
+            for i in 0..coords.len() {
+                tiles.insert(
+                    coords[i],
+                    Tile {
+                        height: heights[i % heights.len()],
+                        colour: palette[i % palette.len()],
+                    },
+                );
+            }
         }
 
         let mut mobs = Mobs::default();
 
-        mobs.insert(qr!(2 0), Entity {
-            sprite: X_MOB,
-            ..<_>::default()
-        });
+        for _ in 0..xs::range(rng, 2..4) {
+            let tile_index = xs::range(rng, 0..tiles.len() as u32) as usize;
+            if let Some(&qrs) = tiles.keys().nth(tile_index)
+            && let None = mobs.non_player(qrs) {
+                mobs.insert(qrs, Entity {
+                    sprite: X_MOB,
+                    ..<_>::default()
+                });
+            }
+        }
 
         Self {
             seed,
@@ -1280,6 +1300,7 @@ impl State {
     }
 
     pub fn is_complete(&self) -> bool {
+        // TODO? make a door spawn that you have to go through instead?
         self.tiles.iter().all(|(_, tile)| tile.height == 0)
     }
 
@@ -1359,7 +1380,14 @@ impl State {
 
             let mut mutations_len = 0;
             const MAX_MOB_COUNT: u8 = 16;
-            type Mutation = (QRS, qrs::Dir);
+
+            #[derive(Clone, Copy, Default)]
+            struct Mutation {
+                old: QRS,
+                new: QRS,
+                dir: qrs::Dir,
+            }
+
             let mut mutations = [Mutation::default(); MAX_MOB_COUNT as usize];
 
             for &qrs in self.mobs.non_player_keys() {
@@ -1379,8 +1407,10 @@ impl State {
                     let dir = qrs::Dir::ALL[dir_index];
 
                     let target_qrs = qrs.neighbor(dir);
-                    if self.tiles.get(&target_qrs).is_some() {
-                        mutations[mutations_len] = (qrs, dir);
+                    if self.tiles.get(&target_qrs).is_some()
+                    && self.mobs.non_player(target_qrs).is_none()
+                    && !mutations[0..mutations_len].iter().any(|m| m.new == target_qrs) {
+                        mutations[mutations_len] = Mutation { old: qrs, new: target_qrs, dir };
                         mutations_len += 1;
 
                         break
@@ -1391,8 +1421,8 @@ impl State {
             }
 
             for i in 0..mutations_len {
-                let (old_qrs, dir) = mutations[i];
-                self.mobs.apply_dir(mobs::Target::NonPlayer(old_qrs), dir);
+                let Mutation { old, dir, .. } = mutations[i];
+                self.mobs.apply_dir(mobs::Target::NonPlayer(old), dir);
             }
         }
 
