@@ -955,6 +955,24 @@ fn connected_count(tiles: &Tiles, start: QRS) -> TileCount {
     seen.len()
 }
 
+#[cfg(test)]
+mod connected_count_works_on {
+    use super::*;
+
+    #[test]
+    fn the_basics() {
+        let mut tiles = Tiles::default();
+
+        let center = <_>::default();
+
+        assert_eq!(connected_count(&tiles, center), 0);
+
+        tiles.insert(center, <_>::default());
+
+        assert_eq!(connected_count(&tiles, center), 1);
+    }
+}
+
 const HEX_X_SCALE: i16 = 13;
 const HEX_Y_SCALE: i16 = 8;
 
@@ -1280,6 +1298,8 @@ impl State {
         while tries_left > 0 {
             tiles.clear();
 
+            assert_eq!(connected_count(&tiles, center), tiles.len());
+
             let mut debug_seen = BTreeSet::new();
 
             let mut i = xs::range(rng, 0..palette.len() as u32) as usize;
@@ -1290,6 +1310,7 @@ impl State {
                     assert!(!debug_seen.contains(&qrs));
                     // FIXME since apparently this isn't hitting dupes, figure out why we aren't
                     // getting holes in the maps, just ragged edges.
+                    // We do seem to be hitting the default case
                     debug_seen.insert(qrs);
                     continue
                 }
@@ -1301,6 +1322,16 @@ impl State {
                         colour: palette[i % palette.len()],
                     },
                 );
+
+                dbg!(&qrs, connected_count(&tiles, center), tiles.len(), connected_count(&tiles, center) != tiles.len());
+                if connected_count(&tiles, center) != tiles.len() {
+                    // Since we checked this from the initial state, this must be a 
+                    // new disconnected addition. We empirically can't rely on luck
+                    // to reconnect things without hitting the default a lot.
+                    tiles.remove(&qrs);
+
+                    assert_eq!(connected_count(&tiles, center), tiles.len());
+                }
             }
 
             if connected_count(&tiles, center) == tiles.len() {
@@ -1391,6 +1422,8 @@ impl State {
                 );
             }
         }
+
+        assert!(!tiles.is_empty());
 
         let mut mobs = Mobs::default();
 
