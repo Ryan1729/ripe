@@ -252,7 +252,7 @@ mod fixed {
             let low_rounded = low.round();
             let middle_rounded = middle.round();
             let high_rounded = high.round();
-            dbg!(low, middle, high, low_rounded, middle_rounded, high_rounded, );
+
             for n in Fixed(5960339).0..Fixed(5960339 + (2 << 16)).0 {
                 let low = Fixed(n);
                 let middle = Fixed(low.0 + FOUND_OFFSET);
@@ -930,8 +930,11 @@ fn connected_count(tiles: &Tiles, start: QRS) -> TileCount {
 
     let mut seen = TileSet::new();
 
+    let mut counted = TileSet::new();
+
     if tiles.get(&start).is_some() {
         seen.insert(start);
+        counted.insert(start);
 
         let mut frontier = TileSet::new();
         frontier.insert(start);
@@ -947,12 +950,13 @@ fn connected_count(tiles: &Tiles, start: QRS) -> TileCount {
 
                 if tiles.get(&new_at).is_some() {
                     frontier.insert(new_at);
+                    counted.insert(new_at);
                 }
             }
         }
     }
 
-    seen.len()
+    counted.len()
 }
 
 #[cfg(test)]
@@ -970,6 +974,12 @@ mod connected_count_works_on {
         tiles.insert(center, <_>::default());
 
         assert_eq!(connected_count(&tiles, center), 1);
+
+        for dir in qrs::Dir::ALL {
+            tiles.insert(center.neighbor(dir), <_>::default());
+        }
+
+        assert_eq!(connected_count(&tiles, center), 7);
     }
 }
 
@@ -1323,7 +1333,6 @@ impl State {
                     },
                 );
 
-                dbg!(&qrs, connected_count(&tiles, center), tiles.len(), connected_count(&tiles, center) != tiles.len());
                 if connected_count(&tiles, center) != tiles.len() {
                     // Since we checked this from the initial state, this must be a 
                     // new disconnected addition. We empirically can't rely on luck
