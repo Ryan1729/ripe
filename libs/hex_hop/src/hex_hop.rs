@@ -1056,6 +1056,12 @@ mod offset {
         }
     }
 
+    // Accleration due to gravity, per frame
+    const G: unscaled::XYD = unscaled::XYD {
+        xd: unscaled::XD::ZERO,
+        yd: unscaled::YD(1),
+    };
+
     pub fn jump_arc(dir: qrs::Dir) -> Offset {
         use qrs::Dir::*;
         let basis = match dir {
@@ -1102,13 +1108,25 @@ mod offset {
             yd: basis.yd + unscaled::YD(-5),
         };
 
-        let acceleration = unscaled::XYD {
+        Offset {
+            kind: Kind::JumpArc { steps_left: 16, velocity, acceleration: G },
+            xyd,
+        }
+    }
+
+    pub fn bounce_arc() -> Offset {
+        let xyd = unscaled::XYD {
             xd: <_>::default(),
             yd: unscaled::YD(1),
         };
 
+        let velocity = unscaled::XYD {
+            xd: <_>::default(),
+            yd: unscaled::YD(-5),
+        };
+
         Offset {
-            kind: Kind::JumpArc { steps_left: 16, velocity, acceleration },
+            kind: Kind::JumpArc { steps_left: 16, velocity, acceleration: G },
             xyd,
         }
     }
@@ -1225,6 +1243,28 @@ mod mobs {
             }
         }
 
+        pub fn in_place_jump(&mut self, target: Target) {
+            let Some((qrs, mut mob)) = (match target {
+                Target::Player => Some((self.player_qrs, self.player.clone())),
+                Target::NonPlayer(qrs) => self.remove(qrs).map(|mob| (qrs, mob)),
+            }) else {
+                return
+            };
+
+            mob.offset = offset::bounce_arc();
+            mob.energy = 0;
+
+            match target {
+                Target::Player => {
+                    self.player_qrs = qrs;
+                    self.player = mob;
+                },
+                Target::NonPlayer(_) => {
+                    self.insert(qrs, mob);
+                }
+            }
+        }
+
         pub fn entities(&mut self) -> impl Iterator<Item = (&Key, &Entity)> {
             std::iter::once((&self.player_qrs, &self.player)).chain(self.entities.iter())
         }
@@ -1310,18 +1350,11 @@ impl State {
 
             assert_eq!(connected_count(&tiles, center), tiles.len());
 
-            let mut debug_seen = BTreeSet::new();
-
             let mut i = xs::range(rng, 0..palette.len() as u32) as usize;
             for qrs in qrs::spiral(radius, center) {
                 i = i.wrapping_add(1);
 
                 if qrs != center && xs::range(rng, 0..skip_one_in) == 0 {
-                    assert!(!debug_seen.contains(&qrs));
-                    // FIXME since apparently this isn't hitting dupes, figure out why we aren't
-                    // getting holes in the maps, just ragged edges.
-                    // We do seem to be hitting the default case
-                    debug_seen.insert(qrs);
                     continue
                 }
 
@@ -1332,15 +1365,6 @@ impl State {
                         colour: palette[i % palette.len()],
                     },
                 );
-
-                if connected_count(&tiles, center) != tiles.len() {
-                    // Since we checked this from the initial state, this must be a 
-                    // new disconnected addition. We empirically can't rely on luck
-                    // to reconnect things without hitting the default a lot.
-                    tiles.remove(&qrs);
-
-                    assert_eq!(connected_count(&tiles, center), tiles.len());
-                }
             }
 
             if connected_count(&tiles, center) == tiles.len() {
@@ -1530,6 +1554,9 @@ impl State {
                     player_moved = true;
                     self.mobs.apply_dir(mobs::Target::Player, dir);
                 }
+            } else if input.pressed_this_frame(Button::A) {
+                player_moved = true;
+                self.mobs.in_place_jump(mobs::Target::Player);
             }
         }
 
@@ -1544,10 +1571,19 @@ impl State {
             const MAX_MOB_COUNT: u8 = 16;
 
             #[derive(Clone, Copy, Default)]
+            enum MutationKind {
+                #[default]
+                Bounce,
+                JumpArc {
+                    new: QRS,
+                    dir: qrs::Dir,
+                },
+            }
+
+            #[derive(Clone, Copy, Default)]
             struct Mutation {
                 old: QRS,
-                new: QRS,
-                dir: qrs::Dir,
+                kind: MutationKind,
             }
 
             let mut mutations = [Mutation::default(); MAX_MOB_COUNT as usize];
@@ -1562,6 +1598,13 @@ impl State {
                     continue
                 }
 
+                if xs::range(&mut self.rng, 0..16) == 0 {
+                    mutations[mutations_len] = Mutation { old: qrs, kind: MutationKind::Bounce };
+                    mutations_len += 1;
+
+                    continue
+                }
+
                 let mut tries_left = 16;
 
                 while tries_left > 0 {
@@ -1571,8 +1614,11 @@ impl State {
                     let target_qrs = qrs.neighbor(dir);
                     if self.tiles.get(&target_qrs).is_some()
                     && self.mobs.non_player(target_qrs).is_none()
-                    && !mutations[0..mutations_len].iter().any(|m| m.new == target_qrs) {
-                        mutations[mutations_len] = Mutation { old: qrs, new: target_qrs, dir };
+                    && !mutations[0..mutations_len].iter().any(|m| match m.kind {
+                        MutationKind::JumpArc { new, .. } => new == target_qrs,
+                        _ => false
+                    }) {
+                        mutations[mutations_len] = Mutation { old: qrs, kind: MutationKind::JumpArc{ new: target_qrs, dir } };
                         mutations_len += 1;
 
                         break
@@ -1583,8 +1629,14 @@ impl State {
             }
 
             for i in 0..mutations_len {
-                let Mutation { old, dir, .. } = mutations[i];
-                self.mobs.apply_dir(mobs::Target::NonPlayer(old), dir);
+                match mutations[i] {
+                    Mutation { old, kind: MutationKind::Bounce } => {
+                        self.mobs.in_place_jump(mobs::Target::NonPlayer(old));
+                    },
+                    Mutation { old, kind: MutationKind::JumpArc{ dir, .. } } => {
+                        self.mobs.apply_dir(mobs::Target::NonPlayer(old), dir);
+                    }
+                }
             }
         }
 
