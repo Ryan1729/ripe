@@ -1189,6 +1189,14 @@ mod mobs {
     }
 
     impl Mobs {
+        pub fn new(center: QRS) -> Self {
+            let mut output = Self::default();
+
+            output.player_qrs = center;
+
+            output
+        }
+
         pub fn player_qrs(&self) -> &QRS {
             &self.player_qrs
         }
@@ -1342,8 +1350,9 @@ impl State {
 
         let mut tries_left = 16;
 
-        // TODO? Randomize?
-        let mut center = <_>::default();
+        let mut center = qrs::spiral(3, <_>::default())
+            .nth(xs::range(rng, 0..(18 + 7 + 1)) as usize)
+            .unwrap_or_default();
 
         while tries_left > 0 {
             tiles.clear();
@@ -1458,7 +1467,7 @@ impl State {
 
         assert!(!tiles.is_empty());
 
-        let mut mobs = Mobs::default();
+        let mut mobs = Mobs::new(center);
 
         for _ in 0..xs::range(rng, 2..4) {
             let tile_index = xs::range(rng, 0..tiles.len() as u32) as usize;
