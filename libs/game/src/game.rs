@@ -364,6 +364,22 @@ pub use world::hallway::State as HallwayState;
 // "Boldly Or Leisurely Dashing" because we're gonna make it fully turn based.
 //
 
+// Possible Idea:
+// Fluxx the board game, but with hexagons as a hallway.
+//    Also, I'm realizing that Fluxx the board game is probably inspired by Zark City
+//    and/or Zarcana.
+// This can be a loose adaptation. We might not have the concept of cards, for example.
+// The part that seem interesting at the moment is the rotating and moving of chunks
+// of the space.
+// Thematically, it could be you are trying to set a open a portal to your
+// destination while others try to open a portal to theirs.
+// The other two pieces could be robots that follow your assigned movements, and once
+// you have opened your portal, you need to move the specific piece that holds the player
+// next to the portal? Maybe needing to leave behind something to hold that location while
+// you do? Or maybe just having it appear on top of you is good enough.
+//
+// Can we use the same hex graphics for this or not?
+
 fn warp_player_to(world: &mut World, target: &DoorTarget) {
     world.segment_id = target.segment_id;
     world.player.xy = target.xy;
