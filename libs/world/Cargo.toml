@@ -17,6 +17,9 @@ path = "../features"
 [dependencies.hex_hop]
 path = "../hex_hop"
 
+[dependencies.hex_twiddle]
+path = "../hex_twiddle"
+
 [dependencies.ice_puzzle]
 path = "../ice_puzzle"
 

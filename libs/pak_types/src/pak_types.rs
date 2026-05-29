@@ -1037,6 +1037,7 @@ pub mod sprite {
         pub bold: Spec<BOLD>,
         pub hex_pieces: Spec<HexPieces>,
         pub hex_hop_mobs: Spec<HexHopMobs>,
+        pub hex_twiddle_tiles: Spec<HexTwiddleTiles>,
     }
 
     impl Default for Specs {
@@ -1099,6 +1100,11 @@ pub mod sprite {
                     offset: WH{ w: W(384 + 40), h: H(256) },
                     tile: WH{ w: W(20), h: H(20) },
                     tiles_per_row: 5,
+                }),
+                hex_twiddle_tiles: spec::<HexTwiddleTiles>(SpecPieces{
+                    offset: WH{ w: W(256), h: H(256) },
+                    tile: WH{ w: W(16), h: H(16) },
+                    tiles_per_row: 8,
                 }),
             }
         }
@@ -1214,6 +1220,7 @@ mod hallway_spec {
         SWORD SWORD = 2,
         BOLD BOLD = 3,
         HexHop HEX_HOP = 4,
+        HexTwiddle HEX_TWIDDLE = 5,
     }
 }
 pub use hallway_spec::const_to_hallway_spec;

@@ -16,4 +16,5 @@ cargo watch \
     -w libs/bold \
     -w libs/hex_hop \
     -w libs/colour \
+    -w libs/hex_twiddle \
     -x 'build --release --package app --features "invariant-checking,reload,refresh"'

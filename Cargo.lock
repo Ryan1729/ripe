@@ -787,6 +787,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hex_twiddle"
+version = "0.1.0"
+dependencies = [
+ "gfx",
+ "platform_types",
+ "xs",
+]
+
+[[package]]
 name = "hot-lib-reloader"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2924,6 +2933,7 @@ dependencies = [
  "bold",
  "features",
  "hex_hop",
+ "hex_twiddle",
  "ice_puzzle",
  "models",
  "sword",

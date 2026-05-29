@@ -141,6 +141,7 @@ pub mod hallway {
         // Boulders Often Lope Downwards
         BOLD(bold::State),
         HexHop(hex_hop::State),
+        HexTwiddle(hex_twiddle::State),
     }
 
     impl State {
@@ -151,6 +152,7 @@ pub mod hallway {
                 SWORD(inner) => inner.is_complete(),
                 BOLD(inner) => inner.is_complete(),
                 HexHop(inner) => inner.is_complete(),
+                HexTwiddle(inner) => inner.is_complete(),
             }
         }
     }
@@ -964,6 +966,8 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                             HallwaySpec::SWORD => hallway::State::SWORD(sword::State::new(rng, &specs.wall)),
                             HallwaySpec::BOLD => hallway::State::BOLD(bold::State::new(rng, &specs.bold)),
                             HallwaySpec::HexHop => hallway::State::HexHop(hex_hop::State::new(rng, &specs.hex_pieces)),
+                            // TODO just pass the whole specs into each of them, who cares if other games can use each other's sprites?!
+                            HallwaySpec::HexTwiddle => hallway::State::HexTwiddle(hex_twiddle::State::new(rng, &specs)),
                         }
                     );
                 }
