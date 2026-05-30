@@ -62,6 +62,9 @@ impl State {
         //
         //
 
-        
+        commands.sspr(
+            specs.hex_twiddle_tiles.xy_from_tile_sprite(0u16),
+            command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(<_>::default())),
+        );
     }
 }
