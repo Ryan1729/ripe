@@ -1103,7 +1103,7 @@ pub mod sprite {
                 }),
                 hex_twiddle_tiles: spec::<HexTwiddleTiles>(SpecPieces{
                     offset: WH{ w: W(256), h: H(256 + 80) },
-                    tile: WH{ w: W(60), h: H(50) },
+                    tile: WH{ w: W(56), h: H(48) },
                     tiles_per_row: 4,
                 }),
             }
