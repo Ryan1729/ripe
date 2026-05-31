@@ -1,12 +1,9 @@
 use gfx::{Commands};
 use gfx_sizes::ARGB;
-use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
-use vec1::{Grid1, Grid1Spec, vec1, Vec1};
+use platform_types::{command, sprite, unscaled, Button, Input, Speaker};
 use xs::{Seed, Xs};
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::num::TryFromIntError;
-
 type Index = usize;
 
 type TileSprite = u16;
@@ -14,6 +11,7 @@ type TileSprite = u16;
 pub type TilesWidthInner = xy::Inner;
 pub type TilesWidth = std::num::NonZeroU16;
 
+#[cfg(false)]
 mod fixed {
     type Inner = i32;
 
@@ -267,13 +265,12 @@ mod fixed {
         }
     }
 }
+#[cfg(false)]
 use fixed::Fixed;
 
 /// Hexagonal coordinates.
 /// We follow the q, r, and s naming convention used in https://www.redblobgames.com/grids/hexagons/
 mod qrs {
-    use crate::fixed::{self, Fixed};
-
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum Dir {
         #[default]
@@ -332,26 +329,6 @@ mod qrs {
     impl QRS {
         pub fn neighbor(self, dir: Dir) -> Self {
             self + dir.basis()
-        }
-    }
-
-    const X_Q_FACTOR: Fixed = fixed::div(Fixed::from_i16(3), Fixed::from_i16(2));
-    const X_R_FACTOR: Fixed = Fixed::from_i16(0);
-
-    const Y_Q_FACTOR: Fixed = fixed::div(fixed::SQRT_3, Fixed::from_i16(2));
-    const Y_R_FACTOR: Fixed = fixed::SQRT_3;
-
-    impl QRS {
-        /// Converts to x and y on a conceptual infinite hex-grid. Will likely
-        /// need further processing for any real use-case.
-        #[allow(unused)]
-        pub fn to_unit_grid(self) -> (Fixed, Fixed) {
-            let q = Fixed::from_i16(self.q.0);
-            let r = Fixed::from_i16(self.r.0);
-
-            let x = X_Q_FACTOR * q + X_R_FACTOR * r;
-            let y = Y_Q_FACTOR * q + Y_R_FACTOR * r;
-            (x, y)
         }
     }
 
@@ -1154,6 +1131,7 @@ type MobSprite = u16;
 
 const SHADOW_OFFSET: MobSprite = 5;
 
+#[allow(unused)]
 const PLAYER: MobSprite = 0;
 
 const X_MOB: MobSprite = 10;
@@ -1317,7 +1295,7 @@ impl State {
         Self::init(seed, hex_pieces_spec)
     }
 
-    fn init(seed: Seed, hex_pieces_spec: &sprite::Spec::<sprite::HexPieces>) -> Self {
+    fn init(seed: Seed, _hex_pieces_spec: &sprite::Spec::<sprite::HexPieces>) -> Self {
         let mut rng_ = xs::from_seed(seed);
         let rng = &mut rng_;
 
@@ -1672,7 +1650,6 @@ impl State {
         //
 
         let tile = hex_pieces_spec.tile();
-        let tile_w = tile.w;
         let tile_h = tile.h;
 
         //

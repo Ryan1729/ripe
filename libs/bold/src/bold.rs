@@ -4,8 +4,8 @@
 /// Boulders Often Lope Downwards
 
 use gfx::{Commands};
-use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
-use vec1::{Grid1, Grid1Spec, vec1, Vec1};
+use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
+use vec1::{Grid1, Grid1Spec, vec1};
 use xs::{Seed, Xs};
 
 use std::collections::BTreeMap;
@@ -308,10 +308,8 @@ type GemCount = u8;
 mod exit_animation {
     use super::{
         Collection,
-        GemCount,
         TileSprite,
         EXIT_BASE,
-        EXIT_FRAME_COUNT,
     };
 
     type StateInner = u8;
@@ -351,7 +349,6 @@ mod gem_animation {
         TileSprite,
         Xs,
         GEM_BASE,
-        GEM_FRAME_COUNT,
     };
 
     type StateInner = u16;
@@ -594,7 +591,7 @@ impl Targeting {
 fn push_past_xy(
     tiles: &Tiles,
     mobs: &Mobs,
-    targeting @ Targeting { source, target }: Targeting
+    targeting @ Targeting { target, .. }: Targeting
 ) -> Option<XY> {
     if is_unblocked_by_tiles(tiles, target)
     && let Some(mob) = mobs.get(target)
@@ -626,7 +623,7 @@ fn is_unblocked_by_tiles(
 fn can_walk_onto(
     tiles: &Tiles,
     mobs: &Mobs,
-    targeting @ Targeting { source, target }: Targeting
+    targeting @ Targeting { target, .. }: Targeting
 ) -> bool {
     push_past_xy(tiles, mobs, targeting).is_some()
     || (
@@ -918,8 +915,6 @@ impl State {
 
                     tries > 0
                 } {
-                    let before = std::time::Instant::now();
-
                     paths.clear();
 
                     let spec = Grid1Spec {
@@ -1156,9 +1151,9 @@ impl State {
         let mut skip_animation_section = true;
 
         if let Some(dir) = input.dir_pressed_this_frame()
-        // Walk
-        && let (new_xy, _) = xy_in_dir(self.player_xy, dir)
         {
+            // Walk
+            let (new_xy, _) = xy_in_dir(self.player_xy, dir);
             let targeting = Targeting { source: self.player_xy, target: new_xy };
 
             if dir == Dir::Left {

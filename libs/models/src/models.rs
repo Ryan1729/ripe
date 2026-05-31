@@ -1,7 +1,7 @@
 pub use pak_types::*;
 pub use offset;
 
-use vec1::{Grid1, Vec1};
+use vec1::{Grid1};
 
 /// An amount of screenshake to render with.
 pub type ShakeAmount = u8;
