@@ -20,6 +20,9 @@ path = "../gfx_sizes"
 [dependencies.platform_types]
 path = "../platform_types"
 
+[dependencies.qrs]
+path = "../qrs"
+
 [dependencies.vec1]
 path = "../vec1"
 

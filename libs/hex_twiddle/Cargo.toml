@@ -14,5 +14,8 @@ path = "../gfx"
 [dependencies.platform_types]
 path = "../platform_types"
 
+[dependencies.qrs]
+path = "../qrs"
+
 [dependencies.xs]
 path = "../xs"

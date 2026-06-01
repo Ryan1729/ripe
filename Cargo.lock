@@ -782,6 +782,7 @@ dependencies = [
  "gfx",
  "gfx_sizes",
  "platform_types",
+ "qrs",
  "vec1",
  "xs",
 ]
@@ -792,6 +793,7 @@ version = "0.1.0"
 dependencies = [
  "gfx",
  "platform_types",
+ "qrs",
  "xs",
 ]
 
@@ -1728,6 +1730,10 @@ checksum = "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "qrs"
+version = "0.1.0"
 
 [[package]]
 name = "quote"
