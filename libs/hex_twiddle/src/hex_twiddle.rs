@@ -60,26 +60,14 @@ impl State {
             }
         }
 
-        tiles.insert(
-            qr!(0, 0),
-            Tile {
-                kind: TileKind::ALL[xs::range(rng, 0..TileKind::ALL.len() as u32) as usize],
-            }
-        );
-
-        tiles.insert(
-            qr!(0, 1),
-            Tile {
-                kind: TileKind::ALL[xs::range(rng, 0..TileKind::ALL.len() as u32) as usize],
-            }
-        );
-
-        tiles.insert(
-            qr!(0, 2),
-            Tile {
-                kind: TileKind::ALL[xs::range(rng, 0..TileKind::ALL.len() as u32) as usize],
-            }
-        );
+        for at in qrs::spiral(2, qr!(0, 0)) {
+            tiles.insert(
+                at,
+                Tile {
+                    kind: TileKind::ALL[xs::range(rng, 0..TileKind::ALL.len() as u32) as usize],
+                }
+            );
+        }
 
         Self {
             seed,
@@ -115,6 +103,9 @@ impl State {
         //
         //
 
+        // TODO add a selectrum that can be moved around
+        // TODO On selecting a location, pop up a menu to twiddle it different amounts
+
         if input.pressed_this_frame(Button::START) {
             self.restart(specs);
         }
@@ -133,11 +124,11 @@ impl State {
         const Y_Q_FACTOR: i16 = 1;
         const Y_R_FACTOR: i16 = 2;
 
-        const HEX_X_SCALE: i16 = 13;
-        const HEX_Y_SCALE: i16 = 8;
+        const HEX_X_SCALE: i16 = 22;
+        const HEX_Y_SCALE: i16 = 25;
         
         const HEX_X_OFFSET: i16 = 160;
-        const HEX_Y_OFFSET: i16 = 110;
+        const HEX_Y_OFFSET: i16 = 140;
 
         fn qrs_to_unscaled(qrs: QRS) -> unscaled::XY {
             let q = qrs.q.0;
