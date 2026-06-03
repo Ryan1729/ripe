@@ -31,11 +31,12 @@ pub type Key = QRS;
 
 pub type Tiles = BTreeMap<Key, Tile>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct State {
     pub seed: Seed, // For restarting
     pub rng: Xs,
     pub tiles: Tiles,
+    pub selectrum_at: QRS,
 }
 
 impl State {
@@ -74,6 +75,7 @@ impl State {
             rng: rng_,
             tiles,
             //mobs
+            .. <_>::default()
         }
     }
 
@@ -105,6 +107,37 @@ impl State {
 
         // TODO add a selectrum that can be moved around
         // TODO On selecting a location, pop up a menu to twiddle it different amounts
+
+        let mut player_moved = false;
+
+        if input.pressed_this_frame(Button::UP) {
+            let dir = if input.gamepad.contains(Button::LEFT) {
+                qrs::Dir::DecQIncS
+            } else if input.gamepad.contains(Button::RIGHT) {
+                qrs::Dir::DecRIncQ
+            } else {
+                qrs::Dir::DecRIncS
+            };
+            let target_qrs = self.selectrum_at.neighbor(dir);
+            if self.tiles.get(&target_qrs).is_some() {
+                player_moved = true;
+                self.selectrum_at = target_qrs;
+            }
+        } else if input.pressed_this_frame(Button::DOWN) {
+            let dir = if input.gamepad.contains(Button::LEFT) {
+                qrs::Dir::DecQIncR
+            } else if input.gamepad.contains(Button::RIGHT) {
+                qrs::Dir::DecSIncQ
+            } else {
+                qrs::Dir::DecSIncR
+            };
+
+            let target_qrs = self.selectrum_at.neighbor(dir);
+            if self.tiles.get(&target_qrs).is_some() {
+                player_moved = true;
+                self.selectrum_at = target_qrs;
+            }
+        }
 
         if input.pressed_this_frame(Button::START) {
             self.restart(specs);
@@ -147,6 +180,10 @@ impl State {
             qrs_to_unscaled(qrs)
         }
 
+        //
+        // Render Tiles
+        //
+
         for (at, tile) in self.tiles.iter() {
             let xy = tile_xy(*at, &tile);
 
@@ -159,5 +196,15 @@ impl State {
                 }
             );
         }
+
+        //
+        // Render UI
+        //
+
+        commands.sspr_override(
+            specs.hex_twiddle_tiles.xy_from_tile_sprite(1u16),
+            command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(qrs_to_unscaled(self.selectrum_at))),
+            0xFFFFB937
+        );
     }
 }
