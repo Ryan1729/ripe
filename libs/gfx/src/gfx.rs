@@ -483,6 +483,7 @@ pub mod nine_slice {
     pub const TALKING: Sprite = 0;
     pub const INVENTORY: Sprite = 1;
     pub const SELECTRUM: Sprite = 2;
+    pub const CONTEXT_MENU: Sprite = 3;
 
     struct Slices {
         // Top left point on the rect that makes up the top left corner of the sprite.
@@ -600,10 +601,16 @@ pub mod nine_slice {
                 talking_slices.bottom_right + supertile_wh.h,
             ),
             SELECTRUM => slices_from_corners!(
-                talking_slices.top_left + supertile_wh.w,
-                talking_slices.top_right + supertile_wh.w,
-                talking_slices.bottom_left + supertile_wh.w,
-                talking_slices.bottom_right + supertile_wh.w,
+                talking_slices.top_left + supertile_wh.h * 2,
+                talking_slices.top_right + supertile_wh.h * 2,
+                talking_slices.bottom_left + supertile_wh.h * 2,
+                talking_slices.bottom_right + supertile_wh.h * 2,
+            ),
+            CONTEXT_MENU => slices_from_corners!(
+                talking_slices.top_left + supertile_wh.h * 3,
+                talking_slices.top_right + supertile_wh.h * 3,
+                talking_slices.bottom_left + supertile_wh.h * 3,
+                talking_slices.bottom_right + supertile_wh.h * 3,
             ),
             _ => talking_slices,
         };
