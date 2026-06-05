@@ -244,12 +244,12 @@ pub mod unscaled {
     }
 
     impl core::ops::Sub for XY {
-        type Output = WH;
+        type Output = XYD;
 
         fn sub(self, other: XY) -> Self::Output {
-            WH {
-                w: W(self.x.0 - other.x.0),
-                h: H(self.y.0 - other.y.0),
+            XYD {
+                xd: XD(self.x.0 as SignedInner - other.x.0 as SignedInner),
+                yd: YD(self.y.0 as SignedInner - other.y.0 as SignedInner),
             }
         }
     }

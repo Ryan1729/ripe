@@ -8,6 +8,85 @@ use xs::{Seed, Xs};
 
 use std::collections::{BTreeMap};
 
+const X_Q_FACTOR: i16 = 2;
+const X_R_FACTOR: i16 = 0;
+
+const Y_Q_FACTOR: i16 = 1;
+const Y_R_FACTOR: i16 = 2;
+
+const HEX_X_SCALE: i16 = 22;
+const HEX_Y_SCALE: i16 = 25;
+
+const HEX_X_OFFSET: i16 = 160;
+const HEX_Y_OFFSET: i16 = 140;
+
+fn qrs_to_unscaled(qrs: QRS) -> unscaled::XY {
+    let q = qrs.q.0;
+    let r = qrs.r.0;
+
+    let x = (X_Q_FACTOR * q + X_R_FACTOR * r) * HEX_X_SCALE + HEX_X_OFFSET;
+    let y = (Y_Q_FACTOR * q + Y_R_FACTOR * r) * HEX_Y_SCALE + HEX_Y_OFFSET;
+
+    unscaled::XY {
+        x: unscaled::X(x.try_into().unwrap_or(0)),
+        y: unscaled::Y(y.try_into().unwrap_or(0)),
+    }
+}
+
+mod offset {
+    use platform_types::unscaled;
+    use qrs;
+
+    use super::*;
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct Offset {
+        xyd: unscaled::XYD,
+    }
+
+    impl From<qrs::Targeting> for Offset {
+        fn from(targeting: qrs::Targeting) -> Self {
+            let source = qrs_to_unscaled(targeting.source);
+            let target = qrs_to_unscaled(targeting.target);
+
+            Self {
+                xyd: source - target
+            }
+        }
+    }
+
+    const DECAY_RATE: unscaled::XYD = unscaled::XYD {
+        xd: unscaled::XD(1),
+        yd: unscaled::YD(1),
+    };
+
+    impl Offset {
+        pub fn xyd(&self) -> unscaled::XYD {
+            self.xyd
+        }
+
+        pub fn is_settled(&self) -> bool {
+            self.xyd == unscaled::XYD::default()
+        }
+
+        pub fn advance(&mut self) {
+            self.xyd -= DECAY_RATE;
+        }
+    }
+}
+use offset::Offset;
+
+#[derive(Clone, Copy, Debug, Default)]
+enum Twiddle {
+    #[default]
+    OneSixth,
+    TwoSixths,
+    ThreeSixths,
+    MinusTwoSixths,
+    MinusOneSixths,
+}
+
+
 #[derive(Clone, Copy, Debug, Default)]
 pub enum TileKind {
     #[default]
@@ -25,11 +104,41 @@ impl TileKind {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Tile {
     pub kind: TileKind,
+    pub offset: Offset,
 }
 
 pub type Key = QRS;
 
 pub type Tiles = BTreeMap<Key, Tile>;
+
+fn twiddle(tiles: &mut Tiles, key: Key, angle: Twiddle) {
+    // TODO handle angles properly, possibly by chaining movements
+
+    let base: QRS = key;
+
+    let mut twiddled: [Option<(qrs::Targeting, Tile)>; qrs::Dir::ALL.len()] = [None; qrs::Dir::ALL.len()];
+
+    let mut i = 0;
+
+    for to_target in qrs::Dir::ALL {
+        let at = base.neighbor(to_target);
+
+        if let Some(tile) = tiles.remove(&at) {
+            let target = at.neighbor(to_target.clockwise(2));
+
+            twiddled[i] = Some((qrs::Targeting { source: at, target }, tile));
+        }
+        
+        i += 1;
+    }
+
+    for opt in twiddled {
+        let Some((targeting, mut tile)) = opt else { continue };
+
+        tile.offset = Offset::from(targeting);
+        tiles.insert(targeting.target, tile);
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub enum ContextMenu {
@@ -74,6 +183,7 @@ impl State {
                 at,
                 Tile {
                     kind: TileKind::ALL[xs::range(rng, 0..TileKind::ALL.len() as u32) as usize],
+                    .. <_>::default()
                 }
             );
         }
@@ -97,7 +207,9 @@ impl State {
     }
 
     fn tick(&mut self) {
-
+        for (_, tile) in &mut self.tiles {
+            tile.offset.advance();
+        }
     }
 
     pub fn update_and_render(
@@ -113,14 +225,12 @@ impl State {
         //
         //
 
-        // TODO On selecting a location, pop up a menu to twiddle it different amounts
-
-        const MENU_OPTIONS: [&str; 5] = [
-            "+1/6",
-            "+2/6",
-            "+3/6",
-            "-2/6",
-            "-1/6",
+        const MENU_OPTIONS: [(Twiddle, &str); 5] = [
+            (Twiddle::OneSixth, "+1/6"),
+            (Twiddle::TwoSixths, "+2/6"),
+            (Twiddle::ThreeSixths,"+3/6"),
+            (Twiddle::MinusTwoSixths, "-2/6"),
+            (Twiddle::MinusOneSixths, "-1/6"),
         ];
 
         let mut player_moved = false;
@@ -170,7 +280,12 @@ impl State {
                         *selection = 0;
                     }
                 } else if input.pressed_this_frame(Button::A) {
-                    dbg!(MENU_OPTIONS[*selection]);
+                    assert!(!player_moved);
+                    twiddle(
+                        &mut self.tiles,
+                        self.selectrum_at,
+                        MENU_OPTIONS[*selection].0,
+                    );
                     self.context_menu = ContextMenu::Closed;
                 } else if input.pressed_this_frame(Button::B) {
                     self.context_menu = ContextMenu::Closed;
@@ -189,31 +304,6 @@ impl State {
         // Render Section
         //
         //
-
-        const X_Q_FACTOR: i16 = 2;
-        const X_R_FACTOR: i16 = 0;
-        
-        const Y_Q_FACTOR: i16 = 1;
-        const Y_R_FACTOR: i16 = 2;
-
-        const HEX_X_SCALE: i16 = 22;
-        const HEX_Y_SCALE: i16 = 25;
-        
-        const HEX_X_OFFSET: i16 = 160;
-        const HEX_Y_OFFSET: i16 = 140;
-
-        fn qrs_to_unscaled(qrs: QRS) -> unscaled::XY {
-            let q = qrs.q.0;
-            let r = qrs.r.0;
-
-            let x = (X_Q_FACTOR * q + X_R_FACTOR * r) * HEX_X_SCALE + HEX_X_OFFSET;
-            let y = (Y_Q_FACTOR * q + Y_R_FACTOR * r) * HEX_Y_SCALE + HEX_Y_OFFSET;
-
-            unscaled::XY {
-                x: unscaled::X(x.try_into().unwrap_or(0)),
-                y: unscaled::Y(y.try_into().unwrap_or(0)),
-            }
-        }
 
         fn tile_xy(qrs: QRS, Tile { .. }: &Tile) -> unscaled::XY {
             qrs_to_unscaled(qrs)
@@ -270,7 +360,7 @@ impl State {
 
                 for i in 0..MENU_OPTIONS.len() {
                     commands.print_line(
-                        MENU_OPTIONS[i].as_ref(),
+                        MENU_OPTIONS[i].1.as_ref(),
                         at + unscaled::WH{ w: unscaled::W(6), h: unscaled::H(9) },
                         4
                     );

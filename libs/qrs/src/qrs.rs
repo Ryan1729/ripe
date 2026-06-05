@@ -32,6 +32,20 @@ impl Dir {
             Dir::DecQIncS => QRSD { qd: QD(-1), rd: RD(0)  },
         }
     }
+
+    pub fn clockwise(self, by: u8) -> Self {
+        let mut index = 0;
+        for i in 0..Self::ALL.len() {
+            if Self::ALL[i] == self {
+                index = i;
+            }
+        }
+
+        index += usize::from(by);
+        index %= Self::ALL.len();
+
+        Self::ALL[index]
+    }
 }
 
 pub type Inner = i16;
@@ -285,6 +299,12 @@ impl QRSD {
             rd: self.rd.scale(radius),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Targeting {
+    pub source: QRS,
+    pub target: QRS,
 }
 
 pub fn spiral(radius: Distance, center: QRS) -> impl Iterator<Item = QRS> {
