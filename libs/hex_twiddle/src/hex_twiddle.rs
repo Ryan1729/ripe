@@ -70,7 +70,36 @@ mod offset {
         }
 
         pub fn advance(&mut self) {
-            self.xyd -= DECAY_RATE;
+            use unscaled::{XD, YD};
+
+            if self.is_settled() { return }
+
+            let x_started_positive = self.xyd.xd > XD(0);
+            let y_started_positive = self.xyd.yd > YD(0);
+
+            if x_started_positive {
+                self.xyd.xd -= DECAY_RATE.xd;
+                if self.xyd.xd < XD(0) {
+                    self.xyd.xd = XD(0);
+                }
+            } else {
+                self.xyd.xd += DECAY_RATE.xd;
+                if self.xyd.xd > XD(0) {
+                    self.xyd.xd = XD(0);
+                }
+            }
+            
+            if y_started_positive {
+                self.xyd.yd -= DECAY_RATE.yd;
+                if self.xyd.yd < YD(0) {
+                    self.xyd.yd = YD(0);
+                }
+            } else {
+                self.xyd.yd += DECAY_RATE.yd;
+                if self.xyd.yd > YD(0) {
+                    self.xyd.yd = YD(0);
+                }
+            }
         }
     }
 }
@@ -209,6 +238,9 @@ impl State {
     fn tick(&mut self) {
         for (_, tile) in &mut self.tiles {
             tile.offset.advance();
+            if !tile.offset.is_settled() {
+                dbg!(tile.offset);
+            }
         }
     }
 
@@ -305,8 +337,8 @@ impl State {
         //
         //
 
-        fn tile_xy(qrs: QRS, Tile { .. }: &Tile) -> unscaled::XY {
-            qrs_to_unscaled(qrs)
+        fn tile_xy(qrs: QRS, Tile { offset, .. }: &Tile) -> unscaled::XY {
+            qrs_to_unscaled(qrs) + offset.xyd()
         }
 
         //
