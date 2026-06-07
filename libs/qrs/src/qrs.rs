@@ -12,6 +12,8 @@ pub enum Dir {
     DecQIncS,
 }
 
+type RotationAmount = i8;
+
 impl Dir {
     pub const ALL: [Dir; 6] = [
         Dir::DecRIncS,
@@ -33,7 +35,7 @@ impl Dir {
         }
     }
 
-    pub fn clockwise(self, by: u8) -> Self {
+    pub fn clockwise(self, mut by: RotationAmount) -> Self {
         let mut index = 0;
         for i in 0..Self::ALL.len() {
             if Self::ALL[i] == self {
@@ -41,7 +43,24 @@ impl Dir {
             }
         }
 
-        index += usize::from(by);
+        if by < 0 {
+            // Force index to be high enogh we won't hit 0 while subratcing,
+            // without chainging the value modulo Self::ALL.len()
+            index += Self::ALL.len() * (RotationAmount::MAX as usize);
+
+            // There's probably a clever way to do this, while also accounting
+            // for the -128 case, but this is simple, correct in all cases, and
+            // in practice more than likely fast enough, since the nmber of 
+            // loops is bounded by a small constant. Maybe the compiler is even
+            // clever enough to figure out the clever way for us.
+            while by < 0 {
+                by += 1;
+                index -= 1;
+            }
+        } else {
+            index += usize::from(by as u8);
+        }
+
         index %= Self::ALL.len();
 
         Self::ALL[index]

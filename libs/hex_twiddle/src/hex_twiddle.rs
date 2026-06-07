@@ -115,6 +115,18 @@ enum Twiddle {
     MinusOneSixths,
 }
 
+impl Twiddle {
+    fn signum(self) -> i8 {
+        match self {
+            Twiddle::OneSixth
+            | Twiddle::TwoSixths
+            | Twiddle::ThreeSixths => 1,
+
+            Twiddle::MinusTwoSixths
+            | Twiddle::MinusOneSixths => -1,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub enum TileKind {
@@ -130,41 +142,73 @@ impl TileKind {
     ];
 }
 
+type Offsets = [Offset; 4];
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Tile {
     pub kind: TileKind,
-    pub offset: Offset,
+    pub offsets: Offsets,
 }
 
 pub type Key = QRS;
 
 pub type Tiles = BTreeMap<Key, Tile>;
 
-fn twiddle(tiles: &mut Tiles, key: Key, angle: Twiddle) {
-    // TODO handle angles properly, possibly by chaining movements
-
+fn twiddle(tiles: &mut Tiles, key: Key, twiddle_amount: Twiddle) {
     let base: QRS = key;
 
-    let mut twiddled: [Option<(qrs::Targeting, Tile)>; qrs::Dir::ALL.len()] = [None; qrs::Dir::ALL.len()];
+    #[derive(Clone, Copy, Default)]
+    struct TwiddleTargeting {
+        offsets: Offsets,
+        target: QRS,
+    }
 
-    let mut i = 0;
+    let mut twiddled: [Option<(TwiddleTargeting, Tile)>; qrs::Dir::ALL.len()] = [None; qrs::Dir::ALL.len()];
 
-    for to_target in qrs::Dir::ALL {
-        let at = base.neighbor(to_target);
+    let mut dir_i = 0;
 
-        if let Some(tile) = tiles.remove(&at) {
-            let target = at.neighbor(to_target.clockwise(2));
+    for to_tile_to_move in qrs::Dir::ALL {
+        let was_at = base.neighbor(to_tile_to_move);
 
-            twiddled[i] = Some((qrs::Targeting { source: at, target }, tile));
+        if let Some(tile) = tiles.remove(&was_at) {
+            let mut targeting = TwiddleTargeting::default();
+            targeting.target = was_at;
+            let mut offsets_i = 0;
+
+            let mut current_dir = to_tile_to_move.clockwise(2 * twiddle_amount.signum());
+
+            let mut angle: Option<Twiddle> = Some(twiddle_amount);
+
+            while let Some(twiddle) = angle {
+                let source = targeting.target;
+                targeting.target = source.neighbor(current_dir);
+
+                targeting.offsets[offsets_i] = Offset::from(qrs::Targeting{ source, target: targeting.target });
+                offsets_i += 1;
+
+                // TODO handle each case properly, including direction
+                angle = match twiddle {
+                    Twiddle::OneSixth => None,
+                    Twiddle::TwoSixths => Some(Twiddle::OneSixth),
+                    Twiddle::ThreeSixths => Some(Twiddle::TwoSixths),
+
+                    Twiddle::MinusTwoSixths => Some(Twiddle::MinusOneSixths),
+                    Twiddle::MinusOneSixths => None,
+                };
+
+                current_dir = current_dir.clockwise(1 * twiddle.signum());
+            }
+
+            twiddled[dir_i] = Some((targeting, tile));
         }
         
-        i += 1;
+        dir_i += 1;
     }
 
     for opt in twiddled {
         let Some((targeting, mut tile)) = opt else { continue };
 
-        tile.offset = Offset::from(targeting);
+        tile.offsets = targeting.offsets;
         tiles.insert(targeting.target, tile);
     }
 }
@@ -237,9 +281,11 @@ impl State {
 
     fn tick(&mut self) {
         for (_, tile) in &mut self.tiles {
-            tile.offset.advance();
-            if !tile.offset.is_settled() {
-                dbg!(tile.offset);
+            for offset in &mut tile.offsets {
+                if !offset.is_settled() {
+                    offset.advance();
+                    break
+                }
             }
         }
     }
@@ -337,8 +383,14 @@ impl State {
         //
         //
 
-        fn tile_xy(qrs: QRS, Tile { offset, .. }: &Tile) -> unscaled::XY {
-            qrs_to_unscaled(qrs) + offset.xyd()
+        fn tile_xy(qrs: QRS, Tile { offsets, .. }: &Tile) -> unscaled::XY {
+            let mut output = qrs_to_unscaled(qrs);
+
+            for offset in offsets {
+                output += offset.xyd();
+            }
+
+            output
         }
 
         //
