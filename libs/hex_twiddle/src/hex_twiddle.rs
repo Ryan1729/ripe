@@ -133,12 +133,14 @@ pub enum TileKind {
     #[default]
     Symbol,
     Warp,
+    Split,
 }
 
 impl TileKind {
-    const ALL: [TileKind; 2] = [
+    const ALL: [TileKind; 3] = [
         Self::Symbol,
         Self::Warp,
+        Self::Split,
     ];
 }
 
@@ -401,11 +403,18 @@ impl State {
             let xy = tile_xy(*at, &tile);
 
             commands.sspr_override(
-                specs.hex_twiddle_tiles.xy_from_tile_sprite(0u16),
+                specs.hex_twiddle_tiles.xy_from_tile_sprite(
+                    match tile.kind {
+                        TileKind::Symbol => 0,
+                        TileKind::Warp => specs.hex_twiddle_tiles.tiles_per_row(),
+                        TileKind::Split => specs.hex_twiddle_tiles.tiles_per_row() * 2,
+                    }
+                ),
                 command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(xy)),
                 match tile.kind {
                     TileKind::Symbol => 0xFF3352E1,
                     TileKind::Warp => 0xFF30B06E,
+                    TileKind::Split => 0xFF5A7D8B,
                 }
             );
         }

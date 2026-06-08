@@ -50,7 +50,7 @@ impl Dir {
 
             // There's probably a clever way to do this, while also accounting
             // for the -128 case, but this is simple, correct in all cases, and
-            // in practice more than likely fast enough, since the nmber of 
+            // in practice more than likely fast enough, since the number of 
             // loops is bounded by a small constant. Maybe the compiler is even
             // clever enough to figure out the clever way for us.
             while by < 0 {
