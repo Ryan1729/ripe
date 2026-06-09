@@ -402,6 +402,7 @@ impl State {
         for (at, tile) in self.tiles.iter() {
             let xy = tile_xy(*at, &tile);
 
+            // base
             commands.sspr_override(
                 specs.hex_twiddle_tiles.xy_from_tile_sprite(
                     match tile.kind {
@@ -413,8 +414,25 @@ impl State {
                 command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(xy)),
                 match tile.kind {
                     TileKind::Symbol => 0xFF3352E1,
-                    TileKind::Warp => 0xFF30B06E,
-                    TileKind::Split => 0xFF5A7D8B,
+                    TileKind::Warp => 0xFF533354,
+                    TileKind::Split => 0xFFDE4949,
+                }
+            );
+
+            // overlay
+            commands.sspr_override(
+                specs.hex_twiddle_tiles.xy_from_tile_sprite(
+                    match tile.kind {
+                        TileKind::Symbol => 1,
+                        TileKind::Warp => specs.hex_twiddle_tiles.tiles_per_row() + 1,
+                        TileKind::Split => specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
+                    }
+                ),
+                command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(xy)),
+                match tile.kind {
+                    TileKind::Symbol => 0xFF3352E1, // Effectively a NOP
+                    TileKind::Warp => 0xFF5A7D8B,
+                    TileKind::Split => 0xFF30B06E,
                 }
             );
         }
