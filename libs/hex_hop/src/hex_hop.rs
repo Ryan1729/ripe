@@ -729,10 +729,6 @@ pub struct Entity {
     pub energy: Energy,
 }
 
-impl Entity {
-
-}
-
 mod mobs {
     use super::*;
 
@@ -900,12 +896,12 @@ impl State {
         let palette = [
             0xFF3352E1,
             0xFF30B06E,
-            0xFFDE4949,
+            0xFFDE4949, // Red
             0xFFFFB937,
             0xFF533354,
             0xFF5A7D8B,
-            0xFFEEEEEE,
-            0xFF222222,
+            0xFFEEEEEE, // White
+            0xFF222222, // Black
         ];
 
         let mut tiles = Tiles::default();

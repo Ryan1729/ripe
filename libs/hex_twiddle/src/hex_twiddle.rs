@@ -2,7 +2,7 @@ use gfx::{Commands};
 //use gfx_sizes::ARGB;
 #[allow(unused)]
 use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
-use qrs::{QRS, QRSD, Q, R};
+use qrs::{QRS, Q, R};
 //use vec1::{Grid1, Grid1Spec, vec1, Vec1};
 use xs::{Seed, Xs};
 
@@ -128,17 +128,31 @@ impl Twiddle {
     }
 }
 
+
 #[derive(Clone, Copy, Debug, Default)]
-pub enum TileKind {
+pub enum Symbol {
     #[default]
-    Symbol,
+    A,
+    B,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum TileKind {
+    Symbol(Symbol),
     Warp,
     Split,
 }
 
+impl Default for TileKind {
+    fn default() -> Self {
+        Self::Symbol(Symbol::default())
+    }
+}
+
 impl TileKind {
-    const ALL: [TileKind; 3] = [
-        Self::Symbol,
+    const ALL: [TileKind; 4] = [
+        Self::Symbol(Symbol::A),
+        Self::Symbol(Symbol::B),
         Self::Warp,
         Self::Split,
     ];
@@ -155,6 +169,112 @@ pub struct Tile {
 pub type Key = QRS;
 
 pub type Tiles = BTreeMap<Key, Tile>;
+
+type MobSprite = u16;
+
+const PLAYER_MAIN_BASE: MobSprite = 0;
+const PLAYER_HELPER_BASE: MobSprite = 4;
+const CPU_BASE: MobSprite = 8;
+
+#[derive(Clone, Debug, Default)]
+pub struct Entity {
+    //pub offset: Offset,
+    pub sprite: MobSprite,
+}
+
+mod mobs {
+    use super::*;
+
+    #[repr(u8)]
+    #[derive(Clone, Copy, Debug, Default)]
+    pub enum Index {
+        #[default]
+        Zero,
+        One,
+        Two,
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub enum Target {
+        Player(Index),
+        NonPlayer(Index)
+    }
+
+    const PIECES_PER_PLAYER: usize = 3;
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Mobs {
+        player_mobs: [(Key, Entity); PIECES_PER_PLAYER],
+        cpu_mobs: [(Key, Entity); PIECES_PER_PLAYER],
+    }
+
+    impl Mobs {
+        pub fn new(center: QRS) -> Self {
+            let mut output = Self::default();
+
+            output.set(
+                Target::Player(Index::Zero),
+                center.neighbor(qrs::Dir::ALL[0]),
+                Entity {
+                    sprite: PLAYER_MAIN_BASE,
+                }
+            );
+
+            output.set(
+                Target::NonPlayer(Index::Zero),
+                center.neighbor(qrs::Dir::ALL[1]),
+                Entity {
+                    sprite: CPU_BASE,
+                }
+            );
+
+            output.set(
+                Target::Player(Index::One),
+                center.neighbor(qrs::Dir::ALL[2]),
+                Entity {
+                    sprite: PLAYER_HELPER_BASE,
+                }
+            );
+
+            output.set(
+                Target::NonPlayer(Index::One),
+                center.neighbor(qrs::Dir::ALL[3]),
+                Entity {
+                    sprite: CPU_BASE,
+                }
+            );
+
+            output.set(
+                Target::Player(Index::Two),
+                center.neighbor(qrs::Dir::ALL[4]),
+                Entity {
+                    sprite: PLAYER_HELPER_BASE,
+                }
+            );
+
+            output.set(
+                Target::NonPlayer(Index::Two),
+                center.neighbor(qrs::Dir::ALL[5]),
+                Entity {
+                    sprite: CPU_BASE,
+                }
+            );
+
+            output
+        }
+
+        fn set(&mut self, target: Target, key: Key, entity: Entity) {
+            let current = match target {
+                Target::Player(index) => &mut self.player_mobs[index as u8 as usize],
+                Target::NonPlayer(index) => &mut self.cpu_mobs[index as u8 as usize],
+            };
+
+            current.0 = key;
+            current.1 = entity;
+        }
+    }
+}
+use mobs::Mobs;
 
 fn twiddle(tiles: &mut Tiles, key: Key, twiddle_amount: Twiddle) {
     let base: QRS = key;
@@ -227,6 +347,7 @@ pub struct State {
     pub seed: Seed, // For restarting
     pub rng: Xs,
     pub tiles: Tiles,
+    pub mobs: Mobs,
     pub selectrum_at: QRS,
     pub context_menu: ContextMenu,
 }
@@ -406,14 +527,14 @@ impl State {
             commands.sspr_override(
                 specs.hex_twiddle_tiles.xy_from_tile_sprite(
                     match tile.kind {
-                        TileKind::Symbol => 0,
+                        TileKind::Symbol(_) => 0,
                         TileKind::Warp => specs.hex_twiddle_tiles.tiles_per_row(),
                         TileKind::Split => specs.hex_twiddle_tiles.tiles_per_row() * 2,
                     }
                 ),
                 command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(xy)),
                 match tile.kind {
-                    TileKind::Symbol => 0xFF3352E1,
+                    TileKind::Symbol(_) => 0xFF3352E1,
                     TileKind::Warp => 0xFF533354,
                     TileKind::Split => 0xFFDE4949,
                 }
@@ -423,14 +544,15 @@ impl State {
             commands.sspr_override(
                 specs.hex_twiddle_tiles.xy_from_tile_sprite(
                     match tile.kind {
-                        TileKind::Symbol => 1,
+                        TileKind::Symbol(Symbol::A) => 2,
+                        TileKind::Symbol(Symbol::B) => 3,
                         TileKind::Warp => specs.hex_twiddle_tiles.tiles_per_row() + 1,
                         TileKind::Split => specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
                     }
                 ),
                 command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(xy)),
                 match tile.kind {
-                    TileKind::Symbol => 0xFF3352E1, // Effectively a NOP
+                    TileKind::Symbol(_) => 0xFF222222,
                     TileKind::Warp => 0xFF5A7D8B,
                     TileKind::Split => 0xFF30B06E,
                 }
