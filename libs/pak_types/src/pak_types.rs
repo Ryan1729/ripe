@@ -1038,6 +1038,7 @@ pub mod sprite {
         pub hex_pieces: Spec<HexPieces>,
         pub hex_hop_mobs: Spec<HexHopMobs>,
         pub hex_twiddle_tiles: Spec<HexTwiddleTiles>,
+        pub hex_twiddle_pieces: Spec<HexTwiddlePieces>,
     }
 
     impl Default for Specs {
@@ -1105,6 +1106,11 @@ pub mod sprite {
                     offset: WH{ w: W(256), h: H(256 + 80) },
                     tile: WH{ w: W(56), h: H(48) },
                     tiles_per_row: 4,
+                }),
+                hex_twiddle_pieces: spec::<HexTwiddlePieces>(SpecPieces{
+                    offset: WH{ w: W(256), h: H(256 + 80 + 48 * 3) },
+                    tile: WH{ w: W(20), h: H(20) },
+                    tiles_per_row: 16,
                 }),
             }
         }

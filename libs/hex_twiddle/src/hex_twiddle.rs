@@ -178,8 +178,9 @@ const CPU_BASE: MobSprite = 8;
 
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
-    //pub offset: Offset,
+    pub offset: Offset,
     pub sprite: MobSprite,
+    //pub facing: Facing, 
 }
 
 mod mobs {
@@ -217,6 +218,7 @@ mod mobs {
                 center.neighbor(qrs::Dir::ALL[0]),
                 Entity {
                     sprite: PLAYER_MAIN_BASE,
+                    ..<_>::default()
                 }
             );
 
@@ -225,6 +227,7 @@ mod mobs {
                 center.neighbor(qrs::Dir::ALL[1]),
                 Entity {
                     sprite: CPU_BASE,
+                    ..<_>::default()
                 }
             );
 
@@ -233,6 +236,7 @@ mod mobs {
                 center.neighbor(qrs::Dir::ALL[2]),
                 Entity {
                     sprite: PLAYER_HELPER_BASE,
+                    ..<_>::default()
                 }
             );
 
@@ -241,6 +245,7 @@ mod mobs {
                 center.neighbor(qrs::Dir::ALL[3]),
                 Entity {
                     sprite: CPU_BASE,
+                    ..<_>::default()
                 }
             );
 
@@ -249,6 +254,7 @@ mod mobs {
                 center.neighbor(qrs::Dir::ALL[4]),
                 Entity {
                     sprite: PLAYER_HELPER_BASE,
+                    ..<_>::default()
                 }
             );
 
@@ -257,6 +263,7 @@ mod mobs {
                 center.neighbor(qrs::Dir::ALL[5]),
                 Entity {
                     sprite: CPU_BASE,
+                    ..<_>::default()
                 }
             );
 
@@ -271,6 +278,10 @@ mod mobs {
 
             current.0 = key;
             current.1 = entity;
+        }
+
+        pub fn iter(&self) -> impl Iterator<Item = &(Key, Entity)> {
+            self.cpu_mobs.iter().chain(self.player_mobs.iter())
         }
     }
 }
@@ -384,11 +395,15 @@ impl State {
             );
         }
 
+        let start_center = qr!(0, 0);
+
+        let mobs = Mobs::new(start_center);
+
         Self {
             seed,
             rng: rng_,
             tiles,
-            //mobs
+            mobs,
             .. <_>::default()
         }
     }
@@ -556,6 +571,25 @@ impl State {
                     TileKind::Warp => 0xFF5A7D8B,
                     TileKind::Split => 0xFF30B06E,
                 }
+            );
+        }
+
+        //
+        // Render Pieces
+        //
+
+        let hex_center_offset = specs.hex_twiddle_tiles.tile() / 2;
+        let piece_center_offset = specs.hex_twiddle_pieces.tile() / 2;
+
+        for (qrs, mob) in self.mobs.iter() {
+            let mut xy = qrs_to_unscaled(*qrs);
+            xy += mob.offset.xyd();
+            xy += hex_center_offset;
+            xy -= piece_center_offset;
+
+            commands.sspr(
+                specs.hex_twiddle_pieces.xy_from_tile_sprite(mob.sprite),
+                command::Rect::from_unscaled(specs.hex_twiddle_pieces.rect(xy)),
             );
         }
 
