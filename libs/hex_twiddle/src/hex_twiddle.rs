@@ -2,7 +2,7 @@ use gfx::{Commands};
 //use gfx_sizes::ARGB;
 #[allow(unused)]
 use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
-use qrs::{QRS, Q, R};
+use qrs::{QRS, QRSD, Q, R};
 //use vec1::{Grid1, Grid1Spec, vec1, Vec1};
 use xs::{Seed, Xs};
 
@@ -88,7 +88,7 @@ mod offset {
                     self.xyd.xd = XD(0);
                 }
             }
-            
+
             if y_started_positive {
                 self.xyd.yd -= DECAY_RATE.yd;
                 if self.xyd.yd < YD(0) {
@@ -104,6 +104,8 @@ mod offset {
     }
 }
 use offset::Offset;
+
+
 
 #[derive(Clone, Copy, Debug, Default)]
 enum Twiddle {
@@ -128,6 +130,12 @@ impl Twiddle {
     }
 }
 
+
+#[derive(Clone, Copy, Debug)]
+enum MenuOption {
+    Twiddle(Twiddle),
+    Move,
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub enum Symbol {
@@ -176,11 +184,13 @@ const PLAYER_MAIN_BASE: MobSprite = 0;
 const PLAYER_HELPER_BASE: MobSprite = 4;
 const CPU_BASE: MobSprite = 8;
 
+//type Facing = Dir;
+
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
     pub offset: Offset,
     pub sprite: MobSprite,
-    //pub facing: Facing, 
+    //pub facing: Facing,
 }
 
 mod mobs {
@@ -199,6 +209,17 @@ mod mobs {
     pub enum Target {
         Player(Index),
         NonPlayer(Index)
+    }
+
+    impl Target {
+        const ALL: [Self; 6] = [
+            Self::Player(Index::Zero),
+            Self::Player(Index::One),
+            Self::Player(Index::Two),
+            Self::NonPlayer(Index::Zero),
+            Self::NonPlayer(Index::One),
+            Self::NonPlayer(Index::Two),
+        ];
     }
 
     const PIECES_PER_PLAYER: usize = 3;
@@ -283,6 +304,50 @@ mod mobs {
         pub fn iter(&self) -> impl Iterator<Item = &(Key, Entity)> {
             self.cpu_mobs.iter().chain(self.player_mobs.iter())
         }
+
+        pub fn apply_dir(&mut self, target: Target, dir: qrs::Dir) {
+            let current = match target {
+                Target::Player(index) => &mut self.player_mobs[index as u8 as usize],
+                Target::NonPlayer(index) => &mut self.cpu_mobs[index as u8 as usize],
+            };
+
+            let new_qrs = current.0 + QRSD::from(dir);
+
+            let mut is_free = true;
+            for (key, _) in self.iter() {
+                if key == new_qrs {
+                    is_free = false;
+                    break
+                }
+            }
+
+            if is_free {
+                let current = match target {
+                    Target::Player(index) => &mut self.player_mobs[index as u8 as usize],
+                    Target::NonPlayer(index) => &mut self.cpu_mobs[index as u8 as usize],
+                };
+
+                current.0 = new_qrs;
+                // TODO
+                //current.1.offset = offset::direct(
+                    //Targeting { source: current.qrs, target: new_qrs }
+                //);
+            }
+        }
+
+        pub fn get_target(&self, key: Key) -> Option<Target> {
+            for target in Target::ALL {
+                let current = match target {
+                    Target::Player(index) => &self.player_mobs[index as u8 as usize],
+                    Target::NonPlayer(index) => &self.cpu_mobs[index as u8 as usize],
+                };
+                if current.0 == key {
+                    return Some(target);
+                }
+            }
+
+            None
+        }
     }
 }
 use mobs::Mobs;
@@ -334,7 +399,7 @@ fn twiddle(tiles: &mut Tiles, key: Key, twiddle_amount: Twiddle) {
 
             twiddled[dir_i] = Some((targeting, tile));
         }
-        
+
         dir_i += 1;
     }
 
@@ -347,10 +412,11 @@ fn twiddle(tiles: &mut Tiles, key: Key, twiddle_amount: Twiddle) {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub enum ContextMenu {
+pub enum UiMode {
     #[default]
-    Closed,
-    Open { selection: usize },
+    Select,
+    ContextMenuOpen { selection: usize },
+    Move { start: QRS },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -360,7 +426,7 @@ pub struct State {
     pub tiles: Tiles,
     pub mobs: Mobs,
     pub selectrum_at: QRS,
-    pub context_menu: ContextMenu,
+    pub ui_mode: UiMode,
 }
 
 impl State {
@@ -441,18 +507,19 @@ impl State {
         //
         //
 
-        const MENU_OPTIONS: [(Twiddle, &str); 5] = [
-            (Twiddle::OneSixth, "+1/6"),
-            (Twiddle::TwoSixths, "+2/6"),
-            (Twiddle::ThreeSixths,"+3/6"),
-            (Twiddle::MinusTwoSixths, "-2/6"),
-            (Twiddle::MinusOneSixths, "-1/6"),
+        const MENU_OPTIONS: [(MenuOption, &str); 6] = [
+            (MenuOption::Move, "Move Piece"),
+            (MenuOption::Twiddle(Twiddle::OneSixth), "+1/6"),
+            (MenuOption::Twiddle(Twiddle::TwoSixths), "+2/6"),
+            (MenuOption::Twiddle(Twiddle::ThreeSixths),"+3/6"),
+            (MenuOption::Twiddle(Twiddle::MinusTwoSixths), "-2/6"),
+            (MenuOption::Twiddle(Twiddle::MinusOneSixths), "-1/6"),
         ];
 
         let mut player_moved = false;
 
-        match &mut self.context_menu {
-            ContextMenu::Closed => {
+        match &mut self.ui_mode {
+            UiMode::Select | UiMode::Move { .. } => {
                 if input.pressed_this_frame(Button::UP) {
                     let dir = if input.gamepad.contains(Button::LEFT) {
                         qrs::Dir::DecQIncS
@@ -474,17 +541,31 @@ impl State {
                     } else {
                         qrs::Dir::DecSIncR
                     };
-        
+
                     let target_qrs = self.selectrum_at.neighbor(dir);
                     if self.tiles.get(&target_qrs).is_some() {
                         player_moved = true;
                         self.selectrum_at = target_qrs;
                     }
                 } else if input.pressed_this_frame(Button::A) {
-                    self.context_menu = ContextMenu::Open { selection: 0 };
+                    match &mut self.ui_mode {
+                        UiMode::Move { start } => {
+                            if let Some(mob_target) = self.mobs.get_target(*start)
+                            && let Some(dir) = qrs::adjacent_dir(
+                                qrs::Targeting { source: *start, target: self.selectrum_at }
+                            ) {
+                                // TODO handle bumping
+                                self.mobs.apply_dir(mob_target, dir);
+                            }
+                        },
+                        _ => {
+                            assert!(matches!(self.ui_mode, UiMode::Select));
+                            self.ui_mode = UiMode::ContextMenuOpen { selection: 0 };
+                        }
+                    }
                 }
             },
-            ContextMenu::Open { selection } => {
+            UiMode::ContextMenuOpen { selection } => {
                 if input.pressed_this_frame(Button::UP) {
                     if *selection == 0 {
                         *selection = MENU_OPTIONS.len();
@@ -497,14 +578,22 @@ impl State {
                     }
                 } else if input.pressed_this_frame(Button::A) {
                     assert!(!player_moved);
-                    twiddle(
-                        &mut self.tiles,
-                        self.selectrum_at,
-                        MENU_OPTIONS[*selection].0,
-                    );
-                    self.context_menu = ContextMenu::Closed;
+                    match MENU_OPTIONS[*selection].0 {
+                        MenuOption::Move => {
+                            self.ui_mode = UiMode::Move { start: self.selectrum_at };
+                        },
+                        MenuOption::Twiddle(twiddle_) => {
+                            twiddle(
+                                &mut self.tiles,
+                                self.selectrum_at,
+                                twiddle_,
+                            );
+                            self.ui_mode = UiMode::Select;
+                        },
+                    }
+
                 } else if input.pressed_this_frame(Button::B) {
-                    self.context_menu = ContextMenu::Closed;
+                    self.ui_mode = UiMode::Select;
                 }
             },
         }
@@ -512,7 +601,7 @@ impl State {
         if input.pressed_this_frame(Button::START) {
             self.restart(specs);
         }
-    
+
         self.tick();
 
         //
@@ -606,10 +695,10 @@ impl State {
             0xFFFFB937
         );
 
-        // Context Menu
-        match &mut self.context_menu {
-            ContextMenu::Closed => {},
-            ContextMenu::Open{ selection } => {
+        // Context-sensitive UI
+        match &mut self.ui_mode {
+            UiMode::Select => {},
+            UiMode::ContextMenuOpen{ selection } => {
                 const OPTION_W: unscaled::W = unscaled::W(50);
                 const OPTION_H: unscaled::H = unscaled::H(25);
 
@@ -646,6 +735,15 @@ impl State {
 
                     at += OPTION_H;
                 }
+            },
+            UiMode::Move { start }=> {
+                let start_xy = qrs_to_unscaled(self.selectrum_at);
+
+                commands.sspr_override(
+                    specs.hex_twiddle_tiles.xy_from_tile_sprite(1u16),
+                    command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(start_xy)),
+                    0xFFFFB937
+                );
             },
         }
     }

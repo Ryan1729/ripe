@@ -89,6 +89,18 @@ pub struct QRS {
     pub q: Q,
 }
 
+impl PartialEq<&QRS> for QRS {
+    fn eq(&self, other: &&QRS) -> bool {
+        *self == *other
+    }
+}
+
+impl PartialEq<QRS> for &QRS {
+    fn eq(&self, other: &QRS) -> bool {
+        *self == other
+    }
+}
+
 impl QRS {
     pub fn neighbor(self, dir: Dir) -> Self {
         self + dir.basis()
@@ -324,6 +336,18 @@ impl QRSD {
 pub struct Targeting {
     pub source: QRS,
     pub target: QRS,
+}
+
+pub fn adjacent_dir(
+    Targeting { source, target }: Targeting,
+) -> Option<Dir> {
+    for dir in Dir::ALL {
+        if source + dir.basis() == target { 
+            return Some(dir)
+        }
+    }
+
+    None
 }
 
 pub fn spiral(radius: Distance, center: QRS) -> impl Iterator<Item = QRS> {

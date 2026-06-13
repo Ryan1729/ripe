@@ -894,10 +894,10 @@ impl State {
         let skip_one_in = 3;
         let heights = [0, 0, 0, 5, 10, 15, 20, 20, 20];
         let palette = [
-            0xFF3352E1,
+            0xFF3352E1, // Blue
             0xFF30B06E,
             0xFFDE4949, // Red
-            0xFFFFB937,
+            0xFFFFB937, // Green
             0xFF533354,
             0xFF5A7D8B,
             0xFFEEEEEE, // White
