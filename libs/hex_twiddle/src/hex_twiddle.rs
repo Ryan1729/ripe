@@ -102,6 +102,52 @@ mod offset {
             }
         }
     }
+
+    pub fn direct(dir: qrs::Dir) -> Offset {
+        use qrs::Dir::*;
+        let basis = match dir {
+            // Up
+            DecRIncS => unscaled::XYD {
+                xd: unscaled::XD(X_Q_FACTOR * 0 + X_R_FACTOR * -1),
+                yd: unscaled::YD(Y_Q_FACTOR * 0 + Y_R_FACTOR * -1),
+            },
+            // Up-Right
+            DecRIncQ => unscaled::XYD {
+                xd: unscaled::XD(X_Q_FACTOR * 1 + X_R_FACTOR * -1),
+                yd: unscaled::YD(Y_Q_FACTOR * 1 + Y_R_FACTOR * -1),
+            },
+            // Down-Right
+            DecSIncQ => unscaled::XYD {
+                xd: unscaled::XD(X_Q_FACTOR * 1 + X_R_FACTOR * 0),
+                yd: unscaled::YD(Y_Q_FACTOR * 1 + Y_R_FACTOR * 0),
+            },
+            // Down
+            DecSIncR => unscaled::XYD {
+                xd: unscaled::XD(X_Q_FACTOR * 0 + X_R_FACTOR * 1),
+                yd: unscaled::YD(Y_Q_FACTOR * 0 + Y_R_FACTOR * 1),
+            },
+            // Down-Left
+            DecQIncR => unscaled::XYD {
+                xd: unscaled::XD(X_Q_FACTOR * -1 + X_R_FACTOR * 1),
+                yd: unscaled::YD(Y_Q_FACTOR * -1 + Y_R_FACTOR * 1),
+            },
+            // Up-Left
+            DecQIncS => unscaled::XYD {
+                xd: unscaled::XD(X_Q_FACTOR * -1 + X_R_FACTOR * 0),
+                yd: unscaled::YD(Y_Q_FACTOR * -1 + Y_R_FACTOR * 0),
+            },
+        };
+
+        // Point the other way because so we start exactly where we visually were before the move
+        let xyd = unscaled::XYD {
+            xd: basis.xd * -1 * HEX_X_SCALE,
+            yd: basis.yd * -1 * HEX_Y_SCALE,
+        };
+
+        Offset {
+            xyd
+        }
+    }
 }
 use offset::Offset;
 
@@ -177,6 +223,10 @@ pub struct Tile {
 pub type Key = QRS;
 
 pub type Tiles = BTreeMap<Key, Tile>;
+
+type TileSprite = u16;
+
+const SELECTRUM: TileSprite = 1;
 
 type MobSprite = u16;
 
@@ -305,6 +355,10 @@ mod mobs {
             self.cpu_mobs.iter().chain(self.player_mobs.iter())
         }
 
+        pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut (Key, Entity)> {
+            self.cpu_mobs.iter_mut().chain(self.player_mobs.iter_mut())
+        }
+
         pub fn apply_dir(&mut self, target: Target, dir: qrs::Dir) {
             let current = match target {
                 Target::Player(index) => &mut self.player_mobs[index as u8 as usize],
@@ -328,10 +382,7 @@ mod mobs {
                 };
 
                 current.0 = new_qrs;
-                // TODO
-                //current.1.offset = offset::direct(
-                    //Targeting { source: current.qrs, target: new_qrs }
-                //);
+                current.1.offset = offset::direct(dir);
             }
         }
 
@@ -492,6 +543,13 @@ impl State {
                 }
             }
         }
+
+        for (_, mob) in self.mobs.iter_mut() {
+            if !mob.offset.is_settled() {
+                mob.offset.advance();
+                break
+            }
+        }
     }
 
     pub fn update_and_render(
@@ -508,7 +566,7 @@ impl State {
         //
 
         const MENU_OPTIONS: [(MenuOption, &str); 6] = [
-            (MenuOption::Move, "Move Piece"),
+            (MenuOption::Move, "move piece"),
             (MenuOption::Twiddle(Twiddle::OneSixth), "+1/6"),
             (MenuOption::Twiddle(Twiddle::TwoSixths), "+2/6"),
             (MenuOption::Twiddle(Twiddle::ThreeSixths),"+3/6"),
@@ -556,6 +614,7 @@ impl State {
                             ) {
                                 // TODO handle bumping
                                 self.mobs.apply_dir(mob_target, dir);
+                                self.ui_mode = UiMode::Select;
                             }
                         },
                         _ => {
@@ -563,6 +622,8 @@ impl State {
                             self.ui_mode = UiMode::ContextMenuOpen { selection: 0 };
                         }
                     }
+                } else if input.pressed_this_frame(Button::B) {
+                    self.ui_mode = UiMode::Select; // Useful for UiMode::Move
                 }
             },
             UiMode::ContextMenuOpen { selection } => {
@@ -686,20 +747,27 @@ impl State {
         // Render UI
         //
 
-        // Selectrum
         let selectrum_xy = qrs_to_unscaled(self.selectrum_at);
 
-        commands.sspr_override(
-            specs.hex_twiddle_tiles.xy_from_tile_sprite(1u16),
-            command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(selectrum_xy)),
-            0xFFFFB937
-        );
+        macro_rules! draw_selectrum {
+            () => {
+                commands.sspr_override(
+                    specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
+                    command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(selectrum_xy)),
+                    0xFFFFB937
+                );
+            }
+        }
 
         // Context-sensitive UI
         match &mut self.ui_mode {
-            UiMode::Select => {},
+            UiMode::Select => {
+                draw_selectrum!();
+            },
             UiMode::ContextMenuOpen{ selection } => {
-                const OPTION_W: unscaled::W = unscaled::W(50);
+                draw_selectrum!();
+
+                const OPTION_W: unscaled::W = unscaled::W(120);
                 const OPTION_H: unscaled::H = unscaled::H(25);
 
                 commands.nine_slice(
@@ -737,13 +805,17 @@ impl State {
                 }
             },
             UiMode::Move { start }=> {
-                let start_xy = qrs_to_unscaled(self.selectrum_at);
+                for dir in qrs::Dir::ALL {
+                    let at = qrs_to_unscaled(start.neighbor(dir));
+    
+                    commands.sspr_override(
+                        specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
+                        command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(at)),
+                        0xFF30B06E
+                    );
+                }
 
-                commands.sspr_override(
-                    specs.hex_twiddle_tiles.xy_from_tile_sprite(1u16),
-                    command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(start_xy)),
-                    0xFFFFB937
-                );
+                draw_selectrum!();
             },
         }
     }

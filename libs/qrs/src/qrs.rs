@@ -1,3 +1,4 @@
+#![deny(unconditional_recursion)]
 ///! Hexagonal coordinates.
 ///! We follow the q, r, and s naming convention used in https://www.redblobgames.com/grids/hexagons/
 
@@ -91,7 +92,7 @@ pub struct QRS {
 
 impl PartialEq<&QRS> for QRS {
     fn eq(&self, other: &&QRS) -> bool {
-        *self == *other
+        *self == **other
     }
 }
 
