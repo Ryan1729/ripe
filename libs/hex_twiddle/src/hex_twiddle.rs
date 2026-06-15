@@ -435,7 +435,6 @@ fn twiddle(tiles: &mut Tiles, key: Key, twiddle_amount: Twiddle) {
                 targeting.offsets[offsets_i] = Offset::from(qrs::Targeting{ source, target: targeting.target });
                 offsets_i += 1;
 
-                // TODO handle each case properly, including direction
                 angle = match twiddle {
                     Twiddle::OneSixth => None,
                     Twiddle::TwoSixths => Some(Twiddle::OneSixth),
@@ -700,7 +699,7 @@ impl State {
                 command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(xy)),
                 match tile.kind {
                     TileKind::Symbol(_) => 0xFF3352E1,
-                    TileKind::Warp => 0xFF533354,
+                    TileKind::Warp => 0xFF3352E1,
                     TileKind::Split => 0xFFDE4949,
                 }
             );
@@ -718,7 +717,7 @@ impl State {
                 command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(xy)),
                 match tile.kind {
                     TileKind::Symbol(_) => 0xFF222222,
-                    TileKind::Warp => 0xFF5A7D8B,
+                    TileKind::Warp => 0xFFDE4949,
                     TileKind::Split => 0xFF30B06E,
                 }
             );
