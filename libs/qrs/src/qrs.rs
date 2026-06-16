@@ -36,13 +36,18 @@ impl Dir {
         }
     }
 
-    pub fn clockwise(self, mut by: RotationAmount) -> Self {
+    pub fn index(self) -> u8 {
         let mut index = 0;
-        for i in 0..Self::ALL.len() {
-            if Self::ALL[i] == self {
+        for i in 0..Self::ALL.len() as u8 {
+            if Self::ALL[i as usize] == self {
                 index = i;
             }
         }
+        index
+    }
+
+    pub fn clockwise(self, mut by: RotationAmount) -> Self {
+        let mut index = self.index() as usize;
 
         if by < 0 {
             // Force index to be high enogh we won't hit 0 while subratcing,

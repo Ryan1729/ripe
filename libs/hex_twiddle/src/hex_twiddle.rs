@@ -230,9 +230,12 @@ const SELECTRUM: TileSprite = 1;
 
 type MobSprite = u16;
 
+const DIR_COUNT: MobSprite = qrs::Dir::ALL.len() as _;
+
 const PLAYER_MAIN_BASE: MobSprite = 0;
-const PLAYER_HELPER_BASE: MobSprite = 4;
-const CPU_BASE: MobSprite = 8;
+const PLAYER_HELPER_BASE: MobSprite = PLAYER_MAIN_BASE + DIR_COUNT;
+const CPU_BASE: MobSprite = PLAYER_HELPER_BASE + DIR_COUNT;
+const ARROW_BASE: MobSprite = CPU_BASE + DIR_COUNT;
 
 //type Facing = Dir;
 
@@ -359,6 +362,17 @@ mod mobs {
             self.cpu_mobs.iter_mut().chain(self.player_mobs.iter_mut())
         }
 
+        pub fn is_free(&self, needle: Key) -> bool {
+            let mut is_free = true;
+            for (key, _) in self.iter() {
+                if key == needle {
+                    is_free = false;
+                    break
+                }
+            }
+            is_free
+        }
+
         pub fn apply_dir(&mut self, target: Target, dir: qrs::Dir) {
             let current = match target {
                 Target::Player(index) => &mut self.player_mobs[index as u8 as usize],
@@ -367,15 +381,7 @@ mod mobs {
 
             let new_qrs = current.0 + QRSD::from(dir);
 
-            let mut is_free = true;
-            for (key, _) in self.iter() {
-                if key == new_qrs {
-                    is_free = false;
-                    break
-                }
-            }
-
-            if is_free {
+            if self.is_free(new_qrs) {
                 let current = match target {
                     Target::Player(index) => &mut self.player_mobs[index as u8 as usize],
                     Target::NonPlayer(index) => &mut self.cpu_mobs[index as u8 as usize],
@@ -467,6 +473,7 @@ pub enum UiMode {
     Select,
     ContextMenuOpen { selection: usize },
     Move { start: QRS },
+    Bump { start: QRS, dir: qrs::Dir },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -607,13 +614,18 @@ impl State {
                 } else if input.pressed_this_frame(Button::A) {
                     match &mut self.ui_mode {
                         UiMode::Move { start } => {
+                            let target = self.selectrum_at;
+
                             if let Some(mob_target) = self.mobs.get_target(*start)
                             && let Some(dir) = qrs::adjacent_dir(
-                                qrs::Targeting { source: *start, target: self.selectrum_at }
+                                qrs::Targeting { source: *start, target }
                             ) {
-                                // TODO handle bumping
-                                self.mobs.apply_dir(mob_target, dir);
-                                self.ui_mode = UiMode::Select;
+                                if self.mobs.is_free(target) {                                
+                                    self.mobs.apply_dir(mob_target, dir);
+                                    self.ui_mode = UiMode::Select;
+                                } else {
+                                    self.ui_mode = UiMode::Bump { start: *start, dir };
+                                }
                             }
                         },
                         _ => {
@@ -656,6 +668,9 @@ impl State {
                     self.ui_mode = UiMode::Select;
                 }
             },
+            UiMode::Bump { start, dir } => {
+                // TODO allow performing or cancelling bump
+            }
         }
 
         if input.pressed_this_frame(Button::START) {
@@ -803,7 +818,7 @@ impl State {
                     at += OPTION_H;
                 }
             },
-            UiMode::Move { start }=> {
+            UiMode::Move { start } => {
                 for dir in qrs::Dir::ALL {
                     let at = qrs_to_unscaled(start.neighbor(dir));
     
@@ -816,6 +831,35 @@ impl State {
 
                 draw_selectrum!();
             },
+            UiMode::Bump { start, dir } => {
+                let target = start.neighbor(*dir);
+
+                let arrow_sprite: MobSprite = ARROW_BASE + MobSprite::from(dir.index());
+
+                let mut start_xy = qrs_to_unscaled(*start);
+                start_xy += hex_center_offset;
+                start_xy -= piece_center_offset;
+                let mut target_xy = qrs_to_unscaled(target);
+                target_xy += hex_center_offset;
+                target_xy -= piece_center_offset;
+
+                for dir in qrs::Dir::ALL {
+                    let at = qrs_to_unscaled(target.neighbor(dir));
+    
+                    commands.sspr_override(
+                        specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
+                        command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(at)),
+                        0xFF30B06E
+                    );
+                }
+
+                let arrow_xy = unscaled::XY::lerp(start_xy, 0.5, target_xy);
+                
+                commands.sspr(
+                    specs.hex_twiddle_pieces.xy_from_tile_sprite(arrow_sprite),
+                    command::Rect::from_unscaled(specs.hex_twiddle_pieces.rect(arrow_xy)),
+                );
+            }
         }
     }
 }

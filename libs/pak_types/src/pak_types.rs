@@ -12,6 +12,14 @@ pub mod unscaled {
         byte as Inner
     }
 
+    fn inner_from_f32(f: f32) -> Inner {
+        f as Inner
+    }
+
+    fn f32_from_inner(inner: Inner) -> f32 {
+        inner.into()
+    }
+
     pub type SignedInner = i16;
 
     macro_rules! def {
@@ -241,6 +249,19 @@ pub mod unscaled {
     pub struct XY {
         pub x: X,
         pub y: Y,
+    }
+
+    impl XY {
+        pub fn lerp(a: XY, t: f32, b: XY) -> XY {
+            XY {
+                x: X(
+                    inner_from_f32(f32_from_inner(a.x.0) * (1. - t) + f32_from_inner(b.x.0) * t)
+                ),
+                y: Y(
+                    inner_from_f32(f32_from_inner(a.y.0) * (1. - t) + f32_from_inner(b.y.0) * t)
+                ),
+            }
+        }
     }
 
     impl core::ops::Sub for XY {
@@ -1110,7 +1131,7 @@ pub mod sprite {
                 hex_twiddle_pieces: spec::<HexTwiddlePieces>(SpecPieces{
                     offset: WH{ w: W(256), h: H(256 + 80 + 48 * 3) },
                     tile: WH{ w: W(20), h: H(20) },
-                    tiles_per_row: 16,
+                    tiles_per_row: 25,
                 }),
             }
         }
