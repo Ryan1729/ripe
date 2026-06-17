@@ -476,6 +476,19 @@ pub enum UiMode {
     Bump { start: QRS, dir: qrs::Dir },
 }
 
+fn viable_bump_dirs(tiles: &Tiles, mobs: &Mobs, target: QRS) -> impl Iterator<Item = qrs::Dir> + use<> {
+    qrs::Dir::ALL.iter()
+        .filter(|&&dir| {
+            let at = target.neighbor(dir);
+
+            tiles.get(&at).is_some() && mobs.is_free(at)
+        })
+        .cloned()
+        //Yes this is a technically unneeded allocation. We can care if it ever matters.
+        .collect::<Vec<_>>()
+        .into_iter()
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct State {
     pub seed: Seed, // For restarting
@@ -582,8 +595,8 @@ impl State {
 
         let mut player_moved = false;
 
-        match &mut self.ui_mode {
-            UiMode::Select | UiMode::Move { .. } => {
+        macro_rules! move_selectrum {
+            () => {
                 if input.pressed_this_frame(Button::UP) {
                     let dir = if input.gamepad.contains(Button::LEFT) {
                         qrs::Dir::DecQIncS
@@ -611,7 +624,15 @@ impl State {
                         player_moved = true;
                         self.selectrum_at = target_qrs;
                     }
-                } else if input.pressed_this_frame(Button::A) {
+                }
+            }
+        }
+
+        match &mut self.ui_mode {
+            UiMode::Select | UiMode::Move { .. } => {
+                move_selectrum!();
+
+                if input.pressed_this_frame(Button::A) {
                     match &mut self.ui_mode {
                         UiMode::Move { start } => {
                             let target = self.selectrum_at;
@@ -669,7 +690,32 @@ impl State {
                 }
             },
             UiMode::Bump { start, dir } => {
-                // TODO allow performing or cancelling bump
+                move_selectrum!();
+                
+                let target = start.neighbor(*dir);
+
+                if input.pressed_this_frame(Button::A) {
+                    if !player_moved {
+                        for bump_dir in viable_bump_dirs(&self.tiles, &self.mobs, target) {
+                            if target.neighbor(bump_dir) == self.selectrum_at {
+                                // Perform the bump
+                                if let Some(bumpee_target) = self.mobs.get_target(target) {
+                                    self.mobs.apply_dir(bumpee_target, bump_dir);
+
+                                    if let Some(bumper_target) = self.mobs.get_target(*start) {
+                                        self.mobs.apply_dir(bumper_target, *dir);
+
+                                        self.ui_mode = UiMode::Select;
+                                    }
+                                }
+
+                                break
+                            }
+                        }
+                    }
+                } else if input.pressed_this_frame(Button::B) {
+                    self.ui_mode = UiMode::Select;
+                }
             }
         }
 
@@ -843,7 +889,7 @@ impl State {
                 target_xy += hex_center_offset;
                 target_xy -= piece_center_offset;
 
-                for dir in qrs::Dir::ALL {
+                for dir in viable_bump_dirs(&self.tiles, &self.mobs, target) {
                     let at = qrs_to_unscaled(target.neighbor(dir));
     
                     commands.sspr_override(
@@ -859,6 +905,8 @@ impl State {
                     specs.hex_twiddle_pieces.xy_from_tile_sprite(arrow_sprite),
                     command::Rect::from_unscaled(specs.hex_twiddle_pieces.rect(arrow_xy)),
                 );
+
+                draw_selectrum!();
             }
         }
     }
