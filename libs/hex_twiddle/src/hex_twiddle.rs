@@ -241,7 +241,7 @@ const ARROW_BASE: MobSprite = CPU_BASE + DIR_COUNT;
 
 #[derive(Clone, Debug, Default)]
 pub struct Entity {
-    pub offset: Offset,
+    pub offsets: Offsets,
     pub sprite: MobSprite,
     //pub facing: Facing,
 }
@@ -281,6 +281,15 @@ mod mobs {
     pub struct Mobs {
         player_mobs: [(Key, Entity); PIECES_PER_PLAYER],
         cpu_mobs: [(Key, Entity); PIECES_PER_PLAYER],
+    }
+
+    macro_rules! get_ref {
+        ($mobs: ident $target: expr) => {
+            match $target {
+                Target::Player(index) => &mut $mobs.player_mobs[index as u8 as usize],
+                Target::NonPlayer(index) => &mut $mobs.cpu_mobs[index as u8 as usize],
+            }
+        }
     }
 
     impl Mobs {
@@ -345,10 +354,7 @@ mod mobs {
         }
 
         fn set(&mut self, target: Target, key: Key, entity: Entity) {
-            let current = match target {
-                Target::Player(index) => &mut self.player_mobs[index as u8 as usize],
-                Target::NonPlayer(index) => &mut self.cpu_mobs[index as u8 as usize],
-            };
+            let current = get_ref!(self target);
 
             current.0 = key;
             current.1 = entity;
@@ -382,13 +388,10 @@ mod mobs {
             let new_qrs = current.0 + QRSD::from(dir);
 
             if self.is_free(new_qrs) {
-                let current = match target {
-                    Target::Player(index) => &mut self.player_mobs[index as u8 as usize],
-                    Target::NonPlayer(index) => &mut self.cpu_mobs[index as u8 as usize],
-                };
+                let current = get_ref!(self target);
 
                 current.0 = new_qrs;
-                current.1.offset = offset::direct(dir);
+                current.1.offsets = [offset::direct(dir), Offset::default(), Offset::default(), Offset::default()];
             }
         }
 
@@ -405,11 +408,17 @@ mod mobs {
 
             None
         }
+
+        pub fn mutate(&mut self, target: Target, f: impl FnOnce(&mut (Key, Entity))) {
+            let current = get_ref!(self target);
+            f(current);
+        }
     }
 }
 use mobs::Mobs;
 
-fn twiddle(tiles: &mut Tiles, key: Key, twiddle_amount: Twiddle) {
+// TODO write tests to drive out the bug
+fn twiddle(tiles: &mut Tiles, mobs: &mut Mobs, key: Key, twiddle_amount: Twiddle) {
     let base: QRS = key;
 
     #[derive(Clone, Copy, Default)]
@@ -464,6 +473,18 @@ fn twiddle(tiles: &mut Tiles, key: Key, twiddle_amount: Twiddle) {
 
         tile.offsets = targeting.offsets;
         tiles.insert(targeting.target, tile);
+
+        if let Some(mob_target) = mobs.get_target(targeting.target) {
+            mobs.mutate(
+                mob_target,
+                |(key, mob)| {
+                    // TODO? Is it worth trying to ensure we can't put two different pieces 
+                    // at the same key at the level of the Mob API?
+                    *key = targeting.target;
+                    mob.offsets = targeting.offsets;
+                }
+            );
+        }
     }
 }
 
@@ -564,9 +585,11 @@ impl State {
         }
 
         for (_, mob) in self.mobs.iter_mut() {
-            if !mob.offset.is_settled() {
-                mob.offset.advance();
-                break
+            for offset in &mut mob.offsets {
+                if !offset.is_settled() {
+                    offset.advance();
+                    break
+                }
             }
         }
     }
@@ -592,6 +615,8 @@ impl State {
             (MenuOption::Twiddle(Twiddle::MinusTwoSixths), "-2/6"),
             (MenuOption::Twiddle(Twiddle::MinusOneSixths), "-1/6"),
         ];
+
+        // TODO track turns and have CPU players move, and allow the player to only move the player pieces
 
         let mut player_moved = false;
 
@@ -643,6 +668,7 @@ impl State {
                             ) {
                                 if self.mobs.is_free(target) {                                
                                     self.mobs.apply_dir(mob_target, dir);
+                                    // TODO check for whether goal is met, and open door if so
                                     self.ui_mode = UiMode::Select;
                                 } else {
                                     self.ui_mode = UiMode::Bump { start: *start, dir };
@@ -678,6 +704,7 @@ impl State {
                         MenuOption::Twiddle(twiddle_) => {
                             twiddle(
                                 &mut self.tiles,
+                                &mut self.mobs,
                                 self.selectrum_at,
                                 twiddle_,
                             );
@@ -793,7 +820,9 @@ impl State {
 
         for (qrs, mob) in self.mobs.iter() {
             let mut xy = qrs_to_unscaled(*qrs);
-            xy += mob.offset.xyd();
+            for offset in mob.offsets {
+                xy += offset.xyd();
+            }
             xy += hex_center_offset;
             xy -= piece_center_offset;
 
