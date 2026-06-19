@@ -95,6 +95,18 @@ pub struct QRS {
     pub q: Q,
 }
 
+#[macro_export]
+macro_rules! qr_ {
+    ($q_inner: literal $(,)? $r_inner: literal) => {
+        QRS {
+            q: Q($q_inner),
+            r: R($r_inner),
+        }
+    }
+}
+pub use qr_ as qr;
+
+
 impl PartialEq<&QRS> for QRS {
     fn eq(&self, other: &&QRS) -> bool {
         *self == **other

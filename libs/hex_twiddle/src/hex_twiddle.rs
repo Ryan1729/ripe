@@ -2,7 +2,7 @@ use gfx::{Commands};
 //use gfx_sizes::ARGB;
 #[allow(unused)]
 use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
-use qrs::{QRS, QRSD, Q, R};
+use qrs::{QRS, QRSD, Q, R, qr};
 //use vec1::{Grid1, Grid1Spec, vec1, Vec1};
 use xs::{Seed, Xs};
 
@@ -39,7 +39,7 @@ mod offset {
 
     use super::*;
 
-    #[derive(Clone, Copy, Debug, Default)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct Offset {
         xyd: unscaled::XYD,
     }
@@ -183,14 +183,14 @@ enum MenuOption {
     Move,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Symbol {
     #[default]
     A,
     B,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TileKind {
     Symbol(Symbol),
     Warp,
@@ -214,7 +214,7 @@ impl TileKind {
 
 type Offsets = [Offset; 4];
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Tile {
     pub kind: TileKind,
     pub offsets: Offsets,
@@ -239,10 +239,11 @@ const ARROW_BASE: MobSprite = CPU_BASE + DIR_COUNT;
 
 //type Facing = Dir;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Entity {
     pub offsets: Offsets,
     pub sprite: MobSprite,
+    // TODO add and set as needed to make sprites turn in the direction they move
     //pub facing: Facing,
 }
 
@@ -277,7 +278,7 @@ mod mobs {
 
     const PIECES_PER_PLAYER: usize = 3;
 
-    #[derive(Clone, Debug, Default)]
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
     pub struct Mobs {
         player_mobs: [(Key, Entity); PIECES_PER_PLAYER],
         cpu_mobs: [(Key, Entity); PIECES_PER_PLAYER],
@@ -488,6 +489,114 @@ fn twiddle(tiles: &mut Tiles, mobs: &mut Mobs, key: Key, twiddle_amount: Twiddle
     }
 }
 
+#[cfg(test)]
+mod twiddle_works {
+    use super::*;
+
+    #[test]
+    fn on_this_basic_example() {
+        let ring_coords = [
+            qr!(0, -1),
+            qr!(1, -1),
+            qr!(1, 0),
+            qr!(0, 1),
+            qr!(-1, 1),
+            qr!(-1, 0),
+        ];
+
+        macro_rules! ring_insert {
+            ($tiles: expr, $ring_i: expr, $kind: expr $(,)?) => {
+                $tiles.insert(
+                    ring_coords[$ring_i],
+                    Tile {
+                        kind: $kind,
+                        .. <_>::default()
+                    }
+                );
+            }
+        }
+
+        let mut index = 0;
+
+        let mut tiles = Tiles::default();
+        for i in 0..ring_coords.len() {
+            index %= TileKind::ALL.len();
+
+            ring_insert!(tiles, i, TileKind::ALL[index]);
+
+            index += 1;
+        }
+
+        let mut index = 0;
+
+        let mut expected_tiles = Tiles::default();
+        for mut i in 0..ring_coords.len() {
+            i += 1;
+            i %= ring_coords.len();
+
+            index %= TileKind::ALL.len();
+
+            ring_insert!(expected_tiles, i, TileKind::ALL[index]);
+
+            index += 1;
+        }
+
+        let mut mobs = Mobs::new(<_>::default());
+
+        let mut expected_mobs = mobs.clone();
+        let Some(mut previous_ref) = expected_mobs.iter_mut().last() else {
+            panic!("No mobs")
+        };
+        let mut previous = previous_ref.clone();
+
+        for entry in expected_mobs.iter_mut() {
+            let temp = entry.clone();
+            *entry = previous.clone();
+            previous = temp;
+        }
+
+        twiddle(
+            &mut tiles,
+            &mut mobs,
+            <_>::default(),
+            Twiddle::OneSixth
+        );
+        
+        let mut broke_early = false;
+        loop {
+            broke_early = false;
+            // tick {
+            for (_, tile) in &mut tiles {
+                for offset in &mut tile.offsets {
+                    if !offset.is_settled() {
+                        offset.advance();
+                        broke_early = true;
+                        break
+                    }
+                }
+            }
+    
+            for (_, mob) in mobs.iter_mut() {
+                for offset in &mut mob.offsets {
+                    if !offset.is_settled() {
+                        offset.advance();
+                        broke_early = true;
+                        break
+                    }
+                }
+            }
+            // }
+
+            if !broke_early {
+                break
+            }
+        }
+
+        assert_eq!(tiles, expected_tiles);
+        assert_eq!(mobs, expected_mobs);
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub enum UiMode {
     #[default]
@@ -532,15 +641,6 @@ impl State {
         let rng = &mut rng_;
 
         let mut tiles = Tiles::new();
-
-        macro_rules! qr {
-            ($q_inner: literal $(,)? $r_inner: literal) => {
-                QRS {
-                    q: Q($q_inner),
-                    r: R($r_inner),
-                }
-            }
-        }
 
         for at in qrs::spiral(2, qr!(0, 0)) {
             tiles.insert(
