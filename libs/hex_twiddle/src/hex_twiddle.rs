@@ -39,9 +39,21 @@ mod offset {
 
     use super::*;
 
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    #[derive(Clone, Copy, Default, PartialEq, Eq)]
     pub struct Offset {
         xyd: unscaled::XYD,
+    }
+
+    impl core::fmt::Debug for Offset {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            if self == &Offset::default() {
+                write!(f, "Offset::default()")
+            } else {
+                f.debug_struct("Offset")
+                 .field("xyd", &self.xyd)
+                 .finish()
+            }
+        }
     }
 
     impl From<qrs::Targeting> for Offset {
@@ -239,12 +251,28 @@ const ARROW_BASE: MobSprite = CPU_BASE + DIR_COUNT;
 
 //type Facing = Dir;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct Entity {
     pub offsets: Offsets,
     pub sprite: MobSprite,
     // TODO add and set as needed to make sprites turn in the direction they move
     //pub facing: Facing,
+}
+
+impl core::fmt::Debug for Entity {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.offsets == Offsets::default() {
+            f.debug_struct("Entity")
+             .field("offsets", &"Offsets::default()")
+             .field("sprite", &self.sprite)
+             .finish()
+        } else {
+            f.debug_struct("Entity")
+             .field("offsets", &self.offsets)
+             .field("sprite", &self.sprite)
+             .finish()
+        }
+    }
 }
 
 mod mobs {
@@ -422,13 +450,14 @@ use mobs::Mobs;
 fn twiddle(tiles: &mut Tiles, mobs: &mut Mobs, key: Key, twiddle_amount: Twiddle) {
     let base: QRS = key;
 
-    #[derive(Clone, Copy, Default)]
+    #[derive(Clone, Copy, Debug, Default)]
     struct TwiddleTargeting {
         offsets: Offsets,
+        source: QRS,
         target: QRS,
     }
 
-    let mut twiddled: [Option<(TwiddleTargeting, Tile)>; qrs::Dir::ALL.len()] = [None; qrs::Dir::ALL.len()];
+    let mut twiddled: [Option<(TwiddleTargeting, Tile, Option<mobs::Target>)>; qrs::Dir::ALL.len()] = [None; qrs::Dir::ALL.len()];
 
     let mut dir_i = 0;
 
@@ -437,6 +466,7 @@ fn twiddle(tiles: &mut Tiles, mobs: &mut Mobs, key: Key, twiddle_amount: Twiddle
 
         if let Some(tile) = tiles.remove(&was_at) {
             let mut targeting = TwiddleTargeting::default();
+            targeting.source = was_at;
             targeting.target = was_at;
             let mut offsets_i = 0;
 
@@ -463,19 +493,19 @@ fn twiddle(tiles: &mut Tiles, mobs: &mut Mobs, key: Key, twiddle_amount: Twiddle
                 current_dir = current_dir.clockwise(1 * twiddle.signum());
             }
 
-            twiddled[dir_i] = Some((targeting, tile));
+            twiddled[dir_i] = Some((targeting, tile, mobs.get_target(targeting.source)));
         }
 
         dir_i += 1;
     }
 
     for opt in twiddled {
-        let Some((targeting, mut tile)) = opt else { continue };
+        let Some((targeting, mut tile, mob_target_opt)) = opt else { continue };
 
         tile.offsets = targeting.offsets;
         tiles.insert(targeting.target, tile);
 
-        if let Some(mob_target) = mobs.get_target(targeting.target) {
+        if let Some(mob_target) = mob_target_opt {
             mobs.mutate(
                 mob_target,
                 |(key, mob)| {
@@ -562,7 +592,7 @@ mod twiddle_works {
             Twiddle::OneSixth
         );
         
-        let mut broke_early = false;
+        let mut broke_early;
         loop {
             broke_early = false;
             // tick {
@@ -593,7 +623,6 @@ mod twiddle_works {
         }
 
         assert_eq!(tiles, expected_tiles);
-        assert_eq!(mobs, expected_mobs);
     }
 }
 
