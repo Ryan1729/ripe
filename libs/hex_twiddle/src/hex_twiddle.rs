@@ -202,11 +202,27 @@ pub enum Symbol {
     B,
 }
 
+impl Symbol {
+    const ALL: [Symbol; 2] = [
+        Symbol::A,
+        Symbol::B,
+    ];
+
+    fn index(&self) -> usize {
+        for i in 0..Self::ALL.len() {
+            if Self::ALL[i] == *self {
+                return i
+            }
+        }
+        panic!("No index for {self:?} found. Is the ALL missing some values?")
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TileKind {
     Symbol(Symbol),
     Warp,
-    Split,
+    Door,
 }
 
 impl Default for TileKind {
@@ -220,16 +236,38 @@ impl TileKind {
         Self::Symbol(Symbol::A),
         Self::Symbol(Symbol::B),
         Self::Warp,
-        Self::Split,
+        Self::Door,
     ];
+
+    pub fn symbol(&self) -> Option<Symbol> {
+        match self {
+            Self::Symbol(s) => Some(*s),
+            Self::Warp
+            | Self::Door => None
+        }
+    }
 }
 
 type Offsets = [Offset; 4];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DoorMode {
+    #[default]
+    Closed,
+    Player,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Tile {
     pub kind: TileKind,
     pub offsets: Offsets,
+    pub door_mode: DoorMode,
+}
+
+impl Tile {
+    fn is_door(&self) -> bool {
+        self.kind == TileKind::Door
+    }
 }
 
 pub type Key = QRS;
@@ -245,18 +283,20 @@ type MobSprite = u16;
 const DIR_COUNT: MobSprite = qrs::Dir::ALL.len() as _;
 
 const PLAYER_MAIN_BASE: MobSprite = 0;
+const PLAYER_MAIN_LAST: MobSprite = PLAYER_MAIN_BASE + DIR_COUNT - 1;
 const PLAYER_HELPER_BASE: MobSprite = PLAYER_MAIN_BASE + DIR_COUNT;
+const PLAYER_HELPER_LAST: MobSprite = PLAYER_HELPER_BASE + DIR_COUNT - 1;
 const CPU_BASE: MobSprite = PLAYER_HELPER_BASE + DIR_COUNT;
+const CPU_LAST: MobSprite = CPU_BASE + DIR_COUNT - 1;
 const ARROW_BASE: MobSprite = CPU_BASE + DIR_COUNT;
 
-//type Facing = Dir;
+type Facing = qrs::Dir;
 
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct Entity {
     pub offsets: Offsets,
     pub sprite: MobSprite,
-    // TODO add and set as needed to make sprites turn in the direction they move
-    //pub facing: Facing,
+    pub facing: Facing,
 }
 
 impl core::fmt::Debug for Entity {
@@ -265,11 +305,13 @@ impl core::fmt::Debug for Entity {
             f.debug_struct("Entity")
              .field("offsets", &"Offsets::default()")
              .field("sprite", &self.sprite)
+             .field("facing", &self.facing)
              .finish()
         } else {
             f.debug_struct("Entity")
              .field("offsets", &self.offsets)
              .field("sprite", &self.sprite)
+             .field("facing", &self.facing)
              .finish()
         }
     }
@@ -421,6 +463,7 @@ mod mobs {
 
                 current.0 = new_qrs;
                 current.1.offsets = [offset::direct(dir), Offset::default(), Offset::default(), Offset::default()];
+                current.1.facing = dir;
             }
         }
 
@@ -446,7 +489,6 @@ mod mobs {
 }
 use mobs::Mobs;
 
-// TODO write tests to drive out the bug
 fn twiddle(tiles: &mut Tiles, mobs: &mut Mobs, key: Key, twiddle_amount: Twiddle) {
     let base: QRS = key;
 
@@ -509,7 +551,7 @@ fn twiddle(tiles: &mut Tiles, mobs: &mut Mobs, key: Key, twiddle_amount: Twiddle
             mobs.mutate(
                 mob_target,
                 |(key, mob)| {
-                    // TODO? Is it worth trying to ensure we can't put two different pieces 
+                    // TODO? Is it worth trying to ensure we can't put two different pieces
                     // at the same key at the level of the Mob API?
                     *key = targeting.target;
                     mob.offsets = targeting.offsets;
@@ -591,7 +633,7 @@ mod twiddle_works {
             <_>::default(),
             Twiddle::OneSixth
         );
-        
+
         let mut broke_early;
         loop {
             broke_early = false;
@@ -605,7 +647,7 @@ mod twiddle_works {
                     }
                 }
             }
-    
+
             for (_, mob) in mobs.iter_mut() {
                 for offset in &mut mob.offsets {
                     if !offset.is_settled() {
@@ -685,13 +727,17 @@ impl State {
 
         let mobs = Mobs::new(start_center);
 
-        Self {
+        let mut output = Self {
             seed,
             rng: rng_,
             tiles,
             mobs,
             .. <_>::default()
-        }
+        };
+
+        output.sync_doors();
+
+        output
     }
 
     #[allow(unused)]
@@ -700,7 +746,56 @@ impl State {
     }
 
     pub fn is_complete(&self) -> bool {
+        // TODO is the player on an open player door
         false
+    }
+
+    // TODO? Wrap tiles and mobs in a struct/module to make it impossible to forget to call this?
+    fn sync_doors(&mut self) {
+        type GoalTracker = [bool; Symbol::ALL.len()];
+
+        let mut player_tracker: GoalTracker = <_>::default();
+        let mut cpu_tracker: GoalTracker = <_>::default();
+
+        for (key, mob) in self.mobs.iter() {
+            if let Some(symbol) = self.tiles.get(&key).and_then(|t| t.kind.symbol()) {
+                let tracker: &mut GoalTracker = match mob.sprite {
+                    PLAYER_MAIN_BASE..=PLAYER_MAIN_LAST
+                    | PLAYER_HELPER_BASE..=PLAYER_HELPER_LAST
+                    => &mut player_tracker,
+                    CPU_BASE..=CPU_LAST
+                    => &mut player_tracker,
+                    _ => {
+                        debug_assert!(false, "Unecpected mob sprite: {:?}", mob.sprite);
+                        continue
+                    }
+                };
+
+                tracker[symbol.index()] = true;
+            }
+        }
+
+        // Player wins ties.
+        if player_tracker.iter().all(|&b| b) {
+            // Open door for player
+
+            for (_, tile) in &mut self.tiles {
+                if tile.is_door() {
+                    tile.door_mode = DoorMode::Player;
+                }
+            }
+        } else if cpu_tracker.iter().all(|&b| b) {
+            // Open door for CPUs
+            // TODO? What should this case do? Nothing is a potential option.
+        } else {
+            // Close the doors
+
+            for (_, tile) in &mut self.tiles {
+                if tile.is_door() {
+                    tile.door_mode = DoorMode::Closed;
+                }
+            }
+        }
     }
 
     fn tick(&mut self) {
@@ -760,10 +855,8 @@ impl State {
                         qrs::Dir::DecRIncS
                     };
                     let target_qrs = self.selectrum_at.neighbor(dir);
-                    if self.tiles.get(&target_qrs).is_some() {
-                        player_moved = true;
-                        self.selectrum_at = target_qrs;
-                    }
+                    player_moved = true;
+                    self.selectrum_at = target_qrs;
                 } else if input.pressed_this_frame(Button::DOWN) {
                     let dir = if input.gamepad.contains(Button::LEFT) {
                         qrs::Dir::DecQIncR
@@ -774,10 +867,8 @@ impl State {
                     };
 
                     let target_qrs = self.selectrum_at.neighbor(dir);
-                    if self.tiles.get(&target_qrs).is_some() {
-                        player_moved = true;
-                        self.selectrum_at = target_qrs;
-                    }
+                    player_moved = true;
+                    self.selectrum_at = target_qrs;
                 }
             }
         }
@@ -795,8 +886,13 @@ impl State {
                             && let Some(dir) = qrs::adjacent_dir(
                                 qrs::Targeting { source: *start, target }
                             ) {
-                                if self.mobs.is_free(target) {                                
+                                if self.mobs.is_free(target) {
                                     self.mobs.apply_dir(mob_target, dir);
+                                    // TODO? More/variable goals?
+                                    // TODO? Only one space of each symbol?
+
+                                    self.sync_doors();
+
                                     // TODO check for whether goal is met, and open door if so
                                     self.ui_mode = UiMode::Select;
                                 } else {
@@ -806,7 +902,9 @@ impl State {
                         },
                         _ => {
                             assert!(matches!(self.ui_mode, UiMode::Select));
-                            self.ui_mode = UiMode::ContextMenuOpen { selection: 0 };
+                            if self.tiles.get(&self.selectrum_at).is_some() {
+                                self.ui_mode = UiMode::ContextMenuOpen { selection: 0 };
+                            }
                         }
                     }
                 } else if input.pressed_this_frame(Button::B) {
@@ -825,7 +923,6 @@ impl State {
                         *selection = 0;
                     }
                 } else if input.pressed_this_frame(Button::A) {
-                    assert!(!player_moved);
                     match MENU_OPTIONS[*selection].0 {
                         MenuOption::Move => {
                             self.ui_mode = UiMode::Move { start: self.selectrum_at };
@@ -837,6 +934,9 @@ impl State {
                                 self.selectrum_at,
                                 twiddle_,
                             );
+
+                            self.sync_doors();
+
                             self.ui_mode = UiMode::Select;
                         },
                     }
@@ -847,7 +947,7 @@ impl State {
             },
             UiMode::Bump { start, dir } => {
                 move_selectrum!();
-                
+
                 let target = start.neighbor(*dir);
 
                 if input.pressed_this_frame(Button::A) {
@@ -860,6 +960,8 @@ impl State {
 
                                     if let Some(bumper_target) = self.mobs.get_target(*start) {
                                         self.mobs.apply_dir(bumper_target, *dir);
+
+                                        self.sync_doors();
 
                                         self.ui_mode = UiMode::Select;
                                     }
@@ -910,14 +1012,14 @@ impl State {
                     match tile.kind {
                         TileKind::Symbol(_) => 0,
                         TileKind::Warp => specs.hex_twiddle_tiles.tiles_per_row(),
-                        TileKind::Split => specs.hex_twiddle_tiles.tiles_per_row() * 2,
+                        TileKind::Door => specs.hex_twiddle_tiles.tiles_per_row() * 2,
                     }
                 ),
                 command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(xy)),
                 match tile.kind {
                     TileKind::Symbol(_) => 0xFF3352E1,
                     TileKind::Warp => 0xFF3352E1,
-                    TileKind::Split => 0xFFDE4949,
+                    TileKind::Door => 0xFFDE4949,
                 }
             );
 
@@ -928,14 +1030,14 @@ impl State {
                         TileKind::Symbol(Symbol::A) => 2,
                         TileKind::Symbol(Symbol::B) => 3,
                         TileKind::Warp => specs.hex_twiddle_tiles.tiles_per_row() + 1,
-                        TileKind::Split => specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
+                        TileKind::Door => specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
                     }
                 ),
                 command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(xy)),
                 match tile.kind {
                     TileKind::Symbol(_) => 0xFF222222,
                     TileKind::Warp => 0xFFDE4949,
-                    TileKind::Split => 0xFF30B06E,
+                    TileKind::Door => 0xFF30B06E,
                 }
             );
         }
@@ -956,7 +1058,7 @@ impl State {
             xy -= piece_center_offset;
 
             commands.sspr(
-                specs.hex_twiddle_pieces.xy_from_tile_sprite(mob.sprite),
+                specs.hex_twiddle_pieces.xy_from_tile_sprite(mob.sprite + mob.facing.index() as MobSprite),
                 command::Rect::from_unscaled(specs.hex_twiddle_pieces.rect(xy)),
             );
         }
@@ -972,7 +1074,7 @@ impl State {
                 commands.sspr_override(
                     specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
                     command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(selectrum_xy)),
-                    0xFFFFB937
+                    if self.tiles.get(&self.selectrum_at).is_some() { 0xFFFFB937 } else { 0xFFDE4949 }
                 );
             }
         }
@@ -1024,8 +1126,12 @@ impl State {
             },
             UiMode::Move { start } => {
                 for dir in qrs::Dir::ALL {
-                    let at = qrs_to_unscaled(start.neighbor(dir));
-    
+                    let qrs = start.neighbor(dir);
+
+                    if self.tiles.get(&qrs).is_none() { continue }
+
+                    let at = qrs_to_unscaled(qrs);
+
                     commands.sspr_override(
                         specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
                         command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(at)),
@@ -1049,7 +1155,7 @@ impl State {
 
                 for dir in viable_bump_dirs(&self.tiles, &self.mobs, target) {
                     let at = qrs_to_unscaled(target.neighbor(dir));
-    
+
                     commands.sspr_override(
                         specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
                         command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(at)),
@@ -1058,7 +1164,7 @@ impl State {
                 }
 
                 let arrow_xy = unscaled::XY::lerp(start_xy, 0.5, target_xy);
-                
+
                 commands.sspr(
                     specs.hex_twiddle_pieces.xy_from_tile_sprite(arrow_sprite),
                     command::Rect::from_unscaled(specs.hex_twiddle_pieces.rect(arrow_xy)),
