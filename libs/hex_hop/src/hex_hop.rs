@@ -898,8 +898,8 @@ impl State {
             0xFF30B06E, // Green
             0xFFDE4949, // Red
             0xFFFFB937, // Yellow
-            0xFF533354,
-            0xFF5A7D8B,
+            0xFF533354, // Purple
+            0xFF5A7D8B, // Cyan/Grey
             0xFFEEEEEE, // White
             0xFF222222, // Black
         ];

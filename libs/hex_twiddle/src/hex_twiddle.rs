@@ -274,7 +274,7 @@ pub type Key = QRS;
 
 pub type Tiles = BTreeMap<Key, Tile>;
 
-type TileSprite = u16;
+type TileSprite = u8;
 
 const SELECTRUM: TileSprite = 1;
 
@@ -999,6 +999,18 @@ impl State {
             output
         }
 
+        macro_rules! draw_tile {
+            ($sprite: expr, $xy: expr, $colour: expr $(,)?) => ({
+                let sprite: TileSprite = $sprite;
+
+                commands.sspr_override(
+                    specs.hex_twiddle_tiles.xy_from_tile_sprite(sprite),
+                    command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect($xy)),
+                    $colour
+                );
+            })
+        }
+
         //
         // Render Tiles
         //
@@ -1006,40 +1018,65 @@ impl State {
         for (at, tile) in self.tiles.iter() {
             let xy = tile_xy(*at, &tile);
 
-            // base
-            commands.sspr_override(
-                specs.hex_twiddle_tiles.xy_from_tile_sprite(
-                    match tile.kind {
-                        TileKind::Symbol(_) => 0,
-                        TileKind::Warp => specs.hex_twiddle_tiles.tiles_per_row(),
-                        TileKind::Door => specs.hex_twiddle_tiles.tiles_per_row() * 2,
+            match tile.kind {
+                TileKind::Symbol(symbol) => {
+                    draw_tile!(0, xy, 0xFF3352E1);
+                    draw_tile!(
+                        match symbol {
+                            Symbol::A => 2,
+                            Symbol::B => 3,
+                        },
+                        xy,
+                        0xFF222222
+                    );
+                },
+                TileKind::Warp => {
+                    draw_tile!(
+                        specs.hex_twiddle_tiles.tiles_per_row(),
+                        xy,
+                        0xFF3352E1,
+                    );
+                    draw_tile!(
+                        specs.hex_twiddle_tiles.tiles_per_row() + 1,
+                        xy,
+                        0xFFDE4949,
+                    );
+                },
+                TileKind::Door => {
+                    draw_tile!(
+                        specs.hex_twiddle_tiles.tiles_per_row() * 2,
+                        xy,
+                        0xFFDE4949,
+                    );
+                    match tile.door_mode {
+                        DoorMode::Closed => {
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() + 2,
+                                xy,
+                                0xFF5A7D8B,
+                            );
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() + 3,
+                                xy,
+                                0xFFFFB937,
+                            );
+                        }
+                        // TODO more animation states
+                        DoorMode::Player => {
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() + 4,
+                                xy,
+                                0xFF5A7D8B,
+                            );
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() + 5,
+                                xy,
+                                0xFFFFB937,
+                            );
+                        }
                     }
-                ),
-                command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(xy)),
-                match tile.kind {
-                    TileKind::Symbol(_) => 0xFF3352E1,
-                    TileKind::Warp => 0xFF3352E1,
-                    TileKind::Door => 0xFFDE4949,
-                }
-            );
-
-            // overlay
-            commands.sspr_override(
-                specs.hex_twiddle_tiles.xy_from_tile_sprite(
-                    match tile.kind {
-                        TileKind::Symbol(Symbol::A) => 2,
-                        TileKind::Symbol(Symbol::B) => 3,
-                        TileKind::Warp => specs.hex_twiddle_tiles.tiles_per_row() + 1,
-                        TileKind::Door => specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
-                    }
-                ),
-                command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(xy)),
-                match tile.kind {
-                    TileKind::Symbol(_) => 0xFF222222,
-                    TileKind::Warp => 0xFFDE4949,
-                    TileKind::Door => 0xFF30B06E,
-                }
-            );
+                },
+            }
         }
 
         //
@@ -1071,10 +1108,10 @@ impl State {
 
         macro_rules! draw_selectrum {
             () => {
-                commands.sspr_override(
-                    specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
-                    command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(selectrum_xy)),
-                    if self.tiles.get(&self.selectrum_at).is_some() { 0xFFFFB937 } else { 0xFFDE4949 }
+                draw_tile!(
+                    SELECTRUM,
+                    selectrum_xy,
+                    if self.tiles.get(&self.selectrum_at).is_some() { 0xFFFFB937 } else { 0xFFDE4949 },
                 );
             }
         }
@@ -1132,9 +1169,9 @@ impl State {
 
                     let at = qrs_to_unscaled(qrs);
 
-                    commands.sspr_override(
-                        specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
-                        command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(at)),
+                    draw_tile!(
+                        SELECTRUM,
+                        at,
                         0xFF30B06E
                     );
                 }

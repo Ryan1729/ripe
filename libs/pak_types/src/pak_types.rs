@@ -1126,7 +1126,7 @@ pub mod sprite {
                 hex_twiddle_tiles: spec::<HexTwiddleTiles>(SpecPieces{
                     offset: WH{ w: W(256), h: H(256 + 80) },
                     tile: WH{ w: W(56), h: H(48) },
-                    tiles_per_row: 4,
+                    tiles_per_row: 6,
                 }),
                 hex_twiddle_pieces: spec::<HexTwiddlePieces>(SpecPieces{
                     offset: WH{ w: W(256), h: H(256 + 80 + 48 * 3) },
