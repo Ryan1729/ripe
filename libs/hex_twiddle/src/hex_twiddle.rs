@@ -250,11 +250,46 @@ impl TileKind {
 
 type Offsets = [Offset; 4];
 
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ExitAnimationState {
+    #[default]
+    HalfOpen,
+    OpenFrame1,
+    OpenFrame2,
+    OpenFrame3,
+    OpenFrame4,
+    OpenFrame5,
+}
+
+impl ExitAnimationState {
+    fn advance(&mut self) {
+        *self = match *self {
+            Self::HalfOpen | Self::OpenFrame5 => Self::OpenFrame1,
+            Self::OpenFrame1 => Self::OpenFrame2,
+            Self::OpenFrame2 => Self::OpenFrame3,
+            Self::OpenFrame3 => Self::OpenFrame4,
+            Self::OpenFrame4 => Self::OpenFrame5,
+        };
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum DoorMode {
     #[default]
     Closed,
-    Player,
+    Player(ExitAnimationState),
+}
+
+impl DoorMode {
+    fn advance(&mut self) {
+        match self {
+            Self::Closed => {}
+            Self::Player(animation_state) => {
+                animation_state.advance();
+            }
+        };
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -690,6 +725,8 @@ fn viable_bump_dirs(tiles: &Tiles, mobs: &Mobs, target: QRS) -> impl Iterator<It
         .into_iter()
 }
 
+type FrameCount = u64;
+
 #[derive(Clone, Debug, Default)]
 pub struct State {
     pub seed: Seed, // For restarting
@@ -698,6 +735,7 @@ pub struct State {
     pub mobs: Mobs,
     pub selectrum_at: QRS,
     pub ui_mode: UiMode,
+    pub frame_count: FrameCount,
 }
 
 impl State {
@@ -780,8 +818,8 @@ impl State {
             // Open door for player
 
             for (_, tile) in &mut self.tiles {
-                if tile.is_door() {
-                    tile.door_mode = DoorMode::Player;
+                if tile.is_door() && !matches!(tile.door_mode, DoorMode::Player(_)) {
+                    tile.door_mode = DoorMode::Player(<_>::default());
                 }
             }
         } else if cpu_tracker.iter().all(|&b| b) {
@@ -816,6 +854,13 @@ impl State {
                 }
             }
         }
+
+        if self.frame_count & 0b1111 == 0 {
+            for (_, tile) in &mut self.tiles {
+                tile.door_mode.advance();
+            }
+        }
+        self.frame_count = self.frame_count.wrapping_add(1);
     }
 
     pub fn update_and_render(
@@ -1061,8 +1106,7 @@ impl State {
                                 0xFFFFB937,
                             );
                         }
-                        // TODO more animation states
-                        DoorMode::Player => {
+                        DoorMode::Player(ExitAnimationState::HalfOpen) => {
                             draw_tile!(
                                 specs.hex_twiddle_tiles.tiles_per_row() + 4,
                                 xy,
@@ -1070,6 +1114,68 @@ impl State {
                             );
                             draw_tile!(
                                 specs.hex_twiddle_tiles.tiles_per_row() + 5,
+                                xy,
+                                0xFFFFB937,
+                            );
+                        }
+                        DoorMode::Player(ExitAnimationState::OpenFrame1) => {
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
+                                xy,
+                                0xFF222222,
+                            );
+                        }
+                        DoorMode::Player(ExitAnimationState::OpenFrame2) => {
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
+                                xy,
+                                0xFF222222,
+                            );
+                        }
+                        DoorMode::Player(ExitAnimationState::OpenFrame2) => {
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
+                                xy,
+                                0xFF222222,
+                            );                            
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 2,
+                                xy,
+                                0xFFFFB937,
+                            );
+                        }
+                        DoorMode::Player(ExitAnimationState::OpenFrame3) => {
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
+                                xy,
+                                0xFF222222,
+                            );                            
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 3,
+                                xy,
+                                0xFFFFB937,
+                            );
+                        }
+                        DoorMode::Player(ExitAnimationState::OpenFrame4) => {
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
+                                xy,
+                                0xFF222222,
+                            );                            
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 4,
+                                xy,
+                                0xFFFFB937,
+                            );
+                        }
+                        DoorMode::Player(ExitAnimationState::OpenFrame5) => {
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
+                                xy,
+                                0xFF222222,
+                            );                            
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 5,
                                 xy,
                                 0xFFFFB937,
                             );
