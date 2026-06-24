@@ -802,7 +802,7 @@ impl State {
                     | PLAYER_HELPER_BASE..=PLAYER_HELPER_LAST
                     => &mut player_tracker,
                     CPU_BASE..=CPU_LAST
-                    => &mut player_tracker,
+                    => &mut cpu_tracker,
                     _ => {
                         debug_assert!(false, "Unecpected mob sprite: {:?}", mob.sprite);
                         continue
