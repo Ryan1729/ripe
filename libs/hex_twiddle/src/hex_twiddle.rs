@@ -1,3 +1,5 @@
+#![deny(unreachable_patterns)]
+
 use gfx::{Commands};
 //use gfx_sizes::ARGB;
 #[allow(unused)]
@@ -239,6 +241,16 @@ impl TileKind {
         Self::Door,
     ];
 
+    pub fn index(&self) -> usize {
+        // Who care if it's O(n) when n is like 4?
+        for (i, other) in Self::ALL.iter().enumerate() {
+            if other == self {
+                return i
+            }
+        }
+        unreachable!();
+    }
+
     pub fn symbol(&self) -> Option<Symbol> {
         match self {
             Self::Symbol(s) => Some(*s),
@@ -308,6 +320,22 @@ impl Tile {
 pub type Key = QRS;
 
 pub type Tiles = BTreeMap<Key, Tile>;
+
+// 64k tiles ought to be enough for anybody!
+type TileCount = u16;
+
+fn is_uncompletable(tiles: &Tiles) -> bool {
+    let mut counts: [TileCount; TileKind::ALL.len()] = <_>::default();
+
+    for (_, tile) in tiles {
+        counts[tile.kind.index()] = counts[tile.kind.index()].saturating_add(1);
+    }
+
+    counts[TileKind::Symbol(Symbol::A).index()] < 1
+    || counts[TileKind::Symbol(Symbol::B).index()] < 1
+    || counts[TileKind::Warp.index()] == 1 // 0 warps is fine, but one that you can't use is not
+    || counts[TileKind::Door.index()] < 1
+}
 
 type TileSprite = u8;
 
@@ -464,6 +492,10 @@ mod mobs {
 
             current.0 = key;
             current.1 = entity;
+        }
+
+        pub fn player(&self) -> &(Key, Entity) {
+            &self.player_mobs[0]
         }
 
         pub fn iter(&self) -> impl Iterator<Item = &(Key, Entity)> {
@@ -751,14 +783,41 @@ impl State {
 
         let mut tiles = Tiles::new();
 
-        for at in qrs::spiral(2, qr!(0, 0)) {
-            tiles.insert(
-                at,
-                Tile {
-                    kind: TileKind::ALL[xs::range(rng, 0..TileKind::ALL.len() as u32) as usize],
-                    .. <_>::default()
-                }
-            );
+
+        let mut tries_left = 16;
+        while tries_left > 0 {
+            // TODO add variations for initial shape of tiles
+            for at in qrs::spiral(2, qr!(0, 0)) {
+                tiles.insert(
+                    at,
+                    Tile {
+                        kind: TileKind::ALL[xs::range(rng, 0..TileKind::ALL.len() as u32) as usize],
+                        .. <_>::default()
+                    }
+                );
+            }
+
+            tries_left -= 1;
+
+            if is_uncompletable(&tiles) {
+                tiles.clear();
+                //loop again, unless we are out of tries
+            } else {
+                break
+            }
+        }
+
+        if is_uncompletable(&tiles) {
+            // Known completable fallback
+            for (i, at) in qrs::spiral(2, qr!(0, 0)).enumerate() {
+                tiles.insert(
+                    at,
+                    Tile {
+                        kind: TileKind::ALL[i % TileKind::ALL.len()],
+                        .. <_>::default()
+                    }
+                );
+            }
         }
 
         let start_center = qr!(0, 0);
@@ -784,7 +843,19 @@ impl State {
     }
 
     pub fn is_complete(&self) -> bool {
-        // TODO is the player on an open player door
+        let (key, player) = self.mobs.player();
+
+        // If the animation is not settled, delay completion
+        for offset in &player.offsets {
+            if !offset.is_settled() {
+                return false
+            }
+        }
+
+        if let Some(tile) = self.tiles.get(key) {
+            return matches!(tile.door_mode, DoorMode::Player(_));
+        }
+
         false
     }
 
@@ -804,7 +875,7 @@ impl State {
                     CPU_BASE..=CPU_LAST
                     => &mut cpu_tracker,
                     _ => {
-                        debug_assert!(false, "Unecpected mob sprite: {:?}", mob.sprite);
+                        debug_assert!(false, "Unexpected mob sprite: {:?}", mob.sprite);
                         continue
                     }
                 };
@@ -918,6 +989,9 @@ impl State {
             }
         }
 
+        // TODO implement warp tiles
+        //     I guess allow a choice of any other warp tiles without any other pieces on them?
+        //     This avoid us needing to implement, (or render) multiple occupancy.
         match &mut self.ui_mode {
             UiMode::Select | UiMode::Move { .. } => {
                 move_selectrum!();
@@ -938,7 +1012,6 @@ impl State {
 
                                     self.sync_doors();
 
-                                    // TODO check for whether goal is met, and open door if so
                                     self.ui_mode = UiMode::Select;
                                 } else {
                                     self.ui_mode = UiMode::Bump { start: *start, dir };
@@ -1093,6 +1166,17 @@ impl State {
                         xy,
                         0xFFDE4949,
                     );
+
+                    macro_rules! open_background {
+                        () => {
+                            draw_tile!(
+                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
+                                xy,
+                                0xFF222222,
+                            );
+                        }
+                    }
+
                     match tile.door_mode {
                         DoorMode::Closed => {
                             draw_tile!(
@@ -1119,25 +1203,10 @@ impl State {
                             );
                         }
                         DoorMode::Player(ExitAnimationState::OpenFrame1) => {
-                            draw_tile!(
-                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
-                                xy,
-                                0xFF222222,
-                            );
+                            open_background!();
                         }
                         DoorMode::Player(ExitAnimationState::OpenFrame2) => {
-                            draw_tile!(
-                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
-                                xy,
-                                0xFF222222,
-                            );
-                        }
-                        DoorMode::Player(ExitAnimationState::OpenFrame2) => {
-                            draw_tile!(
-                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
-                                xy,
-                                0xFF222222,
-                            );                            
+                            open_background!();
                             draw_tile!(
                                 specs.hex_twiddle_tiles.tiles_per_row() * 2 + 2,
                                 xy,
@@ -1145,11 +1214,7 @@ impl State {
                             );
                         }
                         DoorMode::Player(ExitAnimationState::OpenFrame3) => {
-                            draw_tile!(
-                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
-                                xy,
-                                0xFF222222,
-                            );                            
+                            open_background!();
                             draw_tile!(
                                 specs.hex_twiddle_tiles.tiles_per_row() * 2 + 3,
                                 xy,
@@ -1157,11 +1222,7 @@ impl State {
                             );
                         }
                         DoorMode::Player(ExitAnimationState::OpenFrame4) => {
-                            draw_tile!(
-                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
-                                xy,
-                                0xFF222222,
-                            );                            
+                            open_background!();
                             draw_tile!(
                                 specs.hex_twiddle_tiles.tiles_per_row() * 2 + 4,
                                 xy,
@@ -1169,11 +1230,7 @@ impl State {
                             );
                         }
                         DoorMode::Player(ExitAnimationState::OpenFrame5) => {
-                            draw_tile!(
-                                specs.hex_twiddle_tiles.tiles_per_row() * 2 + 1,
-                                xy,
-                                0xFF222222,
-                            );                            
+                            open_background!();
                             draw_tile!(
                                 specs.hex_twiddle_tiles.tiles_per_row() * 2 + 5,
                                 xy,
