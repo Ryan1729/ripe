@@ -782,19 +782,37 @@ impl State {
         let rng = &mut rng_;
 
         let mut tiles = Tiles::new();
-
+        let mut start_center: QRS = qr!(0, 0);
 
         let mut tries_left = 16;
         while tries_left > 0 {
-            // TODO add variations for initial shape of tiles
+            let has_holes = true; //xs::range(rng, 0..2) == 0;
+
+            macro_rules! insert_tile {
+                ($at: expr) => {
+                    tiles.insert(
+                        $at,
+                        Tile {
+                            kind: TileKind::ALL[xs::range(rng, 0..TileKind::ALL.len() as u32) as usize],
+                            .. <_>::default()
+                        }
+                    );
+                }
+            }
+
             for at in qrs::spiral(2, qr!(0, 0)) {
-                tiles.insert(
-                    at,
-                    Tile {
-                        kind: TileKind::ALL[xs::range(rng, 0..TileKind::ALL.len() as u32) as usize],
-                        .. <_>::default()
-                    }
-                );
+                if has_holes && xs::range(rng, 0..4) == 0 { continue }
+
+                insert_tile!(at);
+            }
+
+            start_center = tiles.iter().nth(xs::range(rng, 0..tiles.len() as u32) as usize).map(|t| *t.0).unwrap_or(qr!(0, 0));
+
+            // Ensure the center is surrounded on all sides
+            for at in qrs::spiral(1, start_center) {
+                if !tiles.contains_key(&at) {
+                    insert_tile!(at);
+                }
             }
 
             tries_left -= 1;
@@ -819,8 +837,6 @@ impl State {
                 );
             }
         }
-
-        let start_center = qr!(0, 0);
 
         let mobs = Mobs::new(start_center);
 
@@ -989,6 +1005,7 @@ impl State {
             }
         }
 
+        // TODO properly disallow moving where there is no tile
         // TODO implement warp tiles
         //     I guess allow a choice of any other warp tiles without any other pieces on them?
         //     This avoid us needing to implement, (or render) multiple occupancy.
