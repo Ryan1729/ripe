@@ -380,6 +380,16 @@ pub use world::hallway::State as HallwayState;
 //
 // Can we use the same hex graphics for this or not?
 
+// Idea:
+// A maze game where there are teleporters and a way to change the topology of them. Circuit themed.
+//    To generate:
+//        Start with a solvable maze
+//        perform a random number of moves the player will be able reverse, to scramble the maze
+//        Done
+
+// Idea:
+// Clone this, perhaps with some kind of twist: https://www.pc98.org/oskcube.html
+
 fn warp_player_to(world: &mut World, target: &DoorTarget) {
     world.segment_id = target.segment_id;
     world.player.xy = target.xy;

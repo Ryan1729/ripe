@@ -744,6 +744,12 @@ pub enum UiMode {
     Bump { start: QRS, dir: qrs::Dir },
 }
 
+fn viable_move_dir(tiles: &Tiles, targeting: qrs::Targeting) -> Option<qrs::Dir> {
+    qrs::adjacent_dir(targeting).filter(|dir| {
+        tiles.get(&targeting.target).is_some()
+    })
+}
+
 fn viable_bump_dirs(tiles: &Tiles, mobs: &Mobs, target: QRS) -> impl Iterator<Item = qrs::Dir> + use<> {
     qrs::Dir::ALL.iter()
         .filter(|&&dir| {
@@ -1005,7 +1011,6 @@ impl State {
             }
         }
 
-        // TODO properly disallow moving where there is no tile
         // TODO implement warp tiles
         //     I guess allow a choice of any other warp tiles without any other pieces on them?
         //     This avoid us needing to implement, (or render) multiple occupancy.
@@ -1019,9 +1024,7 @@ impl State {
                             let target = self.selectrum_at;
 
                             if let Some(mob_target) = self.mobs.get_target(*start)
-                            && let Some(dir) = qrs::adjacent_dir(
-                                qrs::Targeting { source: *start, target }
-                            ) {
+                            && let Some(dir) = viable_move_dir(&self.tiles, qrs::Targeting { source: *start, target }) {
                                 if self.mobs.is_free(target) {
                                     self.mobs.apply_dir(mob_target, dir);
                                     // TODO? More/variable goals?
@@ -1343,17 +1346,18 @@ impl State {
             },
             UiMode::Move { start } => {
                 for dir in qrs::Dir::ALL {
-                    let qrs = start.neighbor(dir);
+                    let target = start.neighbor(dir);
 
-                    if self.tiles.get(&qrs).is_none() { continue }
+                    if let Some(viable_dir) = viable_move_dir(&self.tiles, qrs::Targeting { source: *start, target }) {
+                        assert_eq!(viable_dir, dir);
+                        let at = qrs_to_unscaled(target);
 
-                    let at = qrs_to_unscaled(qrs);
-
-                    draw_tile!(
-                        SELECTRUM,
-                        at,
-                        0xFF30B06E
-                    );
+                        draw_tile!(
+                            SELECTRUM,
+                            at,
+                            0xFF30B06E
+                        );
+                    }
                 }
 
                 draw_selectrum!();
