@@ -262,6 +262,9 @@ impl TileKind {
 
 type Offsets = [Offset; 4];
 
+fn offsets_are_settled(offsets: &Offsets) -> bool {
+    offsets.iter().all(|o| o.is_settled())
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ExitAnimationState {
@@ -356,8 +359,29 @@ const ARROW_BASE: MobSprite = CPU_BASE + DIR_COUNT;
 type Facing = qrs::Dir;
 
 #[derive(Clone, Default, PartialEq, Eq)]
+enum Action {
+    #[default]
+    NoOp,
+    WarpTo(QRS)
+}
+
+impl Action {
+    pub fn take(&mut self) -> Self {
+        match self {
+            Self::NoOp => Self::NoOp,
+            Self::WarpTo(qrs) => {
+                let output = Self::WarpTo(*qrs);
+                *self = Self::NoOp;
+                output
+            },
+        }
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct Entity {
     pub offsets: Offsets,
+    pub on_offset_done: Action,
     pub sprite: MobSprite,
     pub facing: Facing,
 }
@@ -518,6 +542,14 @@ mod mobs {
         }
 
         pub fn apply_dir(&mut self, target: Target, dir: qrs::Dir) {
+            self.apply_movment(target, dir, None);
+        }
+
+        pub fn apply_warp(&mut self, target: Target, dir: qrs::Dir, target_key: Key) {
+            self.apply_movment(target, dir, Some(target_key));
+        }
+
+        fn apply_movment(&mut self, target: Target, dir: qrs::Dir, warp_target: Option<QRS>) {
             let current = match target {
                 Target::Player(index) => &mut self.player_mobs[index as u8 as usize],
                 Target::NonPlayer(index) => &mut self.cpu_mobs[index as u8 as usize],
@@ -527,9 +559,12 @@ mod mobs {
 
             if self.is_free(new_qrs) {
                 let current = get_ref!(self target);
-
+                dbg!();
                 current.0 = new_qrs;
                 current.1.offsets = [offset::direct(dir), Offset::default(), Offset::default(), Offset::default()];
+                if let Some(qrs) = warp_target {
+                    current.1.on_offset_done = Action::WarpTo(qrs);
+                }
                 current.1.facing = dir;
             }
         }
@@ -742,10 +777,11 @@ pub enum UiMode {
     ContextMenuOpen { selection: usize },
     Move { start: QRS },
     Bump { start: QRS, dir: qrs::Dir },
+    Warp { start: QRS, dir: qrs::Dir },
 }
 
 fn viable_move_dir(tiles: &Tiles, targeting: qrs::Targeting) -> Option<qrs::Dir> {
-    qrs::adjacent_dir(targeting).filter(|dir| {
+    qrs::adjacent_dir(targeting).filter(|_dir| {
         tiles.get(&targeting.target).is_some()
     })
 }
@@ -761,6 +797,20 @@ fn viable_bump_dirs(tiles: &Tiles, mobs: &Mobs, target: QRS) -> impl Iterator<It
         //Yes this is a technically unneeded allocation. We can care if it ever matters.
         .collect::<Vec<_>>()
         .into_iter()
+}
+
+// The source is the location of the tile that the mob plans to step on.
+fn viable_warp_spots<'tiles, 'mobs>(tiles: &'tiles Tiles, mobs: &'mobs Mobs, source: QRS)  -> impl Iterator<Item = qrs::QRS> + use<'tiles, 'mobs> {
+    tiles.iter()
+        .filter_map(move |(&key, tile)| {
+            if key != source
+            && tile.kind == TileKind::Warp
+            && mobs.is_free(key) {
+                Some(key)
+            } else {
+                None
+            }
+        })
 }
 
 type FrameCount = u64;
@@ -868,10 +918,8 @@ impl State {
         let (key, player) = self.mobs.player();
 
         // If the animation is not settled, delay completion
-        for offset in &player.offsets {
-            if !offset.is_settled() {
-                return false
-            }
+        if !offsets_are_settled(&player.offsets) {
+            return false
         }
 
         if let Some(tile) = self.tiles.get(key) {
@@ -939,11 +987,29 @@ impl State {
             }
         }
 
-        for (_, mob) in self.mobs.iter_mut() {
+        for (at, mob) in self.mobs.iter_mut() {
+            if offsets_are_settled(&mob.offsets) { continue }
+
             for offset in &mut mob.offsets {
                 if !offset.is_settled() {
                     offset.advance();
+
                     break
+                }
+            }
+
+            // We checked before in this loop and it wasn't settled before,
+            // so this means "if it just became settled".
+            if offsets_are_settled(&mob.offsets) {
+                match mob.on_offset_done.take() {
+                    Action::NoOp => {}
+                    Action::WarpTo(qrs) => {
+                        // TODO Warping animation?
+                        *at = qrs;
+
+                        // We don't need to sync doors here unless we add like warp tiles with symbols on them
+                        //self.sync_doors();
+                    }
                 }
             }
         }
@@ -1025,7 +1091,9 @@ impl State {
 
                             if let Some(mob_target) = self.mobs.get_target(*start)
                             && let Some(dir) = viable_move_dir(&self.tiles, qrs::Targeting { source: *start, target }) {
-                                if self.mobs.is_free(target) {
+                                if self.tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
+                                    self.ui_mode = UiMode::Warp { start: *start, dir };
+                                } else if self.mobs.is_free(target) {
                                     self.mobs.apply_dir(mob_target, dir);
                                     // TODO? More/variable goals?
                                     // TODO? Only one space of each symbol?
@@ -1106,6 +1174,38 @@ impl State {
                                 }
 
                                 break
+                            }
+                        }
+                    }
+                } else if input.pressed_this_frame(Button::B) {
+                    self.ui_mode = UiMode::Select;
+                }
+            }
+            UiMode::Warp { start, dir } => {
+                move_selectrum!();
+
+                let target = start.neighbor(*dir);
+
+                if input.pressed_this_frame(Button::A) {
+                    if !player_moved {
+                        if let Some(mob_target) = self.mobs.get_target(*start) {
+                            let mut warp_target = None;
+
+                            for qrs in viable_warp_spots(&self.tiles, &self.mobs, target) {
+
+                                if qrs == self.selectrum_at && self.mobs.is_free(qrs) {
+                                    warp_target = Some(qrs);
+
+                                    break
+                                }
+                            }
+
+                            if let Some(qrs) = warp_target {
+                                self.mobs.apply_warp(mob_target, *dir, qrs);
+
+                                self.sync_doors();
+
+                                self.ui_mode = UiMode::Select;
                             }
                         }
                     }
@@ -1376,6 +1476,37 @@ impl State {
 
                 for dir in viable_bump_dirs(&self.tiles, &self.mobs, target) {
                     let at = qrs_to_unscaled(target.neighbor(dir));
+
+                    commands.sspr_override(
+                        specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
+                        command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(at)),
+                        0xFF30B06E
+                    );
+                }
+
+                let arrow_xy = unscaled::XY::lerp(start_xy, 0.5, target_xy);
+
+                commands.sspr(
+                    specs.hex_twiddle_pieces.xy_from_tile_sprite(arrow_sprite),
+                    command::Rect::from_unscaled(specs.hex_twiddle_pieces.rect(arrow_xy)),
+                );
+
+                draw_selectrum!();
+            },
+            UiMode::Warp { start, dir } => {
+                let target = start.neighbor(*dir);
+
+                let arrow_sprite: MobSprite = ARROW_BASE + MobSprite::from(dir.index());
+
+                let mut start_xy = qrs_to_unscaled(*start);
+                start_xy += hex_center_offset;
+                start_xy -= piece_center_offset;
+                let mut target_xy = qrs_to_unscaled(target);
+                target_xy += hex_center_offset;
+                target_xy -= piece_center_offset;
+
+                for spot in viable_warp_spots(&self.tiles, &self.mobs, target) {
+                    let at = qrs_to_unscaled(spot);
 
                     commands.sspr_override(
                         specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
