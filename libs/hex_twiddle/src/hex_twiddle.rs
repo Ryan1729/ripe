@@ -359,7 +359,7 @@ const ARROW_BASE: MobSprite = CPU_BASE + DIR_COUNT;
 type Facing = qrs::Dir;
 
 #[derive(Clone, Default, PartialEq, Eq)]
-enum Action {
+pub enum Action {
     #[default]
     NoOp,
     WarpTo(QRS)
@@ -408,7 +408,7 @@ mod mobs {
     use super::*;
 
     #[repr(u8)]
-    #[derive(Clone, Copy, Debug, Default)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub enum Index {
         #[default]
         Zero,
@@ -416,10 +416,26 @@ mod mobs {
         Two,
     }
 
-    #[derive(Clone, Copy, Debug)]
+    impl Index {
+        pub fn wrapping_inc(self) -> Self {
+            match self {
+                Self::Zero => Self::One,
+                Self::One => Self::Two,
+                Self::Two => Self::Zero,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Target {
         Player(Index),
         NonPlayer(Index)
+    }
+
+    impl Default for Target {
+        fn default() -> Self {
+            Self::Player(<_>::default())
+        }
     }
 
     impl Target {
@@ -559,7 +575,7 @@ mod mobs {
 
             if self.is_free(new_qrs) {
                 let current = get_ref!(self target);
-                dbg!();
+
                 current.0 = new_qrs;
                 current.1.offsets = [offset::direct(dir), Offset::default(), Offset::default(), Offset::default()];
                 if let Some(qrs) = warp_target {
@@ -814,6 +830,7 @@ fn viable_warp_spots<'tiles, 'mobs>(tiles: &'tiles Tiles, mobs: &'mobs Mobs, sou
 }
 
 type FrameCount = u64;
+type Turn = mobs::Target;
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
@@ -824,6 +841,14 @@ pub struct State {
     pub selectrum_at: QRS,
     pub ui_mode: UiMode,
     pub frame_count: FrameCount,
+    pub turn: Turn,
+}
+
+fn next_turn(turn: Turn) -> Turn {
+    match turn {
+        Turn::Player(index) => Turn::NonPlayer(index),
+        Turn::NonPlayer(index) => Turn::Player(index.wrapping_inc()),
+    }
 }
 
 impl State {
@@ -1004,7 +1029,7 @@ impl State {
                 match mob.on_offset_done.take() {
                     Action::NoOp => {}
                     Action::WarpTo(qrs) => {
-                        // TODO Warping animation?
+                        // TODO? Warping animation?
                         *at = qrs;
 
                         // We don't need to sync doors here unless we add like warp tiles with symbols on them
@@ -1046,172 +1071,183 @@ impl State {
 
         // TODO track turns and have CPU players move, and allow the player to only move the player pieces
 
-        let mut player_moved = false;
+        match self.turn {
+            // The player
+            Turn::Player(mobs::Index::Zero) => {
+                let mut player_moved = false;
 
-        macro_rules! move_selectrum {
-            () => {
-                if input.pressed_this_frame(Button::UP) {
-                    let dir = if input.gamepad.contains(Button::LEFT) {
-                        qrs::Dir::DecQIncS
-                    } else if input.gamepad.contains(Button::RIGHT) {
-                        qrs::Dir::DecRIncQ
-                    } else {
-                        qrs::Dir::DecRIncS
-                    };
-                    let target_qrs = self.selectrum_at.neighbor(dir);
-                    player_moved = true;
-                    self.selectrum_at = target_qrs;
-                } else if input.pressed_this_frame(Button::DOWN) {
-                    let dir = if input.gamepad.contains(Button::LEFT) {
-                        qrs::Dir::DecQIncR
-                    } else if input.gamepad.contains(Button::RIGHT) {
-                        qrs::Dir::DecSIncQ
-                    } else {
-                        qrs::Dir::DecSIncR
-                    };
-
-                    let target_qrs = self.selectrum_at.neighbor(dir);
-                    player_moved = true;
-                    self.selectrum_at = target_qrs;
-                }
-            }
-        }
-
-        // TODO implement warp tiles
-        //     I guess allow a choice of any other warp tiles without any other pieces on them?
-        //     This avoid us needing to implement, (or render) multiple occupancy.
-        match &mut self.ui_mode {
-            UiMode::Select | UiMode::Move { .. } => {
-                move_selectrum!();
-
-                if input.pressed_this_frame(Button::A) {
-                    match &mut self.ui_mode {
-                        UiMode::Move { start } => {
-                            let target = self.selectrum_at;
-
-                            if let Some(mob_target) = self.mobs.get_target(*start)
-                            && let Some(dir) = viable_move_dir(&self.tiles, qrs::Targeting { source: *start, target }) {
-                                if self.tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
-                                    self.ui_mode = UiMode::Warp { start: *start, dir };
-                                } else if self.mobs.is_free(target) {
-                                    self.mobs.apply_dir(mob_target, dir);
-                                    // TODO? More/variable goals?
-                                    // TODO? Only one space of each symbol?
-
-                                    self.sync_doors();
-
-                                    self.ui_mode = UiMode::Select;
-                                } else {
-                                    self.ui_mode = UiMode::Bump { start: *start, dir };
-                                }
-                            }
-                        },
-                        _ => {
-                            assert!(matches!(self.ui_mode, UiMode::Select));
-                            if self.tiles.get(&self.selectrum_at).is_some() {
-                                self.ui_mode = UiMode::ContextMenuOpen { selection: 0 };
-                            }
+                macro_rules! move_selectrum {
+                    () => {
+                        if input.pressed_this_frame(Button::UP) {
+                            let dir = if input.gamepad.contains(Button::LEFT) {
+                                qrs::Dir::DecQIncS
+                            } else if input.gamepad.contains(Button::RIGHT) {
+                                qrs::Dir::DecRIncQ
+                            } else {
+                                qrs::Dir::DecRIncS
+                            };
+                            let target_qrs = self.selectrum_at.neighbor(dir);
+                            player_moved = true;
+                            self.selectrum_at = target_qrs;
+                        } else if input.pressed_this_frame(Button::DOWN) {
+                            let dir = if input.gamepad.contains(Button::LEFT) {
+                                qrs::Dir::DecQIncR
+                            } else if input.gamepad.contains(Button::RIGHT) {
+                                qrs::Dir::DecSIncQ
+                            } else {
+                                qrs::Dir::DecSIncR
+                            };
+        
+                            let target_qrs = self.selectrum_at.neighbor(dir);
+                            player_moved = true;
+                            self.selectrum_at = target_qrs;
                         }
                     }
-                } else if input.pressed_this_frame(Button::B) {
-                    self.ui_mode = UiMode::Select; // Useful for UiMode::Move
                 }
-            },
-            UiMode::ContextMenuOpen { selection } => {
-                if input.pressed_this_frame(Button::UP) {
-                    if *selection == 0 {
-                        *selection = MENU_OPTIONS.len();
-                    }
-                    *selection -= 1;
-                } else if input.pressed_this_frame(Button::DOWN) {
-                    *selection += 1;
-                    if *selection == MENU_OPTIONS.len() {
-                        *selection = 0;
-                    }
-                } else if input.pressed_this_frame(Button::A) {
-                    match MENU_OPTIONS[*selection].0 {
-                        MenuOption::Move => {
-                            self.ui_mode = UiMode::Move { start: self.selectrum_at };
-                        },
-                        MenuOption::Twiddle(twiddle_) => {
-                            twiddle(
-                                &mut self.tiles,
-                                &mut self.mobs,
-                                self.selectrum_at,
-                                twiddle_,
-                            );
-
-                            self.sync_doors();
-
+        
+                match &mut self.ui_mode {
+                    UiMode::Select | UiMode::Move { .. } => {
+                        move_selectrum!();
+        
+                        if input.pressed_this_frame(Button::A) {
+                            match &mut self.ui_mode {
+                                UiMode::Move { start } => {
+                                    let target = self.selectrum_at;
+        
+                                    if let Some(mob_target) = self.mobs.get_target(*start)
+                                    && mob_target == self.turn
+                                    && let Some(dir) = viable_move_dir(&self.tiles, qrs::Targeting { source: *start, target }) {
+                                        if self.tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
+                                            self.ui_mode = UiMode::Warp { start: *start, dir };
+                                        } else if self.mobs.is_free(target) {
+                                            self.mobs.apply_dir(mob_target, dir);
+                                            // TODO? More/variable goals?
+                                            // TODO? Only one space of each symbol?
+        
+                                            self.sync_doors();
+        
+                                            self.ui_mode = UiMode::Select;
+                                        } else {
+                                            self.ui_mode = UiMode::Bump { start: *start, dir };
+                                        }
+                                    }
+                                },
+                                _ => {
+                                    assert!(matches!(self.ui_mode, UiMode::Select));
+                                    if self.tiles.get(&self.selectrum_at).is_some() {
+                                        self.ui_mode = UiMode::ContextMenuOpen { selection: 0 };
+                                    }
+                                }
+                            }
+                        } else if input.pressed_this_frame(Button::B) {
+                            self.ui_mode = UiMode::Select; // Useful for UiMode::Move
+                        }
+                    },
+                    UiMode::ContextMenuOpen { selection } => {
+                        if input.pressed_this_frame(Button::UP) {
+                            if *selection == 0 {
+                                *selection = MENU_OPTIONS.len();
+                            }
+                            *selection -= 1;
+                        } else if input.pressed_this_frame(Button::DOWN) {
+                            *selection += 1;
+                            if *selection == MENU_OPTIONS.len() {
+                                *selection = 0;
+                            }
+                        } else if input.pressed_this_frame(Button::A) {
+                            match MENU_OPTIONS[*selection].0 {
+                                MenuOption::Move => {
+                                    self.ui_mode = UiMode::Move { start: self.selectrum_at };
+                                },
+                                MenuOption::Twiddle(twiddle_) => {
+                                    twiddle(
+                                        &mut self.tiles,
+                                        &mut self.mobs,
+                                        self.selectrum_at,
+                                        twiddle_,
+                                    );
+        
+                                    self.sync_doors();
+        
+                                    self.ui_mode = UiMode::Select;
+                                },
+                            }
+        
+                        } else if input.pressed_this_frame(Button::B) {
                             self.ui_mode = UiMode::Select;
-                        },
+                        }
+                    },
+                    UiMode::Bump { start, dir } => {
+                        move_selectrum!();
+        
+                        let target = start.neighbor(*dir);
+        
+                        if input.pressed_this_frame(Button::A) {
+                            if !player_moved {
+                                for bump_dir in viable_bump_dirs(&self.tiles, &self.mobs, target) {
+                                    if target.neighbor(bump_dir) == self.selectrum_at {
+                                        // Perform the bump
+                                        if let Some(bumpee_target) = self.mobs.get_target(target) {
+                                            self.mobs.apply_dir(bumpee_target, bump_dir);
+        
+                                            if let Some(bumper_target) = self.mobs.get_target(*start) {
+                                                self.mobs.apply_dir(bumper_target, *dir);
+        
+                                                self.sync_doors();
+                                                self.turn = next_turn(self.turn);
+        
+                                                self.ui_mode = UiMode::Select;
+                                            }
+                                        }
+        
+                                        break
+                                    }
+                                }
+                            }
+                        } else if input.pressed_this_frame(Button::B) {
+                            self.ui_mode = UiMode::Select;
+                        }
                     }
-
-                } else if input.pressed_this_frame(Button::B) {
-                    self.ui_mode = UiMode::Select;
-                }
-            },
-            UiMode::Bump { start, dir } => {
-                move_selectrum!();
-
-                let target = start.neighbor(*dir);
-
-                if input.pressed_this_frame(Button::A) {
-                    if !player_moved {
-                        for bump_dir in viable_bump_dirs(&self.tiles, &self.mobs, target) {
-                            if target.neighbor(bump_dir) == self.selectrum_at {
-                                // Perform the bump
-                                if let Some(bumpee_target) = self.mobs.get_target(target) {
-                                    self.mobs.apply_dir(bumpee_target, bump_dir);
-
-                                    if let Some(bumper_target) = self.mobs.get_target(*start) {
-                                        self.mobs.apply_dir(bumper_target, *dir);
-
+                    UiMode::Warp { start, dir } => {
+                        move_selectrum!();
+        
+                        let target = start.neighbor(*dir);
+        
+                        if input.pressed_this_frame(Button::A) {
+                            if !player_moved {
+                                if let Some(mob_target) = self.mobs.get_target(*start) {
+                                    let mut warp_target = None;
+        
+                                    for qrs in viable_warp_spots(&self.tiles, &self.mobs, target) {
+                                        if qrs == self.selectrum_at && self.mobs.is_free(qrs) {
+                                            warp_target = Some(qrs);
+        
+                                            break
+                                        }
+                                    }
+        
+                                    if let Some(qrs) = warp_target {
+                                        self.mobs.apply_warp(mob_target, *dir, qrs);
+        
                                         self.sync_doors();
-
+                                        self.turn = next_turn(self.turn);
+        
                                         self.ui_mode = UiMode::Select;
                                     }
                                 }
-
-                                break
                             }
+                        } else if input.pressed_this_frame(Button::B) {
+                            self.ui_mode = UiMode::Select;
                         }
                     }
-                } else if input.pressed_this_frame(Button::B) {
-                    self.ui_mode = UiMode::Select;
                 }
             }
-            UiMode::Warp { start, dir } => {
-                move_selectrum!();
-
-                let target = start.neighbor(*dir);
-
-                if input.pressed_this_frame(Button::A) {
-                    if !player_moved {
-                        if let Some(mob_target) = self.mobs.get_target(*start) {
-                            let mut warp_target = None;
-
-                            for qrs in viable_warp_spots(&self.tiles, &self.mobs, target) {
-
-                                if qrs == self.selectrum_at && self.mobs.is_free(qrs) {
-                                    warp_target = Some(qrs);
-
-                                    break
-                                }
-                            }
-
-                            if let Some(qrs) = warp_target {
-                                self.mobs.apply_warp(mob_target, *dir, qrs);
-
-                                self.sync_doors();
-
-                                self.ui_mode = UiMode::Select;
-                            }
-                        }
-                    }
-                } else if input.pressed_this_frame(Button::B) {
-                    self.ui_mode = UiMode::Select;
-                }
+            other => {
+                // TODO have the other pieces move on their turns
+                //    Need to have all the same checks on availability
+                //    Just pick uniformly at random among options at the start
+                //    Eventually have the choices be made with more purpose
+                self.turn = next_turn(self.turn);
             }
         }
 
