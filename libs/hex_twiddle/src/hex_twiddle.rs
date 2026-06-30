@@ -460,6 +460,12 @@ mod mobs {
     macro_rules! get_ref {
         ($mobs: ident $target: expr) => {
             match $target {
+                Target::Player(index) => &$mobs.player_mobs[index as u8 as usize],
+                Target::NonPlayer(index) => &$mobs.cpu_mobs[index as u8 as usize],
+            }
+        };
+        (mut $mobs: ident $target: expr) => {
+            match $target {
                 Target::Player(index) => &mut $mobs.player_mobs[index as u8 as usize],
                 Target::NonPlayer(index) => &mut $mobs.cpu_mobs[index as u8 as usize],
             }
@@ -528,7 +534,7 @@ mod mobs {
         }
 
         fn set(&mut self, target: Target, key: Key, entity: Entity) {
-            let current = get_ref!(self target);
+            let current = get_ref!(mut self target);
 
             current.0 = key;
             current.1 = entity;
@@ -536,6 +542,10 @@ mod mobs {
 
         pub fn player(&self) -> &(Key, Entity) {
             &self.player_mobs[0]
+        }
+
+        pub fn get(&self, target: Target) -> &(Key, Entity) {
+            get_ref!(self target)
         }
 
         pub fn iter(&self) -> impl Iterator<Item = &(Key, Entity)> {
@@ -566,15 +576,12 @@ mod mobs {
         }
 
         fn apply_movment(&mut self, target: Target, dir: qrs::Dir, warp_target: Option<QRS>) {
-            let current = match target {
-                Target::Player(index) => &mut self.player_mobs[index as u8 as usize],
-                Target::NonPlayer(index) => &mut self.cpu_mobs[index as u8 as usize],
-            };
+            let current = get_ref!(self target);
 
             let new_qrs = current.0 + QRSD::from(dir);
 
             if self.is_free(new_qrs) {
-                let current = get_ref!(self target);
+                let current = get_ref!(mut self target);
 
                 current.0 = new_qrs;
                 current.1.offsets = [offset::direct(dir), Offset::default(), Offset::default(), Offset::default()];
@@ -587,10 +594,7 @@ mod mobs {
 
         pub fn get_target(&self, key: Key) -> Option<Target> {
             for target in Target::ALL {
-                let current = match target {
-                    Target::Player(index) => &self.player_mobs[index as u8 as usize],
-                    Target::NonPlayer(index) => &self.cpu_mobs[index as u8 as usize],
-                };
+                let current = get_ref!(self target);
                 if current.0 == key {
                     return Some(target);
                 }
@@ -600,7 +604,7 @@ mod mobs {
         }
 
         pub fn mutate(&mut self, target: Target, f: impl FnOnce(&mut (Key, Entity))) {
-            let current = get_ref!(self target);
+            let current = get_ref!(mut self target);
             f(current);
         }
     }
@@ -799,6 +803,12 @@ pub enum UiMode {
 fn viable_move_dir(tiles: &Tiles, targeting: qrs::Targeting) -> Option<qrs::Dir> {
     qrs::adjacent_dir(targeting).filter(|_dir| {
         tiles.get(&targeting.target).is_some()
+    })
+}
+
+fn viable_move_dirs<'tiles>(tiles: &'tiles Tiles, from: QRS) -> impl Iterator<Item = qrs::Dir> + use<'tiles> {
+    qrs::Dir::ALL.into_iter().filter(move |dir| {
+        tiles.get(&from.neighbor(*dir)).is_some()
     })
 }
 
@@ -1125,6 +1135,7 @@ impl State {
                                             // TODO? Only one space of each symbol?
         
                                             self.sync_doors();
+                                            self.turn = next_turn(self.turn);
         
                                             self.ui_mode = UiMode::Select;
                                         } else {
@@ -1168,6 +1179,7 @@ impl State {
                                     );
         
                                     self.sync_doors();
+                                    self.turn = next_turn(self.turn);
         
                                     self.ui_mode = UiMode::Select;
                                 },
@@ -1243,10 +1255,36 @@ impl State {
                 }
             }
             other => {
+                dbg!(other);
+
+                // TODO move one after the other, not all at once
+
+                let mob_target = self.turn;
+                let (mob_at, entity) = self.mobs.get(mob_target);
+
                 // TODO have the other pieces move on their turns
                 //    Need to have all the same checks on availability
                 //    Just pick uniformly at random among options at the start
                 //    Eventually have the choices be made with more purpose
+
+                // TODO have non-players twiddle sometimes
+
+                // TODO check in random order
+                for dir in viable_move_dirs(&self.tiles, *mob_at) {
+                    let target = mob_at.neighbor(dir);
+
+                    if self.tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
+                        // TODO handle warp
+                    } else if self.mobs.is_free(target) {
+                        self.mobs.apply_dir(mob_target, dir);
+
+                        break
+                    } else {
+                        // TODO handle bump
+                    }
+                }
+
+                self.sync_doors();
                 self.turn = next_turn(self.turn);
             }
         }
