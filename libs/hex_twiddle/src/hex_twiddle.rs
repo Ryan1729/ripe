@@ -1093,6 +1093,7 @@ impl State {
             (MenuOption::Twiddle(Twiddle::ThreeSixths),"+3/6"),
             (MenuOption::Twiddle(Twiddle::MinusTwoSixths), "-2/6"),
             (MenuOption::Twiddle(Twiddle::MinusOneSixths), "-1/6"),
+            //(MenuOption::SkipTurn, "Skip turn"), // Do we need this ever?
         ];
 
         // TODO track turns and have CPU players move, and allow the player to only move the player pieces
@@ -1284,18 +1285,44 @@ impl State {
 
                     // TODO have non-players twiddle sometimes
 
+                    enum MoveSelection {
+                        NoMove,
+                        Dir(qrs::Dir),
+                        Warp(qrs::Dir, QRS),
+                        //Bump(qrs::Dir, (MobTarget, qrs::Dir)),
+                    }
+
+                    let mut move_selection = MoveSelection::NoMove;
+
                     // TODO check in random order
-                    for dir in viable_move_dirs(&self.tiles, *mob_at) {
+                    'move_dir: for dir in viable_move_dirs(&self.tiles, *mob_at) {
                         let target = mob_at.neighbor(dir);
 
                         if self.tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
-                            // TODO handle warp
-                        } else if self.mobs.is_free(target) {
-                            self.mobs.apply_dir(mob_target, dir);
+                            for qrs in viable_warp_spots(&self.tiles, &self.mobs, target) {
+                                if self.mobs.is_free(qrs) {
+                                    move_selection = MoveSelection::Warp(dir, qrs);
 
-                            break
+                                    break 'move_dir
+                                }
+                            }
+
+                        } else if self.mobs.is_free(target) {
+                            move_selection = MoveSelection::Dir(dir);
+
+                            break 'move_dir
                         } else {
                             // TODO handle bump
+                        }
+                    }
+
+                    match move_selection {
+                        MoveSelection::NoMove => {} // Must skip turn.
+                        MoveSelection::Dir(dir) => {
+                            self.mobs.apply_dir(mob_target, dir);
+                        }
+                        MoveSelection::Warp(dir, qrs) => {
+                            self.mobs.apply_warp(mob_target, dir, qrs);
                         }
                     }
 
