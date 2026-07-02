@@ -178,6 +178,14 @@ enum Twiddle {
 }
 
 impl Twiddle {
+    const ALL: [Self; 5] = [
+        Self::OneSixth,
+        Self::TwoSixths,
+        Self::ThreeSixths,
+        Self::MinusTwoSixths,
+        Self::MinusOneSixths,
+    ];
+
     fn signum(self) -> i8 {
         match self {
             Twiddle::OneSixth
@@ -956,7 +964,7 @@ impl State {
             }
         }
 
-        for (at, mob) in self.mobs.iter() {
+        for (_at, mob) in self.mobs.iter() {
             if !offsets_are_settled(&mob.offsets) {
                 return false
             }
@@ -966,12 +974,12 @@ impl State {
     }
 
     pub fn is_complete(&self) -> bool {
-        let (key, player) = self.mobs.player();
-
         // If the animations are not settled, delay completion
         if !self.all_offsets_settled() {
             return false
         }
+
+        let (key, _player) = self.mobs.player();
 
         if let Some(tile) = self.tiles.get(key) {
             return matches!(tile.door_mode, DoorMode::Player(_));
@@ -1096,7 +1104,11 @@ impl State {
             //(MenuOption::SkipTurn, "Skip turn"), // Do we need this ever?
         ];
 
-        // TODO track turns and have CPU players move, and allow the player to only move the player pieces
+        // TODO either add a way to pan the screen, or ensure that the twiddles that move hexes off screen are not allowed
+        //      Current seems like a pan control on the side that you can move the selectrix to would make sense
+        //          Simplest to implement design is probably 4 (6?) buttons
+        //          Another option would be like a virtual joystick thing that you can press A to grip and then move around smoothly
+        //          Could put in both?
 
         if self.all_offsets_settled() {
             match self.turn {
@@ -1145,7 +1157,7 @@ impl State {
                                         if let Some(mob_target) = self.mobs.get_target(*start)
                                         && mob_target == self.turn
                                         && let Some(dir) = viable_move_dir(&self.tiles, qrs::Targeting { source: *start, target }) {
-                                            if self.tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
+                                            if self.mobs.is_free(target) && self.tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
                                                 self.ui_mode = UiMode::Warp { start: *start, dir };
                                             } else if self.mobs.is_free(target) {
                                                 self.mobs.apply_dir(mob_target, dir);
@@ -1273,46 +1285,59 @@ impl State {
                     }
                 }
                 other => {
-                    dbg!(other);
-
                     let mob_target = self.turn;
                     let (mob_at, entity) = self.mobs.get(mob_target);
 
-                    // TODO have the other pieces move on their turns
-                    //    Need to have all the same checks on availability
-                    //    Just pick uniformly at random among options at the start
-                    //    Eventually have the choices be made with more purpose
-
-                    // TODO have non-players twiddle sometimes
+                    // TODO have the choices be made with more purpose
 
                     enum MoveSelection {
                         NoMove,
                         Dir(qrs::Dir),
                         Warp(qrs::Dir, QRS),
-                        //Bump(qrs::Dir, (MobTarget, qrs::Dir)),
+                        Bump(qrs::Dir, (mobs::Target, qrs::Dir)),
+                        Twiddle(QRS, Twiddle),
                     }
 
                     let mut move_selection = MoveSelection::NoMove;
 
-                    // TODO check in random order
-                    'move_dir: for dir in viable_move_dirs(&self.tiles, *mob_at) {
-                        let target = mob_at.neighbor(dir);
+                    if xs::range(&mut self.rng, 0..1) == 0 {
+                        // TODO check in random order
+                        for (qrs, _) in &self.tiles {
+                            move_selection = MoveSelection::Twiddle(
+                                *qrs,
+                                Twiddle::ALL[xs::index(&mut self.rng, 0..Twiddle::ALL.len())]
+                            );
+                        }
+                    } else {
+                        // TODO check in random order
+                        'move_dir: for dir in viable_move_dirs(&self.tiles, *mob_at) {
+                            let target = mob_at.neighbor(dir);
 
-                        if self.tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
-                            for qrs in viable_warp_spots(&self.tiles, &self.mobs, target) {
-                                if self.mobs.is_free(qrs) {
-                                    move_selection = MoveSelection::Warp(dir, qrs);
+                            if self.mobs.is_free(target)
+                            && self.tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
+                                // TODO check in random order
+                                for qrs in viable_warp_spots(&self.tiles, &self.mobs, target) {
+                                    if self.mobs.is_free(qrs) {
+                                        move_selection = MoveSelection::Warp(dir, qrs);
 
-                                    break 'move_dir
+                                        break 'move_dir
+                                    }
+                                }
+
+                            } else if self.mobs.is_free(target) {
+                                move_selection = MoveSelection::Dir(dir);
+
+                                break 'move_dir
+                            } else {
+                                // TODO check in random order
+                                for bump_dir in viable_bump_dirs(&self.tiles, &self.mobs, target) {
+                                    if let Some(bumpee_target) = self.mobs.get_target(target) {
+                                        move_selection = MoveSelection::Bump(dir, (bumpee_target, bump_dir));
+
+                                        break
+                                    }
                                 }
                             }
-
-                        } else if self.mobs.is_free(target) {
-                            move_selection = MoveSelection::Dir(dir);
-
-                            break 'move_dir
-                        } else {
-                            // TODO handle bump
                         }
                     }
 
@@ -1323,6 +1348,20 @@ impl State {
                         }
                         MoveSelection::Warp(dir, qrs) => {
                             self.mobs.apply_warp(mob_target, dir, qrs);
+                        }
+                        MoveSelection::Bump(dir, (bumpee_target, bump_dir)) => {
+                            self.mobs.apply_dir(bumpee_target, bump_dir);
+
+                            // mob_target points at the bumper
+                            self.mobs.apply_dir(mob_target, dir);
+                        }
+                        MoveSelection::Twiddle(qrs, twiddle_) => {
+                            twiddle(
+                                &mut self.tiles,
+                                &mut self.mobs,
+                                qrs,
+                                twiddle_,
+                            );
                         }
                     }
 
