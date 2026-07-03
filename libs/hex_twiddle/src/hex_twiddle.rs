@@ -1185,6 +1185,7 @@ impl State {
                             }
                         },
                         UiMode::ContextMenuOpen { selection } => {
+                            // TODO disallow the move piece option if there is no player piece there
                             if input.pressed_this_frame(Button::UP) {
                                 if *selection == 0 {
                                     *selection = MENU_OPTIONS.len();
@@ -1300,23 +1301,30 @@ impl State {
 
                     let mut move_selection = MoveSelection::NoMove;
 
-                    if xs::range(&mut self.rng, 0..1) == 0 {
-                        // TODO check in random order
-                        for (qrs, _) in &self.tiles {
+                    if xs::range(&mut self.rng, 0..6) == 0 {
+                        let random_index = xs::index(&mut self.rng, 0..self.tiles.len());
+
+                        if let Some(qrs) = self.tiles.keys().nth(random_index) {
                             move_selection = MoveSelection::Twiddle(
                                 *qrs,
                                 Twiddle::ALL[xs::index(&mut self.rng, 0..Twiddle::ALL.len())]
                             );
                         }
                     } else {
-                        // TODO check in random order
-                        'move_dir: for dir in viable_move_dirs(&self.tiles, *mob_at) {
+                        let move_dirs = viable_move_dirs(&self.tiles, *mob_at).collect::<Vec<_>>();
+                        let move_dir_offset = xs::index(&mut self.rng, 0..move_dirs.len());
+
+                        'move_dir: for i in 0..move_dirs.len() {
+                            let dir = move_dirs[(i + move_dir_offset) % move_dirs.len()];
                             let target = mob_at.neighbor(dir);
 
                             if self.mobs.is_free(target)
                             && self.tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
-                                // TODO check in random order
-                                for qrs in viable_warp_spots(&self.tiles, &self.mobs, target) {
+                                let warp_spots = viable_warp_spots(&self.tiles, &self.mobs, target).collect::<Vec<_>>();
+                                let warp_spots_offset = xs::index(&mut self.rng, 0..warp_spots.len());
+
+                                for i in 0..warp_spots.len() {
+                                    let qrs = warp_spots[(i + warp_spots_offset) % warp_spots.len()];
                                     if self.mobs.is_free(qrs) {
                                         move_selection = MoveSelection::Warp(dir, qrs);
 
@@ -1329,13 +1337,13 @@ impl State {
 
                                 break 'move_dir
                             } else {
-                                // TODO check in random order
-                                for bump_dir in viable_bump_dirs(&self.tiles, &self.mobs, target) {
-                                    if let Some(bumpee_target) = self.mobs.get_target(target) {
-                                        move_selection = MoveSelection::Bump(dir, (bumpee_target, bump_dir));
-
-                                        break
-                                    }
+                                if let Some(bumpee_target) = self.mobs.get_target(target) {
+                                    let bump_dirs = viable_bump_dirs(&self.tiles, &self.mobs, target).collect::<Vec<_>>();
+                                    let bump_dir_index = xs::index(&mut self.rng, 0..bump_dirs.len());
+    
+                                    let bump_dir = bump_dirs[bump_dir_index];
+                                    
+                                    move_selection = MoveSelection::Bump(dir, (bumpee_target, bump_dir));
                                 }
                             }
                         }
