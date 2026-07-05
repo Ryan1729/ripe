@@ -198,13 +198,6 @@ impl Twiddle {
     }
 }
 
-
-#[derive(Clone, Copy, Debug)]
-enum MenuOption {
-    Twiddle(Twiddle),
-    Move,
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Symbol {
     #[default]
@@ -869,6 +862,40 @@ fn next_turn(turn: Turn) -> Turn {
     }
 }
 
+mod menu_option {
+    use super::*;
+
+    #[derive(Clone, Copy, Debug)]
+    pub(crate) enum MenuOption {
+        Twiddle(Twiddle),
+        Move,
+    }
+
+    pub(crate) type Entry = (MenuOption, &'static str);
+    
+    const FULL_MENU_OPTIONS: [Entry; 6] = [
+        (MenuOption::Move, "move piece"),
+        (MenuOption::Twiddle(Twiddle::OneSixth), "+1/6"),
+        (MenuOption::Twiddle(Twiddle::TwoSixths), "+2/6"),
+        (MenuOption::Twiddle(Twiddle::ThreeSixths),"+3/6"),
+        (MenuOption::Twiddle(Twiddle::MinusTwoSixths), "-2/6"),
+        (MenuOption::Twiddle(Twiddle::MinusOneSixths), "-1/6"),
+        //(MenuOption::SkipTurn, "Skip turn"), // Do we need this ever?
+    ];
+    
+    pub(crate) fn get_available_menu_options(
+        mobs: &Mobs,
+        key: Key,
+    ) -> &'static [Entry] {
+        if mobs.player().0 == key {
+            &FULL_MENU_OPTIONS[..]
+        } else {
+            &FULL_MENU_OPTIONS[1..]
+        }
+    }
+}
+use menu_option::{MenuOption, get_available_menu_options};
+
 impl State {
     pub fn new(rng: &mut Xs, specs: &sprite::Specs) -> Self {
         let seed = xs::new_seed(rng);
@@ -1094,15 +1121,7 @@ impl State {
         //
         //
 
-        const MENU_OPTIONS: [(MenuOption, &str); 6] = [
-            (MenuOption::Move, "move piece"),
-            (MenuOption::Twiddle(Twiddle::OneSixth), "+1/6"),
-            (MenuOption::Twiddle(Twiddle::TwoSixths), "+2/6"),
-            (MenuOption::Twiddle(Twiddle::ThreeSixths),"+3/6"),
-            (MenuOption::Twiddle(Twiddle::MinusTwoSixths), "-2/6"),
-            (MenuOption::Twiddle(Twiddle::MinusOneSixths), "-1/6"),
-            //(MenuOption::SkipTurn, "Skip turn"), // Do we need this ever?
-        ];
+        
 
         // TODO either add a way to pan the screen, or ensure that the twiddles that move hexes off screen are not allowed
         //      Current seems like a pan control on the side that you can move the selectrix to would make sense
@@ -1185,19 +1204,21 @@ impl State {
                             }
                         },
                         UiMode::ContextMenuOpen { selection } => {
+                            let menu_options = get_available_menu_options(&self.mobs, self.selectrum_at);
+
                             // TODO disallow the move piece option if there is no player piece there
                             if input.pressed_this_frame(Button::UP) {
                                 if *selection == 0 {
-                                    *selection = MENU_OPTIONS.len();
+                                    *selection = menu_options .len();
                                 }
                                 *selection -= 1;
                             } else if input.pressed_this_frame(Button::DOWN) {
                                 *selection += 1;
-                                if *selection == MENU_OPTIONS.len() {
+                                if *selection == menu_options .len() {
                                     *selection = 0;
                                 }
                             } else if input.pressed_this_frame(Button::A) {
-                                match MENU_OPTIONS[*selection].0 {
+                                match menu_options [*selection].0 {
                                     MenuOption::Move => {
                                         self.ui_mode = UiMode::Move { start: self.selectrum_at };
                                     },
@@ -1290,7 +1311,24 @@ impl State {
                     let (mob_at, entity) = self.mobs.get(mob_target);
 
                     // TODO have the choices be made with more purpose
-
+                    //     Player allies should move towards the goal piece if the doors are not open
+                    //         Otherwise, twiddle something that traps the enemy pieces
+                    //     Player enemies should attempt each of the following, in this order, until one is possible:
+                    //        * move to bump the player/player allies off of the goal tiles
+                    //        * move to a space where they can bump usefully next turn
+                    //            * bump the other piece to a spot where they can? Maybe only if next in turn order relative to player?
+                    //        * twiddle to trap the player away from an exit
+                    //        * twiddle to trap 
+                    // If after all that is implemented, it still seems too easy to win, add enemy doors and have them be able to escape
+                    //    Should make the graphics clear, with more than just colour, somehow
+                    //    Will need to figure out where in the move goal order trying to win should be.
+                    //        Likely still after trying to prevent the other player from winning in at least a turn or two
+                    //    Should revisit player ally logic at that point, to balance tryign to win vs trying to prevent enemies winning
+                    //
+                    // What is the best way to compute the predicates over the different moves?
+                    // * Option one: Compute all possible moves, and the state once they are done, check first predicate with early out, then loop again with second predicate, etc.
+                    // * Option two: Check each move, computing the states as needed, calculating all the predicates as we go, retaining only the answer and the move, so only need one extra state in memory?
+                    // 
                     enum MoveSelection {
                         NoMove,
                         Dir(qrs::Dir),
@@ -1390,6 +1428,8 @@ impl State {
         // Render Section
         //
         //
+
+        // TODO? Display whose turn it is?
 
         fn tile_xy(qrs: QRS, Tile { offsets, .. }: &Tile) -> unscaled::XY {
             let mut output = qrs_to_unscaled(qrs);
@@ -1571,6 +1611,8 @@ impl State {
             UiMode::ContextMenuOpen{ selection } => {
                 draw_selectrum!();
 
+                let menu_options = get_available_menu_options(&self.mobs, self.selectrum_at);
+
                 const OPTION_W: unscaled::W = unscaled::W(120);
                 const OPTION_H: unscaled::H = unscaled::H(25);
 
@@ -1580,15 +1622,15 @@ impl State {
                         x: selectrum_xy.x,
                         y: selectrum_xy.y,
                         w: OPTION_W,
-                        h: OPTION_H * MENU_OPTIONS.len() as _,
+                        h: OPTION_H * menu_options.len() as _,
                     },
                 );
 
                 let mut at = selectrum_xy;
 
-                for i in 0..MENU_OPTIONS.len() {
+                for i in 0..menu_options.len() {
                     commands.print_line(
-                        MENU_OPTIONS[i].1.as_ref(),
+                        menu_options[i].1.as_ref(),
                         at + unscaled::WH{ w: unscaled::W(6), h: unscaled::H(9) },
                         4
                     );
