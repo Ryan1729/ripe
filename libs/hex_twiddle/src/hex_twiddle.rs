@@ -1124,7 +1124,7 @@ impl State {
         
 
         // TODO either add a way to pan the screen, or ensure that the twiddles that move hexes off screen are not allowed
-        //      Current seems like a pan control on the side that you can move the selectrix to would make sense
+        //      Currently seems like a pan control on the side that you can move the selectrix to would make sense
         //          Simplest to implement design is probably 4 (6?) buttons
         //          Another option would be like a virtual joystick thing that you can press A to grip and then move around smoothly
         //          Could put in both?
@@ -1206,7 +1206,7 @@ impl State {
                         UiMode::ContextMenuOpen { selection } => {
                             let menu_options = get_available_menu_options(&self.mobs, self.selectrum_at);
 
-                            // TODO disallow the move piece option if there is no player piece there
+
                             if input.pressed_this_frame(Button::UP) {
                                 if *selection == 0 {
                                     *selection = menu_options .len();
@@ -1731,5 +1731,17 @@ impl State {
                 draw_selectrum!();
             }
         }
+
+        let sidebar_w = unscaled::W(128);
+
+        commands.nine_slice(
+            gfx::nine_slice::INVENTORY,
+            unscaled::Rect {
+                x: unscaled::X(0) + unscaled::W(command::WIDTH) - sidebar_w,
+                y: unscaled::Y(0),
+                w: sidebar_w,
+                h: unscaled::H(command::HEIGHT),
+            },
+        );
     }
 }
