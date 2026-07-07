@@ -421,6 +421,32 @@ pub mod command {
         assert_eq!(expected, actual);
     }
 
+    macro_rules! shared_delta_impl {
+        ($($name: path, $component_1: ident : $type_1: path, $component_2: ident : $type_2: path $(,)? );+ $(;)?) => {
+            $(
+                impl core::ops::AddAssign<$name> for Rect {
+                    fn add_assign(&mut self, other: $name) {
+                        *self = Self::from_unscaled(self.unscaled() + other);
+                    }
+                }
+            
+                impl core::ops::Add<$name> for Rect {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $name) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+            )+
+        }
+    }
+
+    shared_delta_impl!{
+        unscaled::WH, w: unscaled::W, h: unscaled::H,;
+        unscaled::XYD, xd: unscaled::XD, yd: unscaled::YD,;
+    }
+
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct Command {
         pub rect: Rect,

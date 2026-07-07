@@ -8,6 +8,9 @@ path = "src/hex_twiddle.rs"
 
 [dependencies]
 
+[dependencies.gfx_sizes]
+path = "../gfx_sizes"
+
 [dependencies.gfx]
 path = "../gfx"
 

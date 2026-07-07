@@ -450,6 +450,46 @@ pub mod unscaled {
         pub yd: YD,
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct Rect {
+        pub x: X,
+        pub y: Y,
+        pub w: W,
+        pub h: H,
+    }
+
+    impl Rect {
+        pub fn xy(self) -> XY {
+            XY {
+                x: self.x,
+                y: self.y,
+            }
+        }
+
+        pub fn max_xy(self) -> XY {
+            XY {
+                x: self.x + self.w,
+                y: self.y + self.h,
+            }
+        }
+
+        pub fn wh(self) -> WH {
+            WH {
+                w: self.w,
+                h: self.h,
+            }
+        }
+
+        pub const fn xy_wh(xy: XY, wh: WH) -> Rect {
+            Rect {
+                x: xy.x,
+                y: xy.y,
+                w: wh.w,
+                h: wh.h,
+            }
+        }
+    }
+
     macro_rules! shared_delta_impl {
         ($($name: ident $component_1: ident : $type_1: ident  $component_2: ident : $type_2: ident $inner: ident),+ $(,)?) => {
             $(
@@ -670,6 +710,24 @@ pub mod unscaled {
                         self
                     }
                 }
+
+                // Rect section
+
+                impl core::ops::AddAssign<$name> for Rect {
+                    fn add_assign(&mut self, other: $name) {
+                        self.x += other.$component_1;
+                        self.y += other.$component_2;
+                    }
+                }
+            
+                impl core::ops::Add<$name> for Rect {
+                    type Output = Self;
+            
+                    fn add(mut self, other: $name) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
             )+
         }
     }
@@ -677,46 +735,6 @@ pub mod unscaled {
     shared_delta_impl!{
         WH w: W h: H Inner,
         XYD xd: XD yd: YD SignedInner,
-    }
-
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub struct Rect {
-        pub x: X,
-        pub y: Y,
-        pub w: W,
-        pub h: H,
-    }
-
-    impl Rect {
-        pub fn xy(self) -> XY {
-            XY {
-                x: self.x,
-                y: self.y,
-            }
-        }
-
-        pub fn max_xy(self) -> XY {
-            XY {
-                x: self.x + self.w,
-                y: self.y + self.h,
-            }
-        }
-
-        pub fn wh(self) -> WH {
-            WH {
-                w: self.w,
-                h: self.h,
-            }
-        }
-
-        pub const fn xy_wh(xy: XY, wh: WH) -> Rect {
-            Rect {
-                x: xy.x,
-                y: xy.y,
-                w: wh.w,
-                h: wh.h,
-            }
-        }
     }
 }
 
@@ -1060,6 +1078,7 @@ pub mod sprite {
         pub hex_hop_mobs: Spec<HexHopMobs>,
         pub hex_twiddle_tiles: Spec<HexTwiddleTiles>,
         pub hex_twiddle_pieces: Spec<HexTwiddlePieces>,
+        pub hex_twiddle_sidebar: Spec<HexTwiddleSidebar>,
     }
 
     impl Default for Specs {
@@ -1132,6 +1151,11 @@ pub mod sprite {
                     offset: WH{ w: W(256), h: H(256 + 80 + 48 * 3) },
                     tile: WH{ w: W(20), h: H(20) },
                     tiles_per_row: 25,
+                }),
+                hex_twiddle_sidebar: spec::<HexTwiddleSidebar>(SpecPieces{
+                    offset: WH{ w: W(448), h: H(256) },
+                    tile: WH{ w: W(40), h: H(40) },
+                    tiles_per_row: 8,
                 }),
             }
         }

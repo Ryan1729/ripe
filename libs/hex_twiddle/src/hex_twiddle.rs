@@ -791,6 +791,15 @@ mod twiddle_works {
     }
 }
 
+
+
+#[derive(Clone, Copy, Debug, Default)]
+pub enum PanSelection {
+    #[default]
+    Center,
+    Dir(Dir)
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub enum UiMode {
     #[default]
@@ -799,6 +808,7 @@ pub enum UiMode {
     Move { start: QRS },
     Bump { start: QRS, dir: qrs::Dir },
     Warp { start: QRS, dir: qrs::Dir },
+    Pan { selection: PanSelection }
 }
 
 fn viable_move_dir(tiles: &Tiles, targeting: qrs::Targeting) -> Option<qrs::Dir> {
@@ -842,6 +852,7 @@ fn viable_warp_spots<'tiles, 'mobs>(tiles: &'tiles Tiles, mobs: &'mobs Mobs, sou
 
 type FrameCount = u64;
 type Turn = mobs::Target;
+type CameraOffset = unscaled::XYD;
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
@@ -853,6 +864,7 @@ pub struct State {
     pub ui_mode: UiMode,
     pub frame_count: FrameCount,
     pub turn: Turn,
+    pub camera_offset: CameraOffset,
 }
 
 fn next_turn(turn: Turn) -> Turn {
@@ -895,6 +907,34 @@ mod menu_option {
     }
 }
 use menu_option::{MenuOption, get_available_menu_options};
+
+struct CommandsWithCamera<'commands> {
+    camera_offset: CameraOffset,
+    commands: &'commands mut Commands,
+}
+
+impl CommandsWithCamera<'_> {
+    fn sspr(&mut self, xy: sprite::XY<sprite::Renderable>, rect: command::Rect) {
+        self.commands.sspr(xy, rect + self.camera_offset);
+    }
+
+    fn sspr_override(&mut self, xy: sprite::XY<sprite::Renderable>, rect: command::Rect, colour: gfx_sizes::ARGB) {
+        self.commands.sspr_override(xy, rect + self.camera_offset, colour);
+    }
+
+    fn nine_slice(&mut self, sprite: gfx::nine_slice::Sprite, rect: unscaled::Rect) {
+        self.commands.nine_slice(sprite, rect + self.camera_offset);
+    }
+
+    fn print_line(
+        &mut self, 
+        bytes: &[u8],
+        xy: unscaled::XY,
+        colour: platform_types::PaletteIndex,
+    ) {
+        self.commands.print_line(bytes, xy + self.camera_offset, colour);
+    }
+}
 
 impl State {
     pub fn new(rng: &mut Xs, specs: &sprite::Specs) -> Self {
@@ -1115,6 +1155,24 @@ impl State {
         input: Input,
         _speaker: &mut Speaker,
     ) {
+        self.update_and_render_inner(
+            &mut CommandsWithCamera {
+                camera_offset: self.camera_offset,
+                commands,
+            },
+            specs,
+            input,
+            _speaker,
+        );
+    }
+
+    fn update_and_render_inner(
+        &mut self,
+        commands: &mut CommandsWithCamera,
+        specs: &sprite::Specs,
+        input: Input,
+        _speaker: &mut Speaker,
+    ) {
         //
         //
         // Update Section
@@ -1304,6 +1362,9 @@ impl State {
                                 self.ui_mode = UiMode::Select;
                             }
                         }
+                        UiMode::Pan { .. } => {
+                            todo!("handle pan input");
+                        }
                     }
                 }
                 other => {
@@ -1430,6 +1491,9 @@ impl State {
         //
 
         // TODO? Display whose turn it is?
+
+        // Set it before rendering in case it was modified
+        commands.camera_offset = self.camera_offset;
 
         fn tile_xy(qrs: QRS, Tile { offsets, .. }: &Tile) -> unscaled::XY {
             let mut output = qrs_to_unscaled(qrs);
@@ -1730,18 +1794,47 @@ impl State {
 
                 draw_selectrum!();
             }
+            UiMode::Pan { .. } => {
+                // Rendered in the sidebar instead
+            }
         }
+
+        //
+        // Render sidebar
+        //
 
         let sidebar_w = unscaled::W(128);
 
-        commands.nine_slice(
-            gfx::nine_slice::INVENTORY,
-            unscaled::Rect {
-                x: unscaled::X(0) + unscaled::W(command::WIDTH) - sidebar_w,
-                y: unscaled::Y(0),
-                w: sidebar_w,
-                h: unscaled::H(command::HEIGHT),
-            },
-        );
+        {
+            // Use the raw commands here to avoid the camera offset
+            let commands = &mut commands.commands;
+
+            let base_x = unscaled::X(0) + unscaled::W(command::WIDTH) - sidebar_w;
+            let base_y = unscaled::Y(0);
+            commands.nine_slice(
+                gfx::nine_slice::INVENTORY,
+                unscaled::Rect {
+                    x: base_x,
+                    y: base_y,
+                    w: sidebar_w,
+                    h: unscaled::H(command::HEIGHT),
+                },
+            );
+
+            type SidebarSprite = u16;
+
+            macro_rules! draw_control {
+                ($sprite: expr, $xy: expr $(,)?) => ({
+                    let sprite: SidebarSprite = $sprite;
+    
+                    commands.sspr(
+                        specs.hex_twiddle_sidebar.xy_from_tile_sprite(sprite),
+                        command::Rect::from_unscaled(specs.hex_twiddle_sidebar.rect($xy)),
+                    );
+                })
+            }
+
+            draw_control!(0, unscaled::XY { x: base_x, y: base_y });
+        }
     }
 }
