@@ -793,7 +793,7 @@ mod twiddle_works {
 
 
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PanSelection {
     #[default]
     Center,
@@ -1823,6 +1823,27 @@ impl State {
 
             type SidebarSprite = u16;
 
+            let up: SidebarSprite = 0;
+            let right: SidebarSprite = 1;
+            let down: SidebarSprite = 2;
+            let left: SidebarSprite = 3;
+
+            // As in, a thumbstick.
+            let stick: SidebarSprite = 4;
+            let stick_selected_center: SidebarSprite = 5;
+
+            let up_selected: SidebarSprite = up + SidebarSprite::from(specs.hex_twiddle_sidebar.tiles_per_row());
+            let right_selected: SidebarSprite = up_selected + 1;
+            let down_selected: SidebarSprite = right_selected + 1;
+            let left_selected: SidebarSprite = down_selected + 1;
+            
+            let stick_up_selected: SidebarSprite = left_selected + 1;
+            let stick_right_selected: SidebarSprite = stick_up_selected + 1;
+            let stick_down_selected: SidebarSprite = stick_right_selected + 1;
+            let stick_left_selected: SidebarSprite = stick_down_selected + 1;
+
+            // TODO? Recentering the camera, with a menu like the context menu?
+            //    Could have options for the starting location, and each piece
             macro_rules! draw_control {
                 ($sprite: expr, $xy: expr $(,)?) => ({
                     let sprite: SidebarSprite = $sprite;
@@ -1834,7 +1855,40 @@ impl State {
                 })
             }
 
-            draw_control!(0, unscaled::XY { x: base_x, y: base_y });
+            let upper_left_xy = unscaled::XY {
+                x: base_x + unscaled::W(4),
+                y: base_y + unscaled::H(128)
+            };
+
+            let tile_wh = specs.hex_twiddle_sidebar.tile();
+            let tile_w = tile_wh.w;
+            let tile_h = tile_wh.h;
+
+            let (
+                up_sprite,
+                right_sprite,
+                down_sprite,
+                left_sprite,
+                stick_sprite,
+            ) = match self.ui_mode {
+                UiMode::Pan { selection } if selection == PanSelection::Dir(Dir::Up)
+                    => (up_selected, right, down, left, stick),
+                UiMode::Pan { selection } if selection == PanSelection::Dir(Dir::Right)
+                    => (up, right_selected, down, left, stick),
+                UiMode::Pan { selection } if selection == PanSelection::Dir(Dir::Down)
+                    => (up, right, down_selected, left, stick),
+                UiMode::Pan { selection } if selection == PanSelection::Dir(Dir::Left)
+                    => (up, right, down, left_selected, stick),
+                UiMode::Pan { selection } if selection == PanSelection::Center
+                    => (up, right, down, left, stick_selected_center),
+                _ => (up, right, down, left, stick),
+            };
+
+            draw_control!(up_sprite, upper_left_xy + tile_w);
+            draw_control!(left_sprite, upper_left_xy + tile_h);
+            draw_control!(stick_sprite, upper_left_xy + tile_w + tile_h);
+            draw_control!(right_sprite, upper_left_xy + tile_w + tile_w + tile_h);
+            draw_control!(down_sprite, upper_left_xy+ tile_w + tile_h + tile_h );
         }
     }
 }
