@@ -1173,6 +1173,18 @@ impl State {
         input: Input,
         _speaker: &mut Speaker,
     ) {
+        const SIDEBAR_W: unscaled::W = unscaled::W(128);
+        const SIDEBAR_RECT: unscaled::Rect = unscaled::Rect {
+            x: unscaled::X(0 + command::WIDTH - SIDEBAR_W.0),
+            y: unscaled::Y(0),
+            w: SIDEBAR_W,
+            h: unscaled::H(command::HEIGHT),
+        };
+
+        let tile_wh = specs.hex_twiddle_sidebar.tile();
+        let tile_w = tile_wh.w;
+        let tile_h = tile_wh.h;
+
         //
         //
         // Update Section
@@ -1219,7 +1231,7 @@ impl State {
                                 player_moved = true;
                                 self.selectrum_at = target_qrs;
                             }
-                        }
+                        };
                     }
 
                     match &mut self.ui_mode {
@@ -1478,6 +1490,20 @@ impl State {
             }
         }
 
+        // Note: Selectrum should not be moved after this line, this frame.
+        let selectrum_xy = qrs_to_unscaled(self.selectrum_at) + self.camera_offset;
+
+        match self.ui_mode {
+            UiMode::Select => {
+                if SIDEBAR_RECT.contains(selectrum_xy + tile_w.halve() + tile_h.halve()) {
+                    self.ui_mode = UiMode::Pan { 
+                        selection: <_>::default(),
+                    };
+                }
+            }
+            _ => {}
+        }
+
         if input.pressed_this_frame(Button::START) {
             self.restart(specs);
         }
@@ -1655,8 +1681,6 @@ impl State {
         // Render UI
         //
 
-        let selectrum_xy = qrs_to_unscaled(self.selectrum_at);
-
         macro_rules! draw_selectrum {
             () => {
                 draw_tile!(
@@ -1803,22 +1827,13 @@ impl State {
         // Render sidebar
         //
 
-        let sidebar_w = unscaled::W(128);
-
         {
             // Use the raw commands here to avoid the camera offset
             let commands = &mut commands.commands;
 
-            let base_x = unscaled::X(0) + unscaled::W(command::WIDTH) - sidebar_w;
-            let base_y = unscaled::Y(0);
             commands.nine_slice(
                 gfx::nine_slice::INVENTORY,
-                unscaled::Rect {
-                    x: base_x,
-                    y: base_y,
-                    w: sidebar_w,
-                    h: unscaled::H(command::HEIGHT),
-                },
+                SIDEBAR_RECT,
             );
 
             type SidebarSprite = u16;
@@ -1856,13 +1871,9 @@ impl State {
             }
 
             let upper_left_xy = unscaled::XY {
-                x: base_x + unscaled::W(4),
-                y: base_y + unscaled::H(128)
+                x: SIDEBAR_RECT.x + unscaled::W(4),
+                y: SIDEBAR_RECT.y + unscaled::H(128)
             };
-
-            let tile_wh = specs.hex_twiddle_sidebar.tile();
-            let tile_w = tile_wh.w;
-            let tile_h = tile_wh.h;
 
             let (
                 up_sprite,

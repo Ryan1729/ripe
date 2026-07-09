@@ -360,6 +360,14 @@ pub mod command {
     }
 
     impl Rect {
+        #[allow(unused)]
+        pub fn contains(&self, xy: unscaled::XY) -> bool {
+            xy.x >= self.x_min.0
+            && xy.y >= self.y_min.0
+            && xy.x <= self.x_max.0
+            && xy.y <= self.y_max.0
+        }
+
         pub fn from_unscaled(
             unscaled::Rect {
                 x,

@@ -488,6 +488,13 @@ pub mod unscaled {
                 h: wh.h,
             }
         }
+
+        pub fn contains(&self, xy: XY) -> bool {
+            xy.x >= self.x
+            && xy.y >= self.y
+            && xy.x <= self.x + self.w
+            && xy.y <= self.y + self.h
+        }
     }
 
     macro_rules! shared_delta_impl {
