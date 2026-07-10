@@ -22,16 +22,47 @@ const HEX_Y_SCALE: i16 = 25;
 const HEX_X_OFFSET: i16 = 160;
 const HEX_Y_OFFSET: i16 = 140;
 
-fn qrs_to_unscaled(qrs: QRS) -> unscaled::XY {
-    let q = qrs.q.0;
-    let r = qrs.r.0;
+type CameraOffset = unscaled::XYD;
 
-    let x = (X_Q_FACTOR * q + X_R_FACTOR * r) * HEX_X_SCALE + HEX_X_OFFSET;
-    let y = (Y_Q_FACTOR * q + Y_R_FACTOR * r) * HEX_Y_SCALE + HEX_Y_OFFSET;
+fn qrs_to_unscaled(qrs: QRS, camera_offset: CameraOffset) -> unscaled::XY {
+    ({
+        let q = qrs.q.0;
+        let r = qrs.r.0;
 
-    unscaled::XY {
-        x: unscaled::X(x.try_into().unwrap_or(0)),
-        y: unscaled::Y(y.try_into().unwrap_or(0)),
+        let x = (X_Q_FACTOR * q + X_R_FACTOR * r) * HEX_X_SCALE + HEX_X_OFFSET;
+        let y = (Y_Q_FACTOR * q + Y_R_FACTOR * r) * HEX_Y_SCALE + HEX_Y_OFFSET;
+
+        unscaled::XY {
+            x: unscaled::X(x.try_into().unwrap_or(0)),
+            y: unscaled::Y(y.try_into().unwrap_or(0)),
+        }
+    }) + camera_offset
+}
+
+// TODO? Test that this is the opposite of qrs_to_unscaled?
+//    That is, that some_qrs == unscaled_to_qrs(qrs_to_unscaled(some_qrs, camera_offset), camera_offset)
+fn unscaled_to_qrs(xy: unscaled::XY, camera_offset: CameraOffset) -> QRS {
+    let unscaled::XY { x: unscaled::X(x), y: unscaled::Y(y) } = xy - camera_offset;
+
+    let Ok(x) = i16::try_from(x) else {
+        return <_>::default()
+    };
+    let Ok(y) = i16::try_from(y) else {
+        return <_>::default()
+    };
+
+    let unsized_x = (x - HEX_X_OFFSET) / HEX_X_SCALE;
+    let unsized_y = (y - HEX_Y_OFFSET) / HEX_Y_SCALE;
+
+    // If this changes, this function will need to be re-derived from qrs_to_unscaled
+    assert_eq!(X_R_FACTOR, 0);
+
+    let q = unsized_x / X_Q_FACTOR;
+    let r = (unsized_y - (Y_Q_FACTOR * q)) / Y_R_FACTOR;
+
+    QRS {
+        q: Q(q.try_into().unwrap_or(0)),
+        r: R(r.try_into().unwrap_or(0)),
     }
 }
 
@@ -58,14 +89,12 @@ mod offset {
         }
     }
 
-    impl From<qrs::Targeting> for Offset {
-        fn from(targeting: qrs::Targeting) -> Self {
-            let source = qrs_to_unscaled(targeting.source);
-            let target = qrs_to_unscaled(targeting.target);
+    pub fn from_targeting(targeting: qrs::Targeting, camera_offset: CameraOffset) -> Offset {
+        let source = qrs_to_unscaled(targeting.source, camera_offset);
+        let target = qrs_to_unscaled(targeting.target, camera_offset);
 
-            Self {
-                xyd: source - target
-            }
+        Offset {
+            xyd: source - target
         }
     }
 
@@ -612,7 +641,13 @@ mod mobs {
 }
 use mobs::Mobs;
 
-fn twiddle(tiles: &mut Tiles, mobs: &mut Mobs, key: Key, twiddle_amount: Twiddle) {
+fn twiddle(
+    tiles: &mut Tiles,
+    mobs: &mut Mobs,
+    key: Key,
+    twiddle_amount: Twiddle,
+    camera_offset: CameraOffset,
+) {
     let base: QRS = key;
 
     #[derive(Clone, Copy, Debug, Default)]
@@ -643,7 +678,10 @@ fn twiddle(tiles: &mut Tiles, mobs: &mut Mobs, key: Key, twiddle_amount: Twiddle
                 let source = targeting.target;
                 targeting.target = source.neighbor(current_dir);
 
-                targeting.offsets[offsets_i] = Offset::from(qrs::Targeting{ source, target: targeting.target });
+                targeting.offsets[offsets_i] = offset::from_targeting(
+                    qrs::Targeting{ source, target: targeting.target },
+                    camera_offset,
+                );
                 offsets_i += 1;
 
                 angle = match twiddle {
@@ -754,7 +792,8 @@ mod twiddle_works {
             &mut tiles,
             &mut mobs,
             <_>::default(),
-            Twiddle::OneSixth
+            Twiddle::OneSixth,
+            self.camera_offset,
         );
 
         let mut broke_early;
@@ -798,6 +837,44 @@ pub enum PanSelection {
     #[default]
     Center,
     Dir(Dir)
+}
+
+impl PanSelection {
+    fn up(self) -> Self {
+        use PanSelection::*;
+        use platform_types::Dir::*;
+        match self {
+            Center | Dir(Up) | Dir(Left) | Dir(Right) => Dir(Up),
+            Dir(Down) => Center,
+        }
+    }
+
+    fn left(self) -> Self {
+        use PanSelection::*;
+        use platform_types::Dir::*;
+        match self {
+            Center | Dir(Up) | Dir(Left) | Dir(Down) => Dir(Left),
+            Dir(Right) => Center,
+        }
+    }
+
+    fn right(self) -> Self {
+        use PanSelection::*;
+        use platform_types::Dir::*;
+        match self {
+            Center | Dir(Up) | Dir(Right) | Dir(Down) => Dir(Right),
+            Dir(Left) => Center,
+        }
+    }
+
+    fn down(self) -> Self {
+        use PanSelection::*;
+        use platform_types::Dir::*;
+        match self {
+            Center | Dir(Down) | Dir(Left) | Dir(Right) => Dir(Down),
+            Dir(Up) => Center,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -852,7 +929,6 @@ fn viable_warp_spots<'tiles, 'mobs>(tiles: &'tiles Tiles, mobs: &'mobs Mobs, sou
 
 type FrameCount = u64;
 type Turn = mobs::Target;
-type CameraOffset = unscaled::XYD;
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
@@ -884,7 +960,7 @@ mod menu_option {
     }
 
     pub(crate) type Entry = (MenuOption, &'static str);
-    
+
     const FULL_MENU_OPTIONS: [Entry; 6] = [
         (MenuOption::Move, "move piece"),
         (MenuOption::Twiddle(Twiddle::OneSixth), "+1/6"),
@@ -894,7 +970,7 @@ mod menu_option {
         (MenuOption::Twiddle(Twiddle::MinusOneSixths), "-1/6"),
         //(MenuOption::SkipTurn, "Skip turn"), // Do we need this ever?
     ];
-    
+
     pub(crate) fn get_available_menu_options(
         mobs: &Mobs,
         key: Key,
@@ -927,7 +1003,7 @@ impl CommandsWithCamera<'_> {
     }
 
     fn print_line(
-        &mut self, 
+        &mut self,
         bytes: &[u8],
         xy: unscaled::XY,
         colour: platform_types::PaletteIndex,
@@ -1181,6 +1257,11 @@ impl State {
             h: unscaled::H(command::HEIGHT),
         };
 
+        const SCREEN_CENTER: unscaled::XY = unscaled::XY {
+            x: unscaled::X(command::WIDTH/2),
+            y: unscaled::Y(command::HEIGHT/2),
+        };
+
         let tile_wh = specs.hex_twiddle_sidebar.tile();
         let tile_w = tile_wh.w;
         let tile_h = tile_wh.h;
@@ -1191,7 +1272,7 @@ impl State {
         //
         //
 
-        
+
 
         // TODO either add a way to pan the screen, or ensure that the twiddles that move hexes off screen are not allowed
         //      Currently seems like a pan control on the side that you can move the selectrix to would make sense
@@ -1298,6 +1379,7 @@ impl State {
                                             &mut self.mobs,
                                             self.selectrum_at,
                                             twiddle_,
+                                            self.camera_offset,
                                         );
 
                                         self.sync_doors();
@@ -1374,8 +1456,54 @@ impl State {
                                 self.ui_mode = UiMode::Select;
                             }
                         }
-                        UiMode::Pan { .. } => {
-                            todo!("handle pan input");
+                        UiMode::Pan { selection } => {
+                            let mut pan_dir = None;
+
+                            if *selection == PanSelection::Center
+                            && input.gamepad.contains(Button::A)
+                            {
+                                pan_dir = input.dir_pressed_this_frame();
+                            } else {
+                                if input.pressed_this_frame(Button::UP) {
+                                    *selection = selection.up();
+                                } else if input.pressed_this_frame(Button::DOWN) {
+                                    *selection = selection.down();
+                                } else if input.pressed_this_frame(Button::LEFT) {
+                                    if *selection == PanSelection::Dir(Dir::Left) {
+                                        self.ui_mode = UiMode::Select;
+                                        self.selectrum_at = unscaled_to_qrs(SCREEN_CENTER, self.camera_offset);
+                                    } else {
+                                        *selection = selection.left();
+                                    }
+                                } else if input.pressed_this_frame(Button::RIGHT) {
+                                    *selection = selection.right();
+                                } else {
+                                    match *selection {
+                                        PanSelection::Dir(dir) => {
+                                            if input.pressed_this_frame(Button::A) {
+                                                pan_dir = Some(dir);
+                                            }
+                                        }
+                                        PanSelection::Center => {}
+                                    }
+                                }
+                            }
+
+                            if let Some(dir) = pan_dir {
+                                const CAMERA_MOVE_AMOUNT: unscaled::SignedInner = 5;
+
+                                match dir {
+                                    Dir::Up => { self.camera_offset -= unscaled::YD(CAMERA_MOVE_AMOUNT); }
+                                    Dir::Down => { self.camera_offset += unscaled::YD(CAMERA_MOVE_AMOUNT); }
+                                    Dir::Left => { self.camera_offset -= unscaled::XD(CAMERA_MOVE_AMOUNT); }
+                                    Dir::Right => { self.camera_offset += unscaled::XD(CAMERA_MOVE_AMOUNT); }
+                                }
+                            }
+
+                            if input.pressed_this_frame(Button::B) {
+                                self.ui_mode = UiMode::Select;
+                                self.selectrum_at = unscaled_to_qrs(SCREEN_CENTER, self.camera_offset);
+                            }
                         }
                     }
                 }
@@ -1391,7 +1519,7 @@ impl State {
                     //        * move to a space where they can bump usefully next turn
                     //            * bump the other piece to a spot where they can? Maybe only if next in turn order relative to player?
                     //        * twiddle to trap the player away from an exit
-                    //        * twiddle to trap 
+                    //        * twiddle to trap
                     // If after all that is implemented, it still seems too easy to win, add enemy doors and have them be able to escape
                     //    Should make the graphics clear, with more than just colour, somehow
                     //    Will need to figure out where in the move goal order trying to win should be.
@@ -1401,7 +1529,7 @@ impl State {
                     // What is the best way to compute the predicates over the different moves?
                     // * Option one: Compute all possible moves, and the state once they are done, check first predicate with early out, then loop again with second predicate, etc.
                     // * Option two: Check each move, computing the states as needed, calculating all the predicates as we go, retaining only the answer and the move, so only need one extra state in memory?
-                    // 
+                    //
                     enum MoveSelection {
                         NoMove,
                         Dir(qrs::Dir),
@@ -1451,9 +1579,9 @@ impl State {
                                 if let Some(bumpee_target) = self.mobs.get_target(target) {
                                     let bump_dirs = viable_bump_dirs(&self.tiles, &self.mobs, target).collect::<Vec<_>>();
                                     let bump_dir_index = xs::index(&mut self.rng, 0..bump_dirs.len());
-    
+
                                     let bump_dir = bump_dirs[bump_dir_index];
-                                    
+
                                     move_selection = MoveSelection::Bump(dir, (bumpee_target, bump_dir));
                                 }
                             }
@@ -1480,6 +1608,7 @@ impl State {
                                 &mut self.mobs,
                                 qrs,
                                 twiddle_,
+                                self.camera_offset,
                             );
                         }
                     }
@@ -1491,12 +1620,12 @@ impl State {
         }
 
         // Note: Selectrum should not be moved after this line, this frame.
-        let selectrum_xy = qrs_to_unscaled(self.selectrum_at) + self.camera_offset;
+        let selectrum_xy = qrs_to_unscaled(self.selectrum_at, self.camera_offset);
 
         match self.ui_mode {
             UiMode::Select => {
                 if SIDEBAR_RECT.contains(selectrum_xy + tile_w.halve() + tile_h.halve()) {
-                    self.ui_mode = UiMode::Pan { 
+                    self.ui_mode = UiMode::Pan {
                         selection: <_>::default(),
                     };
                 }
@@ -1521,8 +1650,8 @@ impl State {
         // Set it before rendering in case it was modified
         commands.camera_offset = self.camera_offset;
 
-        fn tile_xy(qrs: QRS, Tile { offsets, .. }: &Tile) -> unscaled::XY {
-            let mut output = qrs_to_unscaled(qrs);
+        fn tile_xy(qrs: QRS, Tile { offsets, .. }: &Tile, camera_offset: CameraOffset) -> unscaled::XY {
+            let mut output = qrs_to_unscaled(qrs, camera_offset);
 
             for offset in offsets {
                 output += offset.xyd();
@@ -1548,7 +1677,7 @@ impl State {
         //
 
         for (at, tile) in self.tiles.iter() {
-            let xy = tile_xy(*at, &tile);
+            let xy = tile_xy(*at, &tile, self.camera_offset);
 
             match tile.kind {
                 TileKind::Symbol(symbol) => {
@@ -1664,7 +1793,7 @@ impl State {
         let piece_center_offset = specs.hex_twiddle_pieces.tile() / 2;
 
         for (qrs, mob) in self.mobs.iter() {
-            let mut xy = qrs_to_unscaled(*qrs);
+            let mut xy = qrs_to_unscaled(*qrs, self.camera_offset);
             for offset in mob.offsets {
                 xy += offset.xyd();
             }
@@ -1744,7 +1873,7 @@ impl State {
 
                     if let Some(viable_dir) = viable_move_dir(&self.tiles, qrs::Targeting { source: *start, target }) {
                         assert_eq!(viable_dir, dir);
-                        let at = qrs_to_unscaled(target);
+                        let at = qrs_to_unscaled(target, self.camera_offset);
 
                         draw_tile!(
                             SELECTRUM,
@@ -1761,15 +1890,15 @@ impl State {
 
                 let arrow_sprite: MobSprite = ARROW_BASE + MobSprite::from(dir.index());
 
-                let mut start_xy = qrs_to_unscaled(*start);
+                let mut start_xy = qrs_to_unscaled(*start, self.camera_offset);
                 start_xy += hex_center_offset;
                 start_xy -= piece_center_offset;
-                let mut target_xy = qrs_to_unscaled(target);
+                let mut target_xy = qrs_to_unscaled(target, self.camera_offset);
                 target_xy += hex_center_offset;
                 target_xy -= piece_center_offset;
 
                 for dir in viable_bump_dirs(&self.tiles, &self.mobs, target) {
-                    let at = qrs_to_unscaled(target.neighbor(dir));
+                    let at = qrs_to_unscaled(target.neighbor(dir), self.camera_offset);
 
                     commands.sspr_override(
                         specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
@@ -1792,15 +1921,15 @@ impl State {
 
                 let arrow_sprite: MobSprite = ARROW_BASE + MobSprite::from(dir.index());
 
-                let mut start_xy = qrs_to_unscaled(*start);
+                let mut start_xy = qrs_to_unscaled(*start, self.camera_offset);
                 start_xy += hex_center_offset;
                 start_xy -= piece_center_offset;
-                let mut target_xy = qrs_to_unscaled(target);
+                let mut target_xy = qrs_to_unscaled(target, self.camera_offset);
                 target_xy += hex_center_offset;
                 target_xy -= piece_center_offset;
 
                 for spot in viable_warp_spots(&self.tiles, &self.mobs, target) {
-                    let at = qrs_to_unscaled(spot);
+                    let at = qrs_to_unscaled(spot, self.camera_offset);
 
                     commands.sspr_override(
                         specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
@@ -1851,7 +1980,7 @@ impl State {
             let right_selected: SidebarSprite = up_selected + 1;
             let down_selected: SidebarSprite = right_selected + 1;
             let left_selected: SidebarSprite = down_selected + 1;
-            
+
             let stick_up_selected: SidebarSprite = left_selected + 1;
             let stick_right_selected: SidebarSprite = stick_up_selected + 1;
             let stick_down_selected: SidebarSprite = stick_right_selected + 1;
@@ -1862,7 +1991,7 @@ impl State {
             macro_rules! draw_control {
                 ($sprite: expr, $xy: expr $(,)?) => ({
                     let sprite: SidebarSprite = $sprite;
-    
+
                     commands.sspr(
                         specs.hex_twiddle_sidebar.xy_from_tile_sprite(sprite),
                         command::Rect::from_unscaled(specs.hex_twiddle_sidebar.rect($xy)),
