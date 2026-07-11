@@ -1280,6 +1280,18 @@ impl State {
         //          Another option would be like a virtual joystick thing that you can press A to grip and then move around smoothly
         //          Could put in both?
 
+        fn stick_dir(
+            selection: PanSelection,
+            input: Input
+        ) -> Option<Dir> {
+            if selection == PanSelection::Center
+            && input.gamepad.contains(Button::A) {
+                input.contains_dir()
+            } else {
+                None
+            }
+        }
+
         if self.all_offsets_settled() {
             match self.turn {
                 // The player
@@ -1459,10 +1471,8 @@ impl State {
                         UiMode::Pan { selection } => {
                             let mut pan_dir = None;
 
-                            if *selection == PanSelection::Center
-                            && input.gamepad.contains(Button::A)
-                            {
-                                pan_dir = input.dir_pressed_this_frame();
+                            if let Some(stick_dir) = stick_dir(*selection, input) {
+                                pan_dir = Some(stick_dir);
                             } else {
                                 if input.pressed_this_frame(Button::UP) {
                                     *selection = selection.up();
@@ -1981,10 +1991,10 @@ impl State {
             let down_selected: SidebarSprite = right_selected + 1;
             let left_selected: SidebarSprite = down_selected + 1;
 
-            let stick_up_selected: SidebarSprite = left_selected + 1;
-            let stick_right_selected: SidebarSprite = stick_up_selected + 1;
-            let stick_down_selected: SidebarSprite = stick_right_selected + 1;
-            let stick_left_selected: SidebarSprite = stick_down_selected + 1;
+            let stick_selected_up: SidebarSprite = left_selected + 1;
+            let stick_selected_right: SidebarSprite = stick_selected_up + 1;
+            let stick_selected_down: SidebarSprite = stick_selected_right + 1;
+            let stick_selected_left: SidebarSprite = stick_selected_down + 1;
 
             // TODO? Recentering the camera, with a menu like the context menu?
             //    Could have options for the starting location, and each piece
@@ -2020,7 +2030,19 @@ impl State {
                 UiMode::Pan { selection } if selection == PanSelection::Dir(Dir::Left)
                     => (up, right, down, left_selected, stick),
                 UiMode::Pan { selection } if selection == PanSelection::Center
-                    => (up, right, down, left, stick_selected_center),
+                    => (
+                            up,
+                            right,
+                            down,
+                            left,
+                            match stick_dir(selection, input) {
+                                None => stick_selected_center,
+                                Some(Dir::Up) => stick_selected_up,
+                                Some(Dir::Down) => stick_selected_down,
+                                Some(Dir::Left) => stick_selected_left,
+                                Some(Dir::Right) => stick_selected_right,
+                            }
+                       ),
                 _ => (up, right, down, left, stick),
             };
 
