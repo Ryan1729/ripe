@@ -1093,6 +1093,8 @@ pub fn render(
             y_max,
         } = rect;
 
+        dbg!(rect);
+
         // TODO make this wide too?
         let x_min = clip::X::from(x_min);
         let y_min = clip::Y::from(y_min);

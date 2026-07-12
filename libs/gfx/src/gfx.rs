@@ -33,6 +33,20 @@ pub struct Commands {
     fade_messages: FadeMessages,
 }
 
+// Okay, we need clipping of rendered sprites and that seems to best expressed via negative coords
+// So we'll need to change unscaled::X and unscaled::Y to be signed, and adjusting clipping.
+// It seems worth attempting to do this without invasive changes to the render crate, if possible.
+//     So rect clipping, sprite XY adjustments, and command filtering would be done when creating the commands
+// Proposed steps:
+// Change the gfx API to take unscaled::Rect, but convert to command::Rect inside that crate.
+// Break the connection between command::Rect and unscaled::*
+//    Passing them in is fine, but changing the datatype in the next step should not affect what is in a Command.
+// Change the unsigned inner datatype to signed.
+// Implement proper clipping that allows sliding a sprite off the edge of the screen.
+
+
+// TODO Probably worth backporting the new clipping into the template once we have it working well.
+
 impl Commands {
     pub fn new(
         seed: xs::Seed,
