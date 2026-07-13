@@ -73,12 +73,12 @@ fn p_xy(commands: &mut Commands, spec: &sprite::Spec::<IcePuzzles>, x_in: i32, y
 
             commands.sspr(
                 str_to_sprite_xy(spec, s).apply(spec),
-                command::Rect::from_unscaled(unscaled::Rect {
+                unscaled::Rect {
                     x: unscaled::X(x * w.get()),
                     y: unscaled::Y(y * h.get()),
                     w,
                     h,
-                })
+                }
             );
         },
         _ => {
@@ -201,12 +201,12 @@ mod platform {
         for ((x, y), s) in state!().chars.iter() {
             commands.sspr(
                 str_to_sprite_xy(spec, s).apply(spec),
-                command::Rect::from_unscaled(unscaled::Rect {
+                unscaled::Rect {
                     x: unscaled::X(*x * tile_w.get()),
                     y: unscaled::Y(*y * tile_h.get()),
                     w: tile_w,
                     h: tile_h,
-                })
+                }
             );
         }
     }

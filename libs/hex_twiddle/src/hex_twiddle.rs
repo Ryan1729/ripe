@@ -990,11 +990,11 @@ struct CommandsWithCamera<'commands> {
 }
 
 impl CommandsWithCamera<'_> {
-    fn sspr(&mut self, xy: sprite::XY<sprite::Renderable>, rect: command::Rect) {
+    fn sspr(&mut self, xy: sprite::XY<sprite::Renderable>, rect: unscaled::Rect) {
         self.commands.sspr(xy, rect + self.camera_offset);
     }
 
-    fn sspr_override(&mut self, xy: sprite::XY<sprite::Renderable>, rect: command::Rect, colour: gfx_sizes::ARGB) {
+    fn sspr_override(&mut self, xy: sprite::XY<sprite::Renderable>, rect: unscaled::Rect, colour: gfx_sizes::ARGB) {
         self.commands.sspr_override(xy, rect + self.camera_offset, colour);
     }
 
@@ -1676,7 +1676,7 @@ impl State {
 
                 commands.sspr_override(
                     specs.hex_twiddle_tiles.xy_from_tile_sprite(sprite),
-                    command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect($xy)),
+                    specs.hex_twiddle_tiles.rect($xy),
                     $colour
                 );
             })
@@ -1812,7 +1812,7 @@ impl State {
 
             commands.sspr(
                 specs.hex_twiddle_pieces.xy_from_tile_sprite(mob.sprite + mob.facing.index() as MobSprite),
-                command::Rect::from_unscaled(specs.hex_twiddle_pieces.rect(xy)),
+                specs.hex_twiddle_pieces.rect(xy),
             );
         }
 
@@ -1912,7 +1912,7 @@ impl State {
 
                     commands.sspr_override(
                         specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
-                        command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(at)),
+                        specs.hex_twiddle_tiles.rect(at),
                         0xFF30B06E
                     );
                 }
@@ -1921,7 +1921,7 @@ impl State {
 
                 commands.sspr(
                     specs.hex_twiddle_pieces.xy_from_tile_sprite(arrow_sprite),
-                    command::Rect::from_unscaled(specs.hex_twiddle_pieces.rect(arrow_xy)),
+                    specs.hex_twiddle_pieces.rect(arrow_xy),
                 );
 
                 draw_selectrum!();
@@ -1943,7 +1943,7 @@ impl State {
 
                     commands.sspr_override(
                         specs.hex_twiddle_tiles.xy_from_tile_sprite(SELECTRUM),
-                        command::Rect::from_unscaled(specs.hex_twiddle_tiles.rect(at)),
+                        specs.hex_twiddle_tiles.rect(at),
                         0xFF30B06E
                     );
                 }
@@ -1952,7 +1952,7 @@ impl State {
 
                 commands.sspr(
                     specs.hex_twiddle_pieces.xy_from_tile_sprite(arrow_sprite),
-                    command::Rect::from_unscaled(specs.hex_twiddle_pieces.rect(arrow_xy)),
+                    specs.hex_twiddle_pieces.rect(arrow_xy),
                 );
 
                 draw_selectrum!();
@@ -2004,7 +2004,7 @@ impl State {
 
                     commands.sspr(
                         specs.hex_twiddle_sidebar.xy_from_tile_sprite(sprite),
-                        command::Rect::from_unscaled(specs.hex_twiddle_sidebar.rect($xy)),
+                        specs.hex_twiddle_sidebar.rect($xy),
                     );
                 })
             }

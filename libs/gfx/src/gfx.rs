@@ -133,7 +133,7 @@ impl Commands {
     pub fn sspr_override(
         &mut self,
         sprite_xy: sprite::XY<Renderable>,
-        rect: command::Rect,
+        unscaled_rect: unscaled::Rect,
         colour_override: ARGB,
     ) {
         push_with_screenshake(
@@ -142,7 +142,7 @@ impl Commands {
             self.shake_yd,
             Command {
                 sprite_xy,
-                rect,
+                rect: command::Rect::from_unscaled(unscaled_rect),
                 colour_override,
             }
         );
@@ -151,11 +151,11 @@ impl Commands {
     pub fn sspr(
         &mut self,
         sprite_xy: sprite::XY<Renderable>,
-        rect: command::Rect,
+        unscaled_rect: unscaled::Rect,
     ) {
         self.sspr_override(
             sprite_xy,
-            rect,
+            unscaled_rect,
             0,
         );
     }
@@ -449,12 +449,12 @@ pub mod next_arrow {
 
         commands.sspr(
             sprite_xy.apply(&commands.ui_spec),
-            Rect::from_unscaled(unscaled::Rect {
+            unscaled::Rect {
                 x,
                 y,
                 w: ARROW_W,
                 h: ARROW_H,
-            })
+            }
         );
     }
 }
@@ -645,13 +645,13 @@ pub mod nine_slice {
             for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(center_wh.w.get() as _).map(unscaled::X) {
                 commands.sspr(
                     slices.middle.apply(&commands.ui_spec),
-                    Rect::from_unscaled(unscaled::Rect {
+                    unscaled::Rect {
                         x: fill_x,
                         y: fill_y,
                         // Clamp these values so we don't draw past the edge.
                         w: core::cmp::min(center_wh.w, before_right_corner - fill_x),
                         h: core::cmp::min(center_wh.h, above_bottom_corner - fill_y),
-                    })
+                    }
                 );
             }
         }
@@ -660,24 +660,24 @@ pub mod nine_slice {
         for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(center_wh.w.get() as _).map(unscaled::X) {
             commands.sspr(
                 slices.top.apply(&commands.ui_spec),
-                Rect::from_unscaled(unscaled::Rect {
+                unscaled::Rect {
                     x: fill_x,
                     y,
                     // Clamp this value so we don't draw past the edge.
                     w: core::cmp::min(center_wh.w, before_right_corner - fill_x),
                     h: edge_wh.h,
-                })
+                }
             );
 
             commands.sspr(
                 slices.bottom.apply(&commands.ui_spec),
-                Rect::from_unscaled(unscaled::Rect {
+                unscaled::Rect {
                     x: fill_x,
                     y: above_bottom_corner,
                     // Clamp this value so we don't draw past the edge.
                     w: core::cmp::min(center_wh.w, before_right_corner - fill_x),
                     h: edge_wh.h,
-                })
+                }
             );
         }
 
@@ -685,69 +685,69 @@ pub mod nine_slice {
         for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(center_wh.h.get() as _).map(unscaled::Y) {
             commands.sspr(
                 slices.left.apply(&commands.ui_spec),
-                Rect::from_unscaled(unscaled::Rect {
+                unscaled::Rect {
                     x,
                     y: fill_y,
                     // Clamp this value so we don't draw past the edge.
                     w: edge_wh.w,
                     h: core::cmp::min(center_wh.h, above_bottom_corner - fill_y),
-                })
+                }
             );
 
             commands.sspr(
                 slices.right.apply(&commands.ui_spec),
-                Rect::from_unscaled(unscaled::Rect {
+                unscaled::Rect {
                     x: before_right_corner,
                     y: fill_y,
                     // Clamp this value so we don't draw past the edge.
                     w: edge_wh.w,
                     h: core::cmp::min(center_wh.h, above_bottom_corner - fill_y),
-                })
+                }
             );
         }
 
         // Draw A
         commands.sspr(
             slices.top_left.apply(&commands.ui_spec),
-            Rect::from_unscaled(unscaled::Rect {
+            unscaled::Rect {
                 x,
                 y,
                 w: edge_wh.w,
                 h: edge_wh.h,
-            })
+            }
         );
 
         // Draw C
         commands.sspr(
             slices.top_right.apply(&commands.ui_spec),
-            Rect::from_unscaled(unscaled::Rect {
+            unscaled::Rect {
                 x: before_right_corner,
                 y,
                 w: edge_wh.w,
                 h: edge_wh.h,
-            })
+            }
         );
 
         // Draw G
         commands.sspr(
             slices.bottom_left.apply(&commands.ui_spec),
-            Rect::from_unscaled(unscaled::Rect {
+            unscaled::Rect {
                 x,
                 y: above_bottom_corner,
                 w: edge_wh.w,
                 h: edge_wh.h,
-            })
+            }
         );
 
         // Draw I
         commands.sspr(
             slices.bottom_right.apply(&commands.ui_spec),
-            Rect::from_unscaled(unscaled::Rect {
+            unscaled::Rect {
                 x: before_right_corner,
                 y: above_bottom_corner,
                 w: edge_wh.w,
                 h: edge_wh.h,
-            })
+            }
         );
     }
 

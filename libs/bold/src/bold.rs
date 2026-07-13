@@ -1239,7 +1239,7 @@ impl State {
 
             commands.sspr(
                 bold_spec.xy_from_tile_sprite(sprite),
-                command::Rect::from_unscaled(bold_spec.rect(base_xy)),
+                bold_spec.rect(base_xy),
             );
         };
 

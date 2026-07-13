@@ -1285,7 +1285,7 @@ impl State {
                 for _ in 0..2 {
                     commands.sspr_override(
                         hex_pieces_spec.xy_from_tile_sprite(TOP_LINE),
-                        command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                        hex_pieces_spec.rect(xy),
                         outline_colour,
                     );
 
@@ -1294,7 +1294,7 @@ impl State {
 
                 commands.sspr_override(
                     hex_pieces_spec.xy_from_tile_sprite(TOP_FACE),
-                    command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                    hex_pieces_spec.rect(xy),
                     top_face_colour,
                 );
 
@@ -1305,7 +1305,7 @@ impl State {
                     () => {
                         commands.sspr_override(
                             hex_pieces_spec.xy_from_tile_sprite(LEFT_RIGHT_EDGES),
-                            command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                            hex_pieces_spec.rect(xy),
                             outline_colour,
                         );
                     }
@@ -1319,7 +1319,7 @@ impl State {
 
                 commands.sspr_override(
                     hex_pieces_spec.xy_from_tile_sprite(BOTTOM_FULL_LINE),
-                    command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                    hex_pieces_spec.rect(xy),
                     top_lower_edge_colour,
                 );
                 left_right_edges!();
@@ -1329,17 +1329,17 @@ impl State {
                 for _ in 0..height {
                     commands.sspr_override(
                         hex_pieces_spec.xy_from_tile_sprite(BOTTOM_LEFT_LINE),
-                        command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                        hex_pieces_spec.rect(xy),
                         left_face_colour,
                     );
                     commands.sspr_override(
                         hex_pieces_spec.xy_from_tile_sprite(BOTTOM_CENTER_LINE),
-                        command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                        hex_pieces_spec.rect(xy),
                         center_face_colour,
                     );
                     commands.sspr_override(
                         hex_pieces_spec.xy_from_tile_sprite(BOTTOM_RIGHT_LINE),
-                        command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                        hex_pieces_spec.rect(xy),
                         right_face_colour,
                     );
                     left_right_edges!();
@@ -1351,7 +1351,7 @@ impl State {
                 for _ in 0..2 {
                     commands.sspr_override(
                         hex_pieces_spec.xy_from_tile_sprite(BOTTOM_FULL_LINE),
-                        command::Rect::from_unscaled(hex_pieces_spec.rect(xy)),
+                        hex_pieces_spec.rect(xy),
                         outline_colour,
                     );
                     xy += unscaled::H(1);
@@ -1374,12 +1374,12 @@ impl State {
 
                 commands.sspr(
                     hex_hop_mobs_spec.xy_from_tile_sprite(mob.sprite + SHADOW_OFFSET),
-                    command::Rect::from_unscaled(hex_hop_mobs_spec.rect(mob_shadow_at)),
+                    hex_hop_mobs_spec.rect(mob_shadow_at),
                 );
 
                 commands.sspr(
                     hex_hop_mobs_spec.xy_from_tile_sprite(mob.sprite),
-                    command::Rect::from_unscaled(hex_hop_mobs_spec.rect(mob_at)),
+                    hex_hop_mobs_spec.rect(mob_at),
                 );
             }
         }

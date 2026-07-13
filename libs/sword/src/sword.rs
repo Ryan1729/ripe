@@ -4,7 +4,7 @@
 ///! S.W.O.R.D.: Staff Whacking Ordeal Required, Duh
 
 use gfx::{Commands};
-use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
+use platform_types::{sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
 use vec1::{Grid1, Grid1Spec, Vec1, vec1};
 use xs::{Seed, Xs};
 
@@ -3156,7 +3156,7 @@ impl State {
 
             commands.sspr(
                 s_xy,
-                command::Rect::from_unscaled(rect),
+                rect,
             );
         }
 
@@ -3178,13 +3178,13 @@ impl State {
                 TileSprite::Sword(t_s) => {
                     commands.sspr(
                         sword_spec.xy_from_tile_sprite(t_s),
-                        command::Rect::from_unscaled(sword_spec.offset_rect(offset_xy, base_xy)),
+                        sword_spec.offset_rect(offset_xy, base_xy),
                     );
                 },
                 TileSprite::ToggleWall(t_s) => {
                     commands.sspr(
                         toggle_wall_spec.xy_from_tile_sprite(t_s),
-                        command::Rect::from_unscaled(toggle_wall_spec.offset_rect(offset_xy, base_xy)),
+                        toggle_wall_spec.offset_rect(offset_xy, base_xy),
                     );
                 },
             }
