@@ -7,8 +7,8 @@ use models::{Entity, xy::{XY}};
 pub fn min_corner(spec: &sprite::Spec<BaseTiles>, xy: XY) -> unscaled::XY {
     let tile = spec.tile();
 
-    let x = unscaled::X(0) + unscaled::W(xy.x.get() * tile.w.get());
-    let y = unscaled::Y(0) + unscaled::H(xy.y.get() * tile.h.get());
+    let x = unscaled::X(0) + unscaled::W::new(i16::try_from(xy.x.get()).expect("model::X too large") * tile.w.get());
+    let y = unscaled::Y(0) + unscaled::H::new(i16::try_from(xy.y.get()).expect("model::Y too large") * tile.h.get());
 
     unscaled::XY { x, y }
     // This is a BaseTiles specific adjustment to render the tiles at a different spot on the screen

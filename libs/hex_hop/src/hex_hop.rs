@@ -1254,7 +1254,7 @@ impl State {
 
         fn tile_xy(qrs: QRS, Tile { height, .. }: &Tile) -> unscaled::XY {
             let height = *height;
-            qrs_to_unscaled(qrs) - unscaled::H(height.into())
+            qrs_to_unscaled(qrs) - unscaled::H::new(height.into())
         }
 
         macro_rules! draw_hex {
@@ -1289,7 +1289,7 @@ impl State {
                         outline_colour,
                     );
 
-                    xy += unscaled::H(1);
+                    xy += unscaled::H::new(1);
                 }
 
                 commands.sspr_override(
@@ -1299,7 +1299,7 @@ impl State {
                 );
 
                 xy += tile_h / 2;
-                xy -= unscaled::H(1);
+                xy -= unscaled::H::new(1);
 
                 macro_rules! left_right_edges {
                     () => {
@@ -1314,7 +1314,7 @@ impl State {
                 for _ in 0..2 {
                     left_right_edges!();
 
-                    xy += unscaled::H(1);
+                    xy += unscaled::H::new(1);
                 }
 
                 commands.sspr_override(
@@ -1324,7 +1324,7 @@ impl State {
                 );
                 left_right_edges!();
 
-                xy += unscaled::H(1);
+                xy += unscaled::H::new(1);
 
                 for _ in 0..height {
                     commands.sspr_override(
@@ -1344,7 +1344,7 @@ impl State {
                     );
                     left_right_edges!();
 
-                    xy += unscaled::H(1);
+                    xy += unscaled::H::new(1);
                 }
 
                 left_right_edges!();
@@ -1354,7 +1354,7 @@ impl State {
                         hex_pieces_spec.rect(xy),
                         outline_colour,
                     );
-                    xy += unscaled::H(1);
+                    xy += unscaled::H::new(1);
                 }
             }
         }
@@ -1365,12 +1365,12 @@ impl State {
                 let mob: &Entity = $mob;
 
                 let mob_at = mob_hex_upper_left
-                    + unscaled::W(10)
-                    - unscaled::H(10)
+                    + unscaled::W::new(10)
+                    - unscaled::H::new(10)
                     + mob.offset.xyd();
 
                 let mut mob_shadow_at = mob_at - mob.offset.xyd().yd;
-                mob_shadow_at += unscaled::H(4);
+                mob_shadow_at += unscaled::H::new(4);
 
                 commands.sspr(
                     hex_hop_mobs_spec.xy_from_tile_sprite(mob.sprite + SHADOW_OFFSET),

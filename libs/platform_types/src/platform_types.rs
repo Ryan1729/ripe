@@ -8,115 +8,137 @@ pub mod command {
     use gfx_sizes::ARGB;
     use pak_types::{sprite, unscaled::{self, XD, YD}};
 
-    pub type Inner = unscaled::Inner;
-    pub type SignedInner = unscaled::SignedInner;
+    pub type Inner = u16;
+    pub type SignedInner = i16;
 
     pub const WIDTH: Inner = gfx_sizes::COMMAND_WIDTH;
     pub const HEIGHT: Inner = gfx_sizes::COMMAND_HEIGHT;
 
+    pub const WIDTH_SIGNED: SignedInner = gfx_sizes::COMMAND_WIDTH_SIGNED;
+    pub const HEIGHT_SIGNED: SignedInner = gfx_sizes::COMMAND_HEIGHT_SIGNED;
+
+    pub const X_MAX_SIGNED: SignedInner = WIDTH_SIGNED - 1;
+    pub const Y_MAX_SIGNED: SignedInner = HEIGHT_SIGNED - 1;
+
     pub const LENGTH: usize = WIDTH as usize * HEIGHT as usize;
 
-    pub const WIDTH_W: unscaled::W = unscaled::W(WIDTH);
-    pub const HEIGHT_H: unscaled::H = unscaled::H(HEIGHT);
+    //pub const WIDTH_W: unscaled::W = unscaled::W(WIDTH);
+    //pub const HEIGHT_H: unscaled::H = unscaled::H(HEIGHT);
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct X(unscaled::X);
+    pub struct X(Inner);
 
     impl X {
-        pub const MAX: X = X(unscaled::X(WIDTH - 1));
+        pub const MAX: X = X(WIDTH - 1);
 
-        pub const fn get(self) -> unscaled::X {
+        pub const fn u16(self) -> u16 {
             self.0
         }
 
-        pub const fn clipped(x: unscaled::X) -> X {
-            if x.0 < X::MAX.0.0 {
-                X(x)
-            } else {
-                X::MAX
-            }
-        }
-
-        pub const fn clipped_inner(x: Inner) -> X {
-            X::clipped(unscaled::X(x))
-        }
-
-        pub fn gen(rng: &mut Xs) -> X {
-            X::clipped(unscaled::X(xs::range(rng, 0..WIDTH as _) as Inner))
-        }
+        //pub const fn get(self) -> unscaled::X {
+            //self.0
+        //}
+//
+        //pub const fn clipped(x: unscaled::X) -> X {
+            //if x.0 < X::MAX.0.0 {
+                //X(x)
+            //} else {
+                //X::MAX
+            //}
+        //}
+//
+        //pub const fn clipped_inner(x: Inner) -> X {
+            //X::clipped(unscaled::X(x))
+        //}
+//
+        //pub fn gen(rng: &mut Xs) -> X {
+            //X::clipped(unscaled::X(xs::range(rng, 0..WIDTH as _) as Inner))
+        //}
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct Y(unscaled::Y);
+    pub struct Y(Inner);
 
     impl Y {
-        pub const MAX: Y = Y(unscaled::Y(HEIGHT - 1));
+        pub const MAX: Y = Y(HEIGHT - 1);
 
-        pub const fn get(self) -> unscaled::Y {
+        pub const fn u16(self) -> u16 {
             self.0
         }
 
-        pub const fn clipped(y: unscaled::Y) -> Y {
-            if y.0 < Y::MAX.0.0 {
-                Y(y)
-            } else {
-                Y::MAX
-            }
-        }
-
-        pub const fn clipped_inner(y: Inner) -> Y {
-            Y::clipped(unscaled::Y(y))
-        }
-
-        pub fn gen(rng: &mut Xs) -> Y {
-            Y::clipped(unscaled::Y(xs::range(rng, 0..WIDTH as _) as Inner))
-        }
+        //pub const fn get(self) -> unscaled::Y {
+            //self.0
+        //}
+//
+        //pub const fn clipped(y: unscaled::Y) -> Y {
+            //if y.0 < Y::MAX.0.0 {
+                //Y(y)
+            //} else {
+                //Y::MAX
+            //}
+        //}
+//
+        //pub const fn clipped_inner(y: Inner) -> Y {
+            //Y::clipped(unscaled::Y(y))
+        //}
+//
+        //pub fn gen(rng: &mut Xs) -> Y {
+            //Y::clipped(unscaled::Y(xs::range(rng, 0..WIDTH as _) as Inner))
+        //}
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct W(unscaled::W);
+    pub struct W(Inner);
 
     impl W {
-        pub const MAX: W = W(unscaled::W(WIDTH - 1));
+        pub const MAX: W = W(WIDTH - 1);
 
-        pub const fn get(self) -> unscaled::W {
+        pub const fn u16(self) -> u16 {
             self.0
         }
 
-        pub const fn clipped(w: unscaled::W) -> W {
-            if w.0 < W::MAX.0.0 {
-                W(w)
-            } else {
-                W::MAX
-            }
-        }
+        //pub const fn get(self) -> unscaled::W {
+            //self.0
+        //}
 
-        pub const fn clipped_inner(w: Inner) -> W {
-            W::clipped(unscaled::W(w))
-        }
+        //pub const fn clipped(w: unscaled::W) -> W {
+            //if w.0 < W::MAX.0.0 {
+                //W(w)
+            //} else {
+                //W::MAX
+            //}
+        //}
+//
+        //pub const fn clipped_inner(w: Inner) -> W {
+            //W::clipped(unscaled::W(w))
+        //}
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct H(unscaled::H);
+    pub struct H(Inner);
 
     impl H {
-        pub const MAX: H = H(unscaled::H(WIDTH - 1));
+        pub const MAX: H = H(WIDTH - 1);
 
-        pub const fn get(self) -> unscaled::H {
+        pub const fn u16(self) -> u16 {
             self.0
         }
 
-        pub const fn clipped(h: unscaled::H) -> H {
-            if h.0 < H::MAX.0.0 {
-                H(h)
-            } else {
-                H::MAX
-            }
-        }
-
-        pub const fn clipped_inner(h: Inner) -> H {
-            H::clipped(unscaled::H(h))
-        }
+        //pub const fn get(self) -> unscaled::H {
+            //self.0
+        //}
+//
+        //pub const fn clipped(h: unscaled::H) -> H {
+            //if h.0 < H::MAX.0.0 {
+                //H(h)
+            //} else {
+                //H::MAX
+            //}
+        //}
+//
+        //pub const fn clipped_inner(h: Inner) -> H {
+            //H::clipped(unscaled::H(h))
+        //}
     }
     /*
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -166,190 +188,190 @@ pub mod command {
     }
     */
 
-    pub const fn w_to_usize(w: W) -> usize {
-        w.0.0 as usize
-    }
-
-    pub const fn h_to_usize(h: H) -> usize {
-        h.0.0 as usize
-    }
-
-    pub const fn w_const_add(a: W, b: W) -> W {
-        W::clipped_inner(a.0.0 + b.0.0)
-    }
-
-    pub const fn w_const_sub(a: W, b: W) -> W {
-        W::clipped_inner(a.0.0 - b.0.0)
-    }
-
-    pub const fn w_const_mul(a: W, b: Inner) -> W {
-        W::clipped_inner(a.0.0 * b)
-    }
-
-    pub const fn w_const_div(a: W, b: Inner) -> W {
-        W::clipped_inner(a.0.0 / b)
-    }
-
-    pub const fn h_const_add(a: H, b: H) -> H {
-        H::clipped_inner(a.0.0 + b.0.0)
-    }
-
-    pub const fn h_const_sub(a: H, b: H) -> H {
-        H::clipped_inner(a.0.0 - b.0.0)
-    }
-
-    pub const fn h_const_mul(a: H, b: Inner) -> H {
-        H::clipped_inner(a.0.0 * b)
-    }
-
-    pub const fn h_const_div(a: H, b: Inner) -> H {
-        H::clipped_inner(a.0.0 / b)
-    }
-
-    impl From<X> for usize {
-        fn from(x: X) -> Self {
-            x.0.0.into()
-        }
-    }
-
-    impl From<Y> for usize {
-        fn from(y: Y) -> Self {
-            y.0.0.into()
-        }
-    }
-
+    //pub const fn w_to_usize(w: W) -> usize {
+        //w.0.0 as usize
+    //}
+//
+    //pub const fn h_to_usize(h: H) -> usize {
+        //h.0.0 as usize
+    //}
+//
+    //pub const fn w_const_add(a: W, b: W) -> W {
+        //W::clipped_inner(a.0.0 + b.0.0)
+    //}
+//
+    //pub const fn w_const_sub(a: W, b: W) -> W {
+        //W::clipped_inner(a.0.0 - b.0.0)
+    //}
+//
+    //pub const fn w_const_mul(a: W, b: Inner) -> W {
+        //W::clipped_inner(a.0.0 * b)
+    //}
+//
+    //pub const fn w_const_div(a: W, b: Inner) -> W {
+        //W::clipped_inner(a.0.0 / b)
+    //}
+//
+    //pub const fn h_const_add(a: H, b: H) -> H {
+        //H::clipped_inner(a.0.0 + b.0.0)
+    //}
+//
+    //pub const fn h_const_sub(a: H, b: H) -> H {
+        //H::clipped_inner(a.0.0 - b.0.0)
+    //}
+//
+    //pub const fn h_const_mul(a: H, b: Inner) -> H {
+        //H::clipped_inner(a.0.0 * b)
+    //}
+//
+    //pub const fn h_const_div(a: H, b: Inner) -> H {
+        //H::clipped_inner(a.0.0 / b)
+    //}
+//
+    //impl From<X> for usize {
+        //fn from(x: X) -> Self {
+            //x.0.0.into()
+        //}
+    //}
+//
+    //impl From<Y> for usize {
+        //fn from(y: Y) -> Self {
+            //y.0.0.into()
+        //}
+    //}
+//
     impl From<X> for Inner {
         fn from(to_convert: X) -> Inner {
-            to_convert.0.0
+            to_convert.0
         }
     }
 
     impl From<Y> for Inner {
         fn from(to_convert: Y) -> Inner {
-            to_convert.0.0
+            to_convert.0
         }
     }
 
     impl From<W> for Inner {
         fn from(to_convert: W) -> Inner {
-            to_convert.0.0
+            to_convert.0
         }
     }
 
     impl From<H> for Inner {
         fn from(to_convert: H) -> Inner {
-            to_convert.0.0
+            to_convert.0
         }
     }
-
-    impl core::ops::AddAssign<W> for X {
-        fn add_assign(&mut self, other: W) {
-            *self = Self::clipped(self.0 + other.0);
-        }
-    }
-
-    impl core::ops::Add<W> for X {
-        type Output = Self;
-
-        fn add(mut self, other: W) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::AddAssign<H> for Y {
-        fn add_assign(&mut self, other: H) {
-            *self = Self::clipped(self.0 + other.0);
-        }
-    }
-
-    impl core::ops::Add<H> for Y {
-        type Output = Self;
-
-        fn add(mut self, other: H) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::MulAssign<Inner> for W {
-        fn mul_assign(&mut self, inner: Inner) {
-            *self = Self::clipped(self.0 * inner);
-        }
-    }
-
-    impl core::ops::Mul<Inner> for W {
-        type Output = Self;
-
-        fn mul(mut self, inner: Inner) -> Self::Output {
-            self *= inner;
-            self
-        }
-    }
-
-    impl core::ops::Mul<W> for Inner {
-        type Output = W;
-
-        fn mul(self, mut w: W) -> Self::Output {
-            w *= self;
-            w
-        }
-    }
-
-    impl core::ops::MulAssign<Inner> for H {
-        fn mul_assign(&mut self, inner: Inner) {
-            *self = Self::clipped(self.0 * inner);
-        }
-    }
-
-    impl core::ops::Mul<Inner> for H {
-        type Output = Self;
-
-        fn mul(mut self, inner: Inner) -> Self::Output {
-            self *= inner;
-            self
-        }
-    }
-
-    impl core::ops::Mul<H> for Inner {
-        type Output = H;
-
-        fn mul(self, mut h: H) -> Self::Output {
-            h *= self;
-            h
-        }
-    }
-
-    impl core::ops::AddAssign<XD> for X {
-        fn add_assign(&mut self, other: XD) {
-            *self = Self::clipped(self.0 + other);
-        }
-    }
-
-
-    impl core::ops::Add<XD> for X {
-        type Output = Self;
-
-        fn add(mut self, other: XD) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::AddAssign<YD> for Y {
-        fn add_assign(&mut self, other: YD) {
-            *self = Self::clipped(self.0 + other);
-        }
-    }
-
-    impl core::ops::Add<YD> for Y {
-        type Output = Self;
-
-        fn add(mut self, other: YD) -> Self::Output {
-            self += other;
-            self
-        }
-    }
+//
+    //impl core::ops::AddAssign<W> for X {
+        //fn add_assign(&mut self, other: W) {
+            //*self = Self::clipped(self.0 + other.0);
+        //}
+    //}
+//
+    //impl core::ops::Add<W> for X {
+        //type Output = Self;
+//
+        //fn add(mut self, other: W) -> Self::Output {
+            //self += other;
+            //self
+        //}
+    //}
+//
+    //impl core::ops::AddAssign<H> for Y {
+        //fn add_assign(&mut self, other: H) {
+            //*self = Self::clipped(self.0 + other.0);
+        //}
+    //}
+//
+    //impl core::ops::Add<H> for Y {
+        //type Output = Self;
+//
+        //fn add(mut self, other: H) -> Self::Output {
+            //self += other;
+            //self
+        //}
+    //}
+//
+    //impl core::ops::MulAssign<Inner> for W {
+        //fn mul_assign(&mut self, inner: Inner) {
+            //*self = Self::clipped(self.0 * inner);
+        //}
+    //}
+//
+    //impl core::ops::Mul<Inner> for W {
+        //type Output = Self;
+//
+        //fn mul(mut self, inner: Inner) -> Self::Output {
+            //self *= inner;
+            //self
+        //}
+    //}
+//
+    //impl core::ops::Mul<W> for Inner {
+        //type Output = W;
+//
+        //fn mul(self, mut w: W) -> Self::Output {
+            //w *= self;
+            //w
+        //}
+    //}
+//
+    //impl core::ops::MulAssign<Inner> for H {
+        //fn mul_assign(&mut self, inner: Inner) {
+            //*self = Self::clipped(self.0 * inner);
+        //}
+    //}
+//
+    //impl core::ops::Mul<Inner> for H {
+        //type Output = Self;
+//
+        //fn mul(mut self, inner: Inner) -> Self::Output {
+            //self *= inner;
+            //self
+        //}
+    //}
+//
+    //impl core::ops::Mul<H> for Inner {
+        //type Output = H;
+//
+        //fn mul(self, mut h: H) -> Self::Output {
+            //h *= self;
+            //h
+        //}
+    //}
+//
+    //impl core::ops::AddAssign<XD> for X {
+        //fn add_assign(&mut self, other: XD) {
+            //*self = Self::clipped(self.0 + other);
+        //}
+    //}
+//
+//
+    //impl core::ops::Add<XD> for X {
+        //type Output = Self;
+//
+        //fn add(mut self, other: XD) -> Self::Output {
+            //self += other;
+            //self
+        //}
+    //}
+//
+    //impl core::ops::AddAssign<YD> for Y {
+        //fn add_assign(&mut self, other: YD) {
+            //*self = Self::clipped(self.0 + other);
+        //}
+    //}
+//
+    //impl core::ops::Add<YD> for Y {
+        //type Output = Self;
+//
+        //fn add(mut self, other: YD) -> Self::Output {
+            //self += other;
+            //self
+        //}
+    //}
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct Rect {
@@ -360,45 +382,29 @@ pub mod command {
     }
 
     impl Rect {
-        #[allow(unused)]
-        pub fn contains(&self, xy: unscaled::XY) -> bool {
-            xy.x >= self.x_min.0
-            && xy.y >= self.y_min.0
-            && xy.x <= self.x_max.0
-            && xy.y <= self.y_max.0
-        }
+        //#[allow(unused)]
+        //pub fn contains(&self, xy: unscaled::XY) -> bool {
+            //xy.x >= self.x_min.0
+            //&& xy.y >= self.y_min.0
+            //&& xy.x <= self.x_max.0
+            //&& xy.y <= self.y_max.0
+        //}
 
-        pub fn from_unscaled(
-            unscaled::Rect {
-                x,
-                y,
-                w,
-                h,
-            }: unscaled::Rect
-        ) -> Rect {
-            Rect {
-                x_min: X::clipped(x),
-                y_min: Y::clipped(y),
-                x_max: X::clipped_inner((x + w).get() - 1),
-                y_max: Y::clipped_inner((y + h).get() - 1),
-            }
-        }
-
-        pub fn unscaled(self) -> unscaled::Rect {
-            let Rect {
-                x_min,
-                y_min,
-                x_max,
-                y_max,
-            }: Rect = self;
-
-            unscaled::Rect {
-                x: x_min.get(),
-                y: y_min.get(),
-                w: x_max.get() - x_min.get() + unscaled::W(1),
-                h: y_max.get() - y_min.get() + unscaled::H(1),
-            }
-        }
+        //pub fn unscaled(self) -> unscaled::Rect {
+            //let Rect {
+                //x_min,
+                //y_min,
+                //x_max,
+                //y_max,
+            //}: Rect = self;
+//
+            //unscaled::Rect {
+                //x: x_min.get(),
+                //y: y_min.get(),
+                //w: x_max.get() - x_min.get() + unscaled::W(1),
+                //h: y_max.get() - y_min.get() + unscaled::H(1),
+            //}
+        //}
     }
 
     #[test]
@@ -429,38 +435,112 @@ pub mod command {
         assert_eq!(expected, actual);
     }
 
-    macro_rules! shared_delta_impl {
-        ($($name: path, $component_1: ident : $type_1: path, $component_2: ident : $type_2: path $(,)? );+ $(;)?) => {
-            $(
-                impl core::ops::AddAssign<$name> for Rect {
-                    fn add_assign(&mut self, other: $name) {
-                        *self = Self::from_unscaled(self.unscaled() + other);
-                    }
-                }
-            
-                impl core::ops::Add<$name> for Rect {
-                    type Output = Self;
-            
-                    fn add(mut self, other: $name) -> Self::Output {
-                        self += other;
-                        self
-                    }
-                }
-            )+
-        }
-    }
-
-    shared_delta_impl!{
-        unscaled::WH, w: unscaled::W, h: unscaled::H,;
-        unscaled::XYD, xd: unscaled::XD, yd: unscaled::YD,;
-    }
+    //macro_rules! shared_delta_impl {
+        //($($name: path, $component_1: ident : $type_1: path, $component_2: ident : $type_2: path $(,)? );+ $(;)?) => {
+            //$(
+                //impl core::ops::AddAssign<$name> for Rect {
+                    //fn add_assign(&mut self, other: $name) {
+                        //*self = Self::from_unscaled(self.unscaled() + other);
+                    //}
+                //}
+            //
+                //impl core::ops::Add<$name> for Rect {
+                    //type Output = Self;
+            //
+                    //fn add(mut self, other: $name) -> Self::Output {
+                        //self += other;
+                        //self
+                    //}
+                //}
+            //)+
+        //}
+    //}
+//
+    //shared_delta_impl!{
+        //unscaled::WH, w: unscaled::W, h: unscaled::H,;
+        //unscaled::XYD, xd: unscaled::XD, yd: unscaled::YD,;
+    //}
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct Command {
-        pub rect: Rect,
-        pub sprite_xy: sprite::XY<sprite::Renderable>,
-        pub colour_override: ARGB,
-    }    
+        sprite_xy: sprite::XY<sprite::Renderable>,
+        rect: Rect,
+        colour_override: ARGB,
+    }
+
+    impl Command {
+        /// If this returns None, then there's no useful command to render, because it wouldn't affect any pixels.
+        pub fn new(
+            mut sprite_xy: sprite::XY<sprite::Renderable>,
+            rect: unscaled::Rect,
+            colour_override: ARGB,
+        ) -> Option<Self> {
+            let (x, x_min_clip_amount) = if rect.x.0 == unscaled::Inner::MIN {
+                // sprites are not allowed to be large enough to still be on screen if placed here.
+                return None
+            } else if rect.x.0 < 0 {
+                (0, -rect.x.0)
+            } else {
+                // We can cast because we checked it's not negative
+                (rect.x.0 as u16, 0)
+            };
+            let (y, y_min_clip_amount) = if rect.y.0 == unscaled::Inner::MIN {
+                // sprites are not allowed to be large enough to still be on screen if placed here.
+                return None
+            } else if rect.y.0 < 0 {
+                (0, -rect.y.0)
+            } else {
+                // We can cast because we checked it's not negative
+                (rect.y.0 as u16, 0)
+            };
+
+            let x_max_raw = x as unscaled::NextUp + rect.w.get() as unscaled::NextUp;
+            let y_max_raw = y as unscaled::NextUp + rect.h.get() as unscaled::NextUp;
+
+            let x_max = if x_max_raw > X_MAX_SIGNED {
+                X::MAX
+            } else if x_max_raw < 0 {
+                return None
+            } else {
+                X(x_max_raw as Inner)
+            };
+
+            let y_max = if y_max_raw > Y_MAX_SIGNED {
+                Y::MAX
+            } else if y_max_raw < 0 {
+                return None
+            } else {
+                Y(y_max_raw as Inner)
+            };
+
+            let clipped = Rect {
+                x_min: X(x),
+                y_min: Y(y),
+                x_max,
+                y_max,
+            };
+
+            if clipped.x_max.0 <= clipped.x_min.0 {
+                return None
+            }
+            if clipped.y_max.0 <= clipped.y_min.0 {
+                return None
+            }
+
+            sprite_xy.x += unscaled::W::new(x_min_clip_amount);
+            sprite_xy.y += unscaled::H::new(y_min_clip_amount);
+
+            Some(Command {
+                rect: clipped,
+                sprite_xy,
+                colour_override,
+            })
+        }
+
+        pub fn rect(&self) -> Rect { self.rect }
+        pub fn sprite_xy(&self) -> sprite::XY<sprite::Renderable> { self.sprite_xy }
+        pub fn colour_override(&self) -> ARGB { self.colour_override }
+    }
 }
 pub use command::Command;
 
@@ -738,7 +818,7 @@ pub mod arrow_timer {
     }
 
     /// The max W value that will be returned from `offset`.
-    pub const MAX_W: unscaled::W = unscaled::W(0);
+    pub const MAX_W: unscaled::W = unscaled::W::ZERO;
     /// The max H value that will be returned from `offset`.
     pub const MAX_H: unscaled::H = unscaled::H::TWO;
 

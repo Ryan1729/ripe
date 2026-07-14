@@ -569,19 +569,19 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
             const SPACING: unscaled::Inner = 20;
 
             let menu_y = unscaled::Y(SPACING);
-            let menu_h = unscaled::H(platform_types::command::HEIGHT - 120);
+            let menu_h = unscaled::H::new(platform_types::command::HEIGHT_SIGNED - 120);
 
-            let goal_outer_w = unscaled::W(120 - SPACING);
+            let goal_outer_w = unscaled::W::new(120 - SPACING);
 
             let inv_outer_rect = unscaled::Rect {
                 x: unscaled::X(SPACING),
                 y: menu_y,
-                w: unscaled::W(platform_types::command::WIDTH - (SPACING * 3)) - goal_outer_w,
+                w: unscaled::W::new(platform_types::command::WIDTH_SIGNED - (SPACING * 3)) - goal_outer_w,
                 h: menu_h,
             };
 
             let goal_outer_rect = unscaled::Rect {
-                x: inv_outer_rect.x + inv_outer_rect.w + unscaled::W(SPACING),
+                x: inv_outer_rect.x + inv_outer_rect.w + unscaled::W::new(SPACING),
                 y: menu_y,
                 w: goal_outer_w,
                 h: menu_h,

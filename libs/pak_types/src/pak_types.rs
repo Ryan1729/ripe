@@ -6,7 +6,9 @@ use vec1::Grid1;
 pub mod unscaled {
     ///! Values are in pixels.
 
-    pub type Inner = u16;
+    pub type Inner = i16;
+    // Useful for intermeadiate calculations
+    pub type NextUp = i16;
 
     pub const fn inner_from_u8(byte: u8) -> Inner {
         byte as Inner
@@ -19,8 +21,6 @@ pub mod unscaled {
     fn f32_from_inner(inner: Inner) -> f32 {
         inner.into()
     }
-
-    pub type SignedInner = i16;
 
     macro_rules! def {
         ($($name: ident, $inner_name: ident = $inner_type: ident)+) => {
@@ -47,10 +47,52 @@ pub mod unscaled {
     def!{
         X, XInner = Inner
         Y, YInner = Inner
-        W, WInner = Inner
-        H, HInner = Inner
-        XD, XDInner = SignedInner
-        YD, YDInner = SignedInner
+        XD, XDInner = Inner
+        YD, YDInner = Inner
+    }
+
+    pub type WInner = Inner;
+    #[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct W(WInner);
+
+    impl W {
+        pub const fn new(inner: WInner) -> W {
+            W(if inner < 0 { 0 } else { inner })
+        }
+        pub const fn get(self) -> WInner {
+            self.0
+        }
+        pub const fn u16(self) -> u16 {
+            self.0 as u16
+        }
+    }
+
+    impl From<W> for WInner {
+        fn from(to_convert: W) -> WInner {
+            WInner::from(to_convert.0)
+        }
+    }
+
+    pub type HInner = Inner;
+    #[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct H(HInner);
+
+    impl H {
+        pub const fn new(inner: HInner) -> H {
+            H(if inner < 0 { 0 } else { inner })
+        }
+        pub const fn get(self) -> HInner {
+            self.0
+        }
+        pub const fn u16(self) -> u16 {
+            self.0 as u16
+        }
+    }
+
+    impl From<H> for HInner {
+        fn from(to_convert: H) -> HInner {
+            HInner::from(to_convert.0)
+        }
     }
 
     pub const fn w_to_usize(w: W) -> usize {
@@ -269,8 +311,8 @@ pub mod unscaled {
 
         fn sub(self, other: XY) -> Self::Output {
             XYD {
-                xd: XD(self.x.0 as SignedInner - other.x.0 as SignedInner),
-                yd: YD(self.y.0 as SignedInner - other.y.0 as SignedInner),
+                xd: XD(self.x.0 as Inner - other.x.0 as Inner),
+                yd: YD(self.y.0 as Inner - other.y.0 as Inner),
             }
         }
     }
@@ -413,7 +455,7 @@ pub mod unscaled {
             $(
                 impl $name {
                     pub fn usize(self) -> usize {
-                        self.0.into()
+                        self.u16().into()
                     }
 
                     // Note: this won't work for signed types: -1 >> 1 == -1, not 0
@@ -425,7 +467,7 @@ pub mod unscaled {
         }
     }
     shared_unsigned_impl!{
-        X Y W H
+        W H
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -741,7 +783,7 @@ pub mod unscaled {
 
     shared_delta_impl!{
         WH w: W h: H Inner,
-        XYD xd: XD yd: YD SignedInner,
+        XYD xd: XD yd: YD Inner,
     }
 }
 
@@ -824,7 +866,7 @@ pub mod sprite {
 
     impl <Marker> core::ops::AddAssign<W> for X<Marker> {
         fn add_assign(&mut self, other: W) {
-            self.0 += other.0;
+            self.0 += other.u16();
         }
     }
 
@@ -838,12 +880,12 @@ pub mod sprite {
     }
 
     pub const fn x_const_add_w<Marker>(x: X<Marker>, w: W) -> X<Marker> {
-        X(x.0 + w.0, PhantomData)
+        X(x.0 + w.u16(), PhantomData)
     }
 
     impl <Marker> core::ops::AddAssign<H> for Y<Marker> {
         fn add_assign(&mut self, other: H) {
-            self.0 += other.0;
+            self.0 += other.u16();
         }
     }
 
@@ -857,7 +899,7 @@ pub mod sprite {
     }
 
     pub const fn y_const_add_h<Marker>(y: Y<Marker>, h: H) -> Y<Marker> {
-        Y(y.0 + h.0, PhantomData)
+        Y(y.0 + h.u16(), PhantomData)
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -972,14 +1014,14 @@ pub mod sprite {
 
         /// The largest amount of tiles that can be placed in a grid, given the COMMAND_WIDTH and COMMAND_HEIGHT,
         /// and this spec's tile W/H.
-        pub fn max_tile_counts(&self) -> (u16, u16) {
+        pub fn max_tile_counts(&self) -> (i16, i16) {
             let tile = self.tile();
             let tile_w = tile.w;
             let tile_h = tile.h;
 
             (
-                (gfx_sizes::COMMAND_WIDTH / tile_w.get()).into(),
-                (gfx_sizes::COMMAND_HEIGHT / tile_h.get()).into(),
+                gfx_sizes::COMMAND_WIDTH_SIGNED / tile_w.get(),
+                gfx_sizes::COMMAND_HEIGHT_SIGNED / tile_h.get(),
             )
         }
 
@@ -997,14 +1039,14 @@ pub mod sprite {
             }
         }
 
-        pub fn xy_from_tile_sprite<TileSprite: Into<Inner>>(&self, tile_sprite: TileSprite) -> XY<Renderable> {
+        pub fn xy_from_tile_sprite<TileSprite: Into<u16>>(&self, tile_sprite: TileSprite) -> XY<Renderable> {
             let tile = self.tile();
-            let tiles_per_row = Inner::from(self.tiles_per_row());
-            let tile_sprite = tile_sprite.into();
+            let tiles_per_row = unscaled::Inner::from(self.tiles_per_row());
+            let tile_sprite: unscaled::Inner = tile_sprite.into().try_into().expect("tile_sprite too large");
 
             XY::<Marker> {
-                x: x(0) + W(tile_sprite % tiles_per_row) * tile.w.get(),
-                y: y(0) + H(tile_sprite / tiles_per_row) * tile.h.get(),
+                x: x(0) + W::new(tile_sprite % tiles_per_row) * tile.w.get(),
+                y: y(0) + H::new(tile_sprite / tiles_per_row) * tile.h.get(),
             }.apply(self)
         }
     }
@@ -1092,76 +1134,76 @@ pub mod sprite {
         fn default() -> Self {
             Self {
                 base_font: spec::<BaseFont>(SpecPieces{
-                    offset: WH{ w: W(0), h: H(0) },
-                    tile: WH{ w: W(8), h: H(8) },
+                    offset: WH{ w: W::new(0), h: H::new(0) },
+                    tile: WH{ w: W::new(8), h: H::new(8) },
                     tiles_per_row: 16,
                 }),
                 base_tiles: spec::<BaseTiles>(SpecPieces{
-                    offset: WH{ w: W(32), h: H(128) },
-                    tile: WH{ w: W(16), h: H(16) },
+                    offset: WH{ w: W::new(32), h: H::new(128) },
+                    tile: WH{ w: W::new(16), h: H::new(16) },
                     tiles_per_row: 6,
                 }),
                 base_ui: spec::<BaseUI>(SpecPieces{
-                    offset: WH{ w: W(0), h: H(128) },
-                    tile: WH{ w: W(8), h: H(8) },
+                    offset: WH{ w: W::new(0), h: H::new(128) },
+                    tile: WH{ w: W::new(8), h: H::new(8) },
                     tiles_per_row: 3,
                 }),
                 ice_puzzles: spec::<IcePuzzles>(SpecPieces{
-                    offset: WH{ w: W(128), h: H(0) },
-                    tile: WH{ w: W(20), h: H(20) },
+                    offset: WH{ w: W::new(128), h: H::new(0) },
+                    tile: WH{ w: W::new(20), h: H::new(20) },
                     tiles_per_row: 2,
                 }),
                 // TODO? Bundle all these S.W.O.R.D. related ones into
                 // a substruct? {
                 sword: spec::<SWORD>(SpecPieces{
-                    offset: WH{ w: W(176), h: H(0) },
-                    tile: WH{ w: W(16), h: H(16) },
+                    offset: WH{ w: W::new(176), h: H::new(0) },
+                    tile: WH{ w: W::new(16), h: H::new(16) },
                     tiles_per_row: 5,
                 }),
                 wall: spec::<Wall>(SpecPieces{
-                    offset: WH{ w: W(176 + 5 * 16), h: H(0) },
-                    tile: WH{ w: W(16), h: H(16) },
+                    offset: WH{ w: W::new(176 + 5 * 16), h: H::new(0) },
+                    tile: WH{ w: W::new(16), h: H::new(16) },
                     tiles_per_row: 16,
                 }),
                 floor: spec::<Floor>(SpecPieces{
-                    offset: WH{ w: W(176 + (5 - 1) * 16), h: H(15 * 16) },
-                    tile: WH{ w: W(16), h: H(16) },
+                    offset: WH{ w: W::new(176 + (5 - 1) * 16), h: H::new(15 * 16) },
+                    tile: WH{ w: W::new(16), h: H::new(16) },
                     tiles_per_row: 16,
                 }),
                 toggle_wall: spec::<ToggleWall>(SpecPieces{
-                    offset: WH{ w: W(176 + 5 * 16 + 16 * 16), h: H(0) },
-                    tile: WH{ w: W(16), h: H(16) },
+                    offset: WH{ w: W::new(176 + 5 * 16 + 16 * 16), h: H::new(0) },
+                    tile: WH{ w: W::new(16), h: H::new(16) },
                     tiles_per_row: 16,
                 }),
                 // }
                 bold: spec::<BOLD>(SpecPieces{
-                    offset: WH{ w: W(256), h: H(256) },
-                    tile: WH{ w: W(16), h: H(16) },
+                    offset: WH{ w: W::new(256), h: H::new(256) },
+                    tile: WH{ w: W::new(16), h: H::new(16) },
                     tiles_per_row: 8,
                 }),
                 hex_pieces: spec::<HexPieces>(SpecPieces{
-                    offset: WH{ w: W(384), h: H(256) },
-                    tile: WH{ w: W(40), h: H(11) },
+                    offset: WH{ w: W::new(384), h: H::new(256) },
+                    tile: WH{ w: W::new(40), h: H::new(11) },
                     tiles_per_row: 1,
                 }),
                 hex_hop_mobs: spec::<HexHopMobs>(SpecPieces{
-                    offset: WH{ w: W(384 + 40), h: H(256) },
-                    tile: WH{ w: W(20), h: H(20) },
+                    offset: WH{ w: W::new(384 + 40), h: H::new(256) },
+                    tile: WH{ w: W::new(20), h: H::new(20) },
                     tiles_per_row: 5,
                 }),
                 hex_twiddle_tiles: spec::<HexTwiddleTiles>(SpecPieces{
-                    offset: WH{ w: W(256), h: H(256 + 80) },
-                    tile: WH{ w: W(56), h: H(48) },
+                    offset: WH{ w: W::new(256), h: H::new(256 + 80) },
+                    tile: WH{ w: W::new(56), h: H::new(48) },
                     tiles_per_row: 6,
                 }),
                 hex_twiddle_pieces: spec::<HexTwiddlePieces>(SpecPieces{
-                    offset: WH{ w: W(256), h: H(256 + 80 + 48 * 3) },
-                    tile: WH{ w: W(20), h: H(20) },
+                    offset: WH{ w: W::new(256), h: H::new(256 + 80 + 48 * 3) },
+                    tile: WH{ w: W::new(20), h: H::new(20) },
                     tiles_per_row: 25,
                 }),
                 hex_twiddle_sidebar: spec::<HexTwiddleSidebar>(SpecPieces{
-                    offset: WH{ w: W(448), h: H(256) },
-                    tile: WH{ w: W(40), h: H(40) },
+                    offset: WH{ w: W::new(448), h: H::new(256) },
+                    tile: WH{ w: W::new(40), h: H::new(40) },
                     tiles_per_row: 8,
                 }),
             }

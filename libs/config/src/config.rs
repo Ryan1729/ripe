@@ -700,8 +700,8 @@ mod rune_based {
                             let parent_key = ik!(key);
 
                             pieces.offset = WH {
-                                w: W(get_int!(offset, "w", parent_key)),
-                                h: H(get_int!(offset, "h", parent_key)),
+                                w: W::new(get_int!(offset, "w", parent_key)),
+                                h: H::new(get_int!(offset, "h", parent_key)),
                             };
                         }
                     }
@@ -716,8 +716,8 @@ mod rune_based {
                             let parent_key = ik!(key);
 
                             pieces.tile = WH {
-                                w: W(get_int!(tile, "w", parent_key)),
-                                h: H(get_int!(tile, "h", parent_key)),
+                                w: W::new(get_int!(tile, "w", parent_key)),
+                                h: H::new(get_int!(tile, "h", parent_key)),
                             };
                         }
                     }

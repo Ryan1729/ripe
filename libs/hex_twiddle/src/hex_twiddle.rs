@@ -1249,17 +1249,17 @@ impl State {
         input: Input,
         _speaker: &mut Speaker,
     ) {
-        const SIDEBAR_W: unscaled::W = unscaled::W(128);
+        const SIDEBAR_W: unscaled::W = unscaled::W::new(128);
         const SIDEBAR_RECT: unscaled::Rect = unscaled::Rect {
-            x: unscaled::X(0 + command::WIDTH - SIDEBAR_W.0),
+            x: unscaled::X(0 + command::WIDTH_SIGNED - SIDEBAR_W.get()),
             y: unscaled::Y(0),
             w: SIDEBAR_W,
-            h: unscaled::H(command::HEIGHT),
+            h: unscaled::H::new(command::HEIGHT_SIGNED),
         };
 
         const SCREEN_CENTER: unscaled::XY = unscaled::XY {
-            x: unscaled::X(command::WIDTH/2),
-            y: unscaled::Y(command::HEIGHT/2),
+            x: unscaled::X(command::WIDTH_SIGNED/2),
+            y: unscaled::Y(command::HEIGHT_SIGNED/2),
         };
 
         let tile_wh = specs.hex_twiddle_sidebar.tile();
@@ -1500,7 +1500,7 @@ impl State {
                             }
 
                             if let Some(dir) = pan_dir {
-                                const CAMERA_MOVE_AMOUNT: unscaled::SignedInner = 5;
+                                const CAMERA_MOVE_AMOUNT: unscaled::Inner = 5;
 
                                 match dir {
                                     Dir::Up => { self.camera_offset -= unscaled::YD(CAMERA_MOVE_AMOUNT); }
@@ -1840,8 +1840,8 @@ impl State {
 
                 let menu_options = get_available_menu_options(&self.mobs, self.selectrum_at);
 
-                const OPTION_W: unscaled::W = unscaled::W(120);
-                const OPTION_H: unscaled::H = unscaled::H(25);
+                const OPTION_W: unscaled::W = unscaled::W::new(120);
+                const OPTION_H: unscaled::H = unscaled::H::new(25);
 
                 commands.nine_slice(
                     gfx::nine_slice::CONTEXT_MENU,
@@ -1858,7 +1858,7 @@ impl State {
                 for i in 0..menu_options.len() {
                     commands.print_line(
                         menu_options[i].1.as_ref(),
-                        at + unscaled::WH{ w: unscaled::W(6), h: unscaled::H(9) },
+                        at + unscaled::WH{ w: unscaled::W::new(6), h: unscaled::H::new(9) },
                         4
                     );
 
@@ -2010,8 +2010,8 @@ impl State {
             }
 
             let upper_left_xy = unscaled::XY {
-                x: SIDEBAR_RECT.x + unscaled::W(4),
-                y: SIDEBAR_RECT.y + unscaled::H(128)
+                x: SIDEBAR_RECT.x + unscaled::W::new(4),
+                y: SIDEBAR_RECT.y + unscaled::H::new(128)
             };
 
             let (

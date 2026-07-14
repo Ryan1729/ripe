@@ -15,17 +15,17 @@ fn str_to_sprite_xy(spec: &sprite::Spec::<IcePuzzles>, s: &str) -> sprite::XY<Ic
     let tile_w = tile.w;
     let tile_h = tile.h;
     let (w, h) = match s {
-        "☐" => (W(0), H(0)),
-        "☒" => (W(0), 1 * tile_h),
-        "\u{E010}" => (W(0), 2 * tile_h),
-        "\u{E011}" => (W(0), 3 * tile_h),
-        "\u{E012}" => (W(0), 4 * tile_h),
-        "\u{E013}" => (W(0), 5 * tile_h),
-        "\u{E014}" => (W(0), 6 * tile_h),
-        "\u{E015}" => (W(0), 7 * tile_h),
-        "\u{E016}" => (W(0), 8 * tile_h),
-        "\u{E017}" => (W(0), 9 * tile_h),
-        "\u{E018}" => (W(0), 10 * tile_h),
+        "☐" => (W::new(0), H::new(0)),
+        "☒" => (W::new(0), 1 * tile_h),
+        "\u{E010}" => (W::new(0), 2 * tile_h),
+        "\u{E011}" => (W::new(0), 3 * tile_h),
+        "\u{E012}" => (W::new(0), 4 * tile_h),
+        "\u{E013}" => (W::new(0), 5 * tile_h),
+        "\u{E014}" => (W::new(0), 6 * tile_h),
+        "\u{E015}" => (W::new(0), 7 * tile_h),
+        "\u{E016}" => (W::new(0), 8 * tile_h),
+        "\u{E017}" => (W::new(0), 9 * tile_h),
+        "\u{E018}" => (W::new(0), 10 * tile_h),
         "@" => (1 * tile_w, 0 * tile_h),
         "#" => (1 * tile_w, 1 * tile_h),
         "$" => (1 * tile_w, 2 * tile_h),
@@ -49,7 +49,7 @@ fn str_to_sprite_xy(spec: &sprite::Spec::<IcePuzzles>, s: &str) -> sprite::XY<Ic
         //"╝" => (5 * tile_w, 4 * tile_h),
         _ => {
             debug_assert!(false, "unknown tile str: \"{s}\"");
-            (W(0), H(0))
+            (W::new(0), H::new(0))
         }
     };
 

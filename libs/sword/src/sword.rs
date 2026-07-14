@@ -2295,7 +2295,7 @@ impl State {
             max_tile_h = 1;
         }
 
-        let width = TilesWidth::new(max_tile_w).expect("Don't set a 0 width!");
+        let width = TilesWidth::new(max_tile_w as _).expect("Don't set a 0 width!");
         let mut tiles = {
             // Proposal for tiles generation:
             //     Overall idea: Start with a completable level and add compliciations to it, that keep it solvable.
@@ -2348,7 +2348,7 @@ impl State {
             //
             // End of planning/proposals
 
-            let sizes = Sizes::new(max_tile_w, max_tile_h);
+            let sizes = Sizes::new(max_tile_w as _, max_tile_h as _);
 
             let width_usize = usize::from(width.get());
 
@@ -3139,8 +3139,8 @@ impl State {
             let xy = i_to_xy(self.tiles.width, i);
 
             let base_xy = unscaled::XY {
-                x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
-                y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
+                x: unscaled::X(xy.x.0 as unscaled::Inner * tile_w.get()),
+                y: unscaled::Y(xy.y.0 as unscaled::Inner * tile_h.get())
             };
 
             let (rect, s_xy) = match tile.sprite_index {
@@ -3170,8 +3170,8 @@ impl State {
 
         let mut draw_at_position_pieces = |xy: XY, offset_xy, tile_sprite| {
             let base_xy = unscaled::XY {
-                x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
-                y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
+                x: unscaled::X(xy.x.0 as unscaled::Inner * tile_w.get()),
+                y: unscaled::Y(xy.y.0 as unscaled::Inner * tile_h.get())
             };
 
             match tile_sprite {

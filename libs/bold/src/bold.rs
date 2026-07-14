@@ -1233,8 +1233,8 @@ impl State {
 
         let mut draw_tile_sprite = |xy: XY, sprite: TileSprite| {
             let base_xy = unscaled::XY {
-                x: unscaled::X(unscaled::Inner::from(xy.x.0) * tile_w.get()),
-                y: unscaled::Y(unscaled::Inner::from(xy.y.0) * tile_h.get())
+                x: unscaled::X(xy.x.0 as unscaled::Inner * tile_w.get()),
+                y: unscaled::Y(xy.y.0 as unscaled::Inner * tile_h.get())
             };
 
             commands.sspr(

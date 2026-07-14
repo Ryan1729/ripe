@@ -140,11 +140,9 @@ impl Commands {
             &mut self.commands,
             self.shake_xd,
             self.shake_yd,
-            Command {
-                sprite_xy,
-                rect: command::Rect::from_unscaled(unscaled_rect),
-                colour_override,
-            }
+            sprite_xy,
+            unscaled_rect,
+            colour_override,
         );
     }
 
@@ -267,8 +265,12 @@ mod print {
             const SPRITES_PER_ROW: Inner = 16;
         
             sprite::XY::<BaseFont> {
-                x: sprite::x::<BaseFont>(0) + (sprite_number % SPRITES_PER_ROW) * spec.tile().w,
-                y: sprite::y::<BaseFont>(0) + (sprite_number / SPRITES_PER_ROW) * spec.tile().h,
+                x: sprite::x::<BaseFont>(0) + sprite::W::new(
+                    ((sprite_number % SPRITES_PER_ROW) * spec.tile().w.u16()).try_into().expect("bad char x")
+                ),
+                y: sprite::y::<BaseFont>(0) + sprite::H::new(
+                    ((sprite_number / SPRITES_PER_ROW) * spec.tile().h.u16()).try_into().expect("bad char y")
+                ),
             }
         }
 
@@ -277,16 +279,14 @@ mod print {
             command_vec,
             shake_xd,
             shake_yd,
-            Command {
-                sprite_xy,
-                rect: Rect::from_unscaled(unscaled::Rect {
-                    x,
-                    y,
-                    w: spec.tile().w,
-                    h: spec.tile().h,
-                }),
-                colour_override: PALETTE[colour as usize],
-            }
+            sprite_xy,
+            unscaled::Rect {
+                x,
+                y,
+                w: spec.tile().w,
+                h: spec.tile().h,
+            },
+            PALETTE[colour as usize],
         );
     }
     
@@ -325,13 +325,13 @@ mod print {
         colour: PaletteIndex,
     ) {
         for (y, text_line) in text::lines(to_print)
-            .skip((top_index_with_offset as u16 / spec.tile().h.get()) as usize)
-            .take(usize::from(command::HEIGHT * spec.tile().h))
+            .skip((top_index_with_offset as unscaled::Inner / spec.tile().h.get()) as usize)
+            .take(usize::from(command::HEIGHT * spec.tile().h.u16()))
             .enumerate()
         {
             let y = y as unscaled::Inner;
     
-            let offset = top_index_with_offset as u16 % spec.tile().h.get();
+            let offset = top_index_with_offset as unscaled::Inner % spec.tile().h.get();
     
             line(
                 command_vec,
@@ -345,7 +345,7 @@ mod print {
                 // speed up, then slow down or something? or is the offset
                 // calculation just wrong? Maybe it won't look right unless
                 // we add more in-between frames?
-                + unscaled::H(
+                + unscaled::H::new(
                     (y * spec.tile().h.get())
                     - offset
                 ),
@@ -359,16 +359,16 @@ fn push_with_screenshake(
     command_vec: &mut Vec<Command>, 
     shake_xd: unscaled::XD,
     shake_yd: unscaled::YD,
-    mut command: Command
+    sprite_xy: sprite::XY<sprite::Renderable>,
+    mut rect: unscaled::Rect,
+    colour_override: ARGB,
 ) {
-    command.rect.x_min += shake_xd;
-    command.rect.y_min += shake_yd;
-    command.rect.x_max += shake_xd;
-    command.rect.y_max += shake_yd;
+    rect.x += shake_xd;
+    rect.y += shake_yd;
 
-    command_vec.push(
-        command
-    );
+    if let Some(command) = Command::new(sprite_xy, rect, colour_override) {
+        command_vec.push(command);
+    }
 }
 
 pub mod speech {
@@ -380,17 +380,17 @@ pub mod speech {
 
     pub const OUTER_RECT: unscaled::Rect = unscaled::Rect {
         x: unscaled::X(SPACING),
-        y: unscaled::Y(platform_types::command::HEIGHT - 120),
-        w: unscaled::W(platform_types::command::WIDTH - (SPACING * 2)),
-        h: unscaled::H(120),
+        y: unscaled::Y(platform_types::command::HEIGHT_SIGNED - 120),
+        w: unscaled::W::new(platform_types::command::WIDTH_SIGNED - (SPACING * 2)),
+        h: unscaled::H::new(120),
     };
 
     pub(crate) fn render(commands: &mut Commands, speech: &models::Speech) {
         let mut inner_rect = nine_slice::inner_rect(commands.ui_edge_wh(), OUTER_RECT);
 
         // TODO? Bother figuring out why these particular adjustments are needed to make it look right?
-        const X_NUDGE: unscaled::W = unscaled::W(2);
-        const Y_NUDGE: unscaled::H = unscaled::H(2);
+        const X_NUDGE: unscaled::W = unscaled::W::new(2);
+        const Y_NUDGE: unscaled::H = unscaled::H::new(2);
 
         inner_rect.x = unscaled::x_const_add_w(inner_rect.x, X_NUDGE);
         inner_rect.w = unscaled::w_const_sub(inner_rect.w, unscaled::w_const_mul(X_NUDGE, 2));
@@ -415,8 +415,8 @@ pub mod next_arrow {
     pub const TALKING: Sprite = 0;
     pub const INVENTORY: Sprite = 1;
 
-    const ARROW_W: unscaled::W = unscaled::W(8);
-    const ARROW_H: unscaled::H = unscaled::H(4);
+    const ARROW_W: unscaled::W = unscaled::W::new(8);
+    const ARROW_H: unscaled::H = unscaled::H::new(4);
 
     pub(crate) fn next_arrow_in_corner_of(
         commands: &mut Commands,
