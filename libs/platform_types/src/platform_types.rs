@@ -494,8 +494,8 @@ pub mod command {
                 (rect.y.0 as u16, 0)
             };
 
-            let x_max_raw = x as unscaled::NextUp + rect.w.get() as unscaled::NextUp;
-            let y_max_raw = y as unscaled::NextUp + rect.h.get() as unscaled::NextUp;
+            let x_max_raw = x as unscaled::NextUp + rect.w.get() as unscaled::NextUp - 1;
+            let y_max_raw = y as unscaled::NextUp + rect.h.get() as unscaled::NextUp - 1;
 
             let x_max = if x_max_raw > X_MAX_SIGNED {
                 X::MAX
