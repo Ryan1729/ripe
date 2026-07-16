@@ -98,38 +98,6 @@ pub mod command {
         pub y_max: Y,
     }
 
-    impl Rect {
-
-    }
-
-    #[test]
-    fn from_unscaled_then_unscaled_is_identity_on_this_example() {
-        let expected = Rect {
-            x_min: X::clipped_inner(2),
-            y_min: Y::clipped_inner(3),
-            x_max: X::clipped_inner(5),
-            y_max: Y::clipped_inner(7),
-        };
-
-        let actual = Rect::from_unscaled(expected.unscaled());
-
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn unscaled_then_from_unscaled_is_identity_on_this_example() {
-        let expected = unscaled::Rect {
-            x: unscaled::X(7),
-            y: unscaled::Y(5),
-            w: unscaled::W(3),
-            h: unscaled::H(2),
-        };
-
-        let actual = Rect::from_unscaled(expected).unscaled();
-
-        assert_eq!(expected, actual);
-    }
-
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct Command {
         sprite_xy: sprite::XY<sprite::Renderable>,
@@ -163,8 +131,8 @@ pub mod command {
                 (rect.y.0 as u16, 0)
             };
 
-            let x_max_raw = x as unscaled::NextUp + rect.w.get() as unscaled::NextUp - 1;
-            let y_max_raw = y as unscaled::NextUp + rect.h.get() as unscaled::NextUp - 1;
+            let x_max_raw = x as unscaled::NextUp + (rect.w.get() as unscaled::NextUp - x_min_clip_amount) - 1;
+            let y_max_raw = y as unscaled::NextUp + (rect.h.get() as unscaled::NextUp - y_min_clip_amount) - 1;
 
             let x_max = if x_max_raw > X_MAX_SIGNED {
                 X::MAX
@@ -212,6 +180,42 @@ pub mod command {
     }
 }
 pub use command::Command;
+
+#[cfg(test)]
+mod command_new_works {
+    use super::*;
+
+    #[test]
+    fn on_this_found_example() {
+        let actual = Command::new(
+            sprite::XY {
+                x: sprite::x(
+                    256,
+                ),
+                y: sprite::y(
+                    432,
+                ),
+            },
+            unscaled::Rect {
+                x: unscaled::X(
+                    160,
+                ),
+                y: unscaled::Y(
+                    -210,
+                ),
+                w: unscaled::W::new(
+                    56,
+                ),
+                h: unscaled::H::new(
+                    48,
+                ),
+            },
+            0
+        );
+
+        assert_eq!(actual, None);
+    }
+}
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Input {

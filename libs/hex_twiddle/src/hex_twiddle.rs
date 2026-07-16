@@ -941,6 +941,7 @@ pub struct State {
     pub frame_count: FrameCount,
     pub turn: Turn,
     pub camera_offset: CameraOffset,
+    pub hide_sidebar: bool,
 }
 
 fn next_turn(turn: Turn) -> Turn {
@@ -1629,6 +1630,10 @@ impl State {
             }
         }
 
+        if input.pressed_this_frame(Button::SELECT) {
+            self.hide_sidebar = !self.hide_sidebar;
+        }
+
         // Note: Selectrum should not be moved after this line, this frame.
         let selectrum_xy = qrs_to_unscaled(self.selectrum_at, self.camera_offset);
 
@@ -1966,7 +1971,7 @@ impl State {
         // Render sidebar
         //
 
-        {
+        if !self.hide_sidebar {
             // Use the raw commands here to avoid the camera offset
             let commands = &mut commands.commands;
 
