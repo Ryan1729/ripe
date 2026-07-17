@@ -196,7 +196,7 @@ use offset::Offset;
 
 
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Twiddle {
     #[default]
     OneSixth,
@@ -985,6 +985,41 @@ mod menu_option {
 }
 use menu_option::{MenuOption, get_available_menu_options};
 
+pub type GoalTracker = [bool; Symbol::ALL.len()];
+
+pub struct GoalTrackers {
+    pub player: GoalTracker,
+    pub cpu: GoalTracker,
+}
+
+fn check_goal(tiles: &Tiles, mobs: &Mobs) -> GoalTrackers {
+    let mut player_tracker: GoalTracker = <_>::default();
+    let mut cpu_tracker: GoalTracker = <_>::default();
+
+    for (key, mob) in mobs.iter() {
+        if let Some(symbol) = tiles.get(&key).and_then(|t| t.kind.symbol()) {
+            let tracker: &mut GoalTracker = match mob.sprite {
+                PLAYER_MAIN_BASE..=PLAYER_MAIN_LAST
+                | PLAYER_HELPER_BASE..=PLAYER_HELPER_LAST
+                => &mut player_tracker,
+                CPU_BASE..=CPU_LAST
+                => &mut cpu_tracker,
+                _ => {
+                    debug_assert!(false, "Unexpected mob sprite: {:?}", mob.sprite);
+                    continue
+                }
+            };
+            let symbol: Symbol = symbol;
+            tracker[symbol.index()] = true;
+        }
+    }
+
+    GoalTrackers {
+        player: player_tracker,
+        cpu: cpu_tracker,
+    }
+}
+
 struct CommandsWithCamera<'commands> {
     camera_offset: CameraOffset,
     commands: &'commands mut Commands,
@@ -1011,6 +1046,47 @@ impl CommandsWithCamera<'_> {
     ) {
         self.commands.print_line(bytes, xy + self.camera_offset, colour);
     }
+}
+
+#[derive(PartialEq, Eq)]
+enum MoveSelection {
+    NoMove,
+    Dir(qrs::Dir),
+    Warp(qrs::Dir, QRS),
+    Bump(qrs::Dir, (mobs::Target, qrs::Dir)),
+    Twiddle(QRS, Twiddle),
+}
+
+
+fn select_move_in_dir(rng: &mut Xs, tiles: &Tiles, mobs: &Mobs, mob_at: QRS, dir: qrs::Dir) -> Option<MoveSelection> {
+    let target = mob_at.neighbor(dir);
+
+    if mobs.is_free(target)
+    && tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
+        let warp_spots = viable_warp_spots(tiles, mobs, target).collect::<Vec<_>>();
+        let warp_spots_offset = xs::index(rng, 0..warp_spots.len());
+
+        for i in 0..warp_spots.len() {
+            let qrs = warp_spots[(i + warp_spots_offset) % warp_spots.len()];
+            if mobs.is_free(qrs) {
+                return Some(MoveSelection::Warp(dir, qrs));
+            }
+        }
+
+    } else if mobs.is_free(target) {
+        return Some(MoveSelection::Dir(dir));
+    } else {
+        if let Some(bumpee_target) = mobs.get_target(target) {
+            let bump_dirs = viable_bump_dirs(tiles, mobs, target).collect::<Vec<_>>();
+            let bump_dir_index = xs::index(rng, 0..bump_dirs.len());
+
+            let bump_dir = bump_dirs[bump_dir_index];
+
+            return Some(MoveSelection::Bump(dir, (bumpee_target, bump_dir)));
+        }
+    }
+
+    None
 }
 
 impl State {
@@ -1134,28 +1210,10 @@ impl State {
 
     // TODO? Wrap tiles and mobs in a struct/module to make it impossible to forget to call this?
     fn sync_doors(&mut self) {
-        type GoalTracker = [bool; Symbol::ALL.len()];
-
-        let mut player_tracker: GoalTracker = <_>::default();
-        let mut cpu_tracker: GoalTracker = <_>::default();
-
-        for (key, mob) in self.mobs.iter() {
-            if let Some(symbol) = self.tiles.get(&key).and_then(|t| t.kind.symbol()) {
-                let tracker: &mut GoalTracker = match mob.sprite {
-                    PLAYER_MAIN_BASE..=PLAYER_MAIN_LAST
-                    | PLAYER_HELPER_BASE..=PLAYER_HELPER_LAST
-                    => &mut player_tracker,
-                    CPU_BASE..=CPU_LAST
-                    => &mut cpu_tracker,
-                    _ => {
-                        debug_assert!(false, "Unexpected mob sprite: {:?}", mob.sprite);
-                        continue
-                    }
-                };
-
-                tracker[symbol.index()] = true;
-            }
-        }
+        let GoalTrackers {
+            player: player_tracker,
+            cpu: cpu_tracker,
+        } = check_goal(&self.tiles, &self.mobs);
 
         // Player wins ties.
         if player_tracker.iter().all(|&b| b) {
@@ -1272,14 +1330,6 @@ impl State {
         // Update Section
         //
         //
-
-
-
-        // TODO either add a way to pan the screen, or ensure that the twiddles that move hexes off screen are not allowed
-        //      Currently seems like a pan control on the side that you can move the selectrix to would make sense
-        //          Simplest to implement design is probably 4 (6?) buttons
-        //          Another option would be like a virtual joystick thing that you can press A to grip and then move around smoothly
-        //          Could put in both?
 
         fn stick_dir(
             selection: PanSelection,
@@ -1541,59 +1591,113 @@ impl State {
                     // * Option one: Compute all possible moves, and the state once they are done, check first predicate with early out, then loop again with second predicate, etc.
                     // * Option two: Check each move, computing the states as needed, calculating all the predicates as we go, retaining only the answer and the move, so only need one extra state in memory?
                     //
-                    enum MoveSelection {
-                        NoMove,
-                        Dir(qrs::Dir),
-                        Warp(qrs::Dir, QRS),
-                        Bump(qrs::Dir, (mobs::Target, qrs::Dir)),
-                        Twiddle(QRS, Twiddle),
-                    }
-
                     let mut move_selection = MoveSelection::NoMove;
 
-                    if xs::range(&mut self.rng, 0..6) == 0 {
-                        let random_index = xs::index(&mut self.rng, 0..self.tiles.len());
-
-                        if let Some(qrs) = self.tiles.keys().nth(random_index) {
-                            move_selection = MoveSelection::Twiddle(
-                                *qrs,
-                                Twiddle::ALL[xs::index(&mut self.rng, 0..Twiddle::ALL.len())]
-                            );
+                    if let mobs::Target::Player(..) = mob_target {
+                        macro_rules! twiddle_usefully {
+                            () => {
+                                // Twiddle randomly
+                                // TODO avoid twiddling in a way that inconvenices the player
+                                // TODO? Try to trap enemy pieces specifcally?
+                                //    How do we define that?
+                                let random_index = xs::index(&mut self.rng, 0..self.tiles.len());
+        
+                                if let Some(qrs) = self.tiles.keys().nth(random_index) {
+                                    move_selection = MoveSelection::Twiddle(
+                                        *qrs,
+                                        Twiddle::ALL[xs::index(&mut self.rng, 0..Twiddle::ALL.len())]
+                                    );
+                                }
+                            }
                         }
-                    } else {
-                        let move_dirs = viable_move_dirs(&self.tiles, *mob_at).collect::<Vec<_>>();
-                        let move_dir_offset = xs::index(&mut self.rng, 0..move_dirs.len());
 
-                        'move_dir: for i in 0..move_dirs.len() {
-                            let dir = move_dirs[(i + move_dir_offset) % move_dirs.len()];
-                            let target = mob_at.neighbor(dir);
+                        // TODO refactor to have one global door mode, to avoid cases like this.
+                        //    Or mabye calculate it with check_goal as needed, instead of storing it.
+                        let mut door_mode = DoorMode::default();
+                        for (_, tile) in &mut self.tiles {
+                            if tile.is_door() {
+                                door_mode = tile.door_mode;
+                            }
+                        }
 
-                            if self.mobs.is_free(target)
-                            && self.tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
-                                let warp_spots = viable_warp_spots(&self.tiles, &self.mobs, target).collect::<Vec<_>>();
-                                let warp_spots_offset = xs::index(&mut self.rng, 0..warp_spots.len());
+                        match door_mode {
+                            DoorMode::Player(..) => {
+                                twiddle_usefully!();
+                            }
+                            DoorMode::Closed => {
+                                assert_eq!(Symbol::ALL.len(), 2);
 
-                                for i in 0..warp_spots.len() {
-                                    let qrs = warp_spots[(i + warp_spots_offset) % warp_spots.len()];
-                                    if self.mobs.is_free(qrs) {
-                                        move_selection = MoveSelection::Warp(dir, qrs);
+                                if self.tiles.get(mob_at).map(|t| t.kind.symbol().is_some()).unwrap_or(false) {
+                                    twiddle_usefully!();
+                                } else {
+                                    // Move towards a currently uncovered goal piece
+                                    
+                                    let GoalTrackers {
+                                        player: mut player_tracker,
+                                        ..
+                                    } = check_goal(&self.tiles, &self.mobs);
+    
+                                    // Make the two pieces going for the same uncovered piece less likely.
+                                    // TODO? Account for the case where they are almost on one of the 
+                                    //       symbols?
+                                    // TODO? Would having each piece checking to see whether the other 
+                                    //       piece is going to go for the same symbol be worth it?
+                                    xs::shuffle(&mut self.rng, &mut player_tracker);
+    
+                                    'player_tracker: for (i, covered) in player_tracker.iter().enumerate() {
+                                        if !covered {
+                                            let symbol = Symbol::ALL[i];
+                                            
+                                            // TODO better algorithm here
+                                            //      Find shortest path to each tile with the matching symbol
+                                            //      Find which of those paths is shortest
+                                            //      Pick one of those randomly
 
-                                        break 'move_dir
+                                            let move_dirs = viable_move_dirs(&self.tiles, *mob_at).collect::<Vec<_>>();
+                                            let move_dir_offset = xs::index(&mut self.rng, 0..move_dirs.len());
+                    
+                                            for i in 0..move_dirs.len() {
+                                                let dir = move_dirs[(i + move_dir_offset) % move_dirs.len()];
+                                                let target = mob_at.neighbor(dir);
+                                                if self.tiles.get(&target)
+                                                    .map(|t: &Tile| t.kind.symbol() == Some(symbol))
+                                                    .unwrap_or(false) {
+                                                    if let Some(m_s) = select_move_in_dir(&mut self.rng, &self.tiles, &self.mobs, *mob_at, dir) {
+                                                        move_selection = m_s;
+                        
+                                                        break 'player_tracker
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
+                            }
+                        }
+                    }
 
-                            } else if self.mobs.is_free(target) {
-                                move_selection = MoveSelection::Dir(dir);
-
-                                break 'move_dir
-                            } else {
-                                if let Some(bumpee_target) = self.mobs.get_target(target) {
-                                    let bump_dirs = viable_bump_dirs(&self.tiles, &self.mobs, target).collect::<Vec<_>>();
-                                    let bump_dir_index = xs::index(&mut self.rng, 0..bump_dirs.len());
-
-                                    let bump_dir = bump_dirs[bump_dir_index];
-
-                                    move_selection = MoveSelection::Bump(dir, (bumpee_target, bump_dir));
+                    if move_selection == MoveSelection::NoMove {
+                        // Random move
+                        if xs::range(&mut self.rng, 0..6) == 0 {
+                            let random_index = xs::index(&mut self.rng, 0..self.tiles.len());
+    
+                            if let Some(qrs) = self.tiles.keys().nth(random_index) {
+                                move_selection = MoveSelection::Twiddle(
+                                    *qrs,
+                                    Twiddle::ALL[xs::index(&mut self.rng, 0..Twiddle::ALL.len())]
+                                );
+                            }
+                        } else {
+                            let move_dirs = viable_move_dirs(&self.tiles, *mob_at).collect::<Vec<_>>();
+                            let move_dir_offset = xs::index(&mut self.rng, 0..move_dirs.len());
+    
+                            'move_dir: for i in 0..move_dirs.len() {
+                                let dir = move_dirs[(i + move_dir_offset) % move_dirs.len()];
+    
+                                if let Some(m_s) = select_move_in_dir(&mut self.rng, &self.tiles, &self.mobs, *mob_at, dir) {
+                                    move_selection = m_s;
+    
+                                    break 'move_dir
                                 }
                             }
                         }
