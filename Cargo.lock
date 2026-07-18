@@ -793,6 +793,7 @@ version = "0.1.0"
 dependencies = [
  "gfx",
  "gfx_sizes",
+ "pathfinding",
  "platform_types",
  "qrs",
  "xs",

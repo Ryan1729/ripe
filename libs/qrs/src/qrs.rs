@@ -95,6 +95,16 @@ pub struct QRS {
     pub q: Q,
 }
 
+pub fn dir_between(from: QRS, to: QRS) -> Option<Dir> {
+    for dir in Dir::ALL {
+        if from.neighbor(dir) == to {
+            return Some(dir)
+        }
+    }
+
+    None
+}
+
 #[macro_export]
 macro_rules! qr_ {
     ($q_inner: literal $(,)? $r_inner: literal) => {

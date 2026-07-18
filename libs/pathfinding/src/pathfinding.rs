@@ -80,10 +80,87 @@ pub fn next_xy_along_shortest_path<IndexContext, Tile, Direction, XY>(
     }
 }
 
+fn find_xy_and_count<IndexContext, Direction, XY>(
+    index_context: &IndexContext,
+    came_from: &CameFrom<XY>,
+    from: XY,
+    mut current: XY,
+) -> (XY, usize)
+    where XY: XYTrait<IndexContext, Direction> + std::fmt::Debug,
+        Direction: Clone + Copy {
+
+    let mut current_i = current.to_i(index_context);
+    let mut count = 0;
+
+    while let Some(&xy) = came_from.get(&current_i) {
+        if xy == from {
+            // Leave `current` as the one before `to`.
+            break
+        }
+
+        current = xy;
+        current_i = current.to_i(index_context);
+
+        count += 1;
+    }
+
+    (current, count)
+}
+
+
+
+// Returns next xy to go to, to move along the shortest path from `from` to a .
+pub fn next_xy_to_nearest_of_given_xys<IndexContext, Tile, Direction, XY>(
+    index_context: &IndexContext,
+    tile_count: TileCount,
+    all_dirs: &[Direction],
+    from: XY,
+    targets: &[XY],
+    can_pass_through: &dyn Fn(XY) -> bool
+) -> Result<XY, Error> 
+    where XY: XYTrait<IndexContext, Direction> + std::fmt::Debug,
+        Direction: Clone + Copy
+{
+    let mut shortest_path_start_and_len = None;
+    for &target_xy in targets {
+        match calculate_intermediates::<IndexContext, Tile, Direction, XY>(
+            index_context,
+            tile_count,
+            all_dirs,
+            from,
+            target_xy,
+            can_pass_through,
+        ) {
+            Ok(Intermediates { came_from, .. }) => {
+                let (xy, path_len) = find_xy_and_count(
+                    index_context,
+                    &came_from,
+                    from,
+                    target_xy,
+                );
+        
+                if path_len < shortest_path_start_and_len.map(|(_, len)| len).unwrap_or(usize::MAX) {
+                    shortest_path_start_and_len = Some((xy, path_len));
+                }
+            },
+            Err(other_err) => return Err(other_err),
+        }
+    }
+
+    if let Some((xy, _)) = shortest_path_start_and_len {
+        Ok(xy)
+    } else {
+        Err(Error::Unreachable)
+    }
+
+    
+}
+
 #[cfg(false)]
 // Returns path in order from `to` to `from`, likely reverse of what you'd expect.
 pub fn shortest_path<const TILES_LENGTH: usize, Tile, Direction, XY>(
     tiles: &[Tile],
+    tile_count: TileCount,
     all_dirs: &[Direction],
     from: XY,
     to: XY,
@@ -92,8 +169,9 @@ pub fn shortest_path<const TILES_LENGTH: usize, Tile, Direction, XY>(
     where XY: XYTrait<Direction>,
         Direction: Clone + Copy
 {
-    fn reconstruct_path<const TILES_LENGTH: usize, Direction, XY>(
-        came_from: &[XY],
+    fn reconstruct_path<Direction, XY>(
+        tile_count: TileCount,
+        came_from: &CameFrom<XY>,
         mut current: XY,
     ) -> Vec1<XY>
         where XY: XYTrait<Direction>,
@@ -105,17 +183,17 @@ pub fn shortest_path<const TILES_LENGTH: usize, Tile, Direction, XY>(
         // that the length is an even power of 2, then sqrt() is the same as shifting down by 
         // half the bits used. For example, 0b1_0000_0000 = 0b1_0000 * 0b1_0000.
         let capacity = tile_count >> (tile_count.trailing_zeros() / 2);
-
+    
         let mut output = Vec1::singleton_with_capacity(current, capacity);
-
+    
         let mut current_i = current.to_i();
-
+    
         while current_i < came_from.len() {
             current = came_from[current_i];
             output.push(current);
             current_i = current.to_i();
         }
-
+    
         output
     }
 

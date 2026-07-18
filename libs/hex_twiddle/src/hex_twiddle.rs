@@ -22,6 +22,20 @@ const HEX_Y_SCALE: i16 = 25;
 const HEX_X_OFFSET: i16 = 160;
 const HEX_Y_OFFSET: i16 = 140;
 
+struct IndexCtx;
+
+impl pathfinding::XYTrait<IndexCtx, qrs::Dir> for QRS {
+    fn to_i(self, ctx: &IndexCtx) -> usize {
+        todo!();
+    }
+    fn apply_dir(self, dir: qrs::Dir) -> Option<Self> {
+        todo!();
+    }
+    fn chebyshev_distance_to(self, other: Self) -> usize {
+        todo!()
+    }
+}
+
 type CameraOffset = unscaled::XYD;
 
 fn qrs_to_unscaled(qrs: QRS, camera_offset: CameraOffset) -> unscaled::XY {
@@ -1644,30 +1658,33 @@ impl State {
                                     //       piece is going to go for the same symbol be worth it?
                                     xs::shuffle(&mut self.rng, &mut player_tracker);
     
-                                    'player_tracker: for (i, covered) in player_tracker.iter().enumerate() {
+                                    for (i, covered) in player_tracker.iter().enumerate() {
                                         if !covered {
                                             let symbol = Symbol::ALL[i];
                                             
-                                            // TODO better algorithm here
-                                            //      Find shortest path to each tile with the matching symbol
-                                            //      Find which of those paths is shortest
-                                            //      Pick one of those randomly
+                                            let mut targets = Vec::with_capacity(4);
 
-                                            let move_dirs = viable_move_dirs(&self.tiles, *mob_at).collect::<Vec<_>>();
-                                            let move_dir_offset = xs::index(&mut self.rng, 0..move_dirs.len());
-                    
-                                            for i in 0..move_dirs.len() {
-                                                let dir = move_dirs[(i + move_dir_offset) % move_dirs.len()];
-                                                let target = mob_at.neighbor(dir);
-                                                if self.tiles.get(&target)
-                                                    .map(|t: &Tile| t.kind.symbol() == Some(symbol))
-                                                    .unwrap_or(false) {
-                                                    if let Some(m_s) = select_move_in_dir(&mut self.rng, &self.tiles, &self.mobs, *mob_at, dir) {
-                                                        move_selection = m_s;
-                        
-                                                        break 'player_tracker
-                                                    }
+                                            for (key, tile) in self.tiles.iter() {
+                                                if Some(symbol) == tile.kind.symbol() {
+                                                    targets.push(*key);
                                                 }
+                                            }
+
+                                            if let Some(m_s) = pathfinding::next_xy_to_nearest_of_given_xys::<IndexCtx, Tile, qrs::Dir, qrs::QRS>(
+                                                &IndexCtx,
+                                                self.tiles.len(),
+                                                &qrs::Dir::ALL,
+                                                *mob_at,
+                                                &targets,
+                                                &|qrs| self.tiles.get(&qrs).is_some()
+                                            ).ok().and_then(
+                                                |qrs| qrs::dir_between(*mob_at, qrs)
+                                            ).and_then(
+                                                |dir| select_move_in_dir(&mut self.rng, &self.tiles, &self.mobs, *mob_at, dir)
+                                            ) {
+                                                move_selection = m_s;
+                
+                                                break
                                             }
                                         }
                                     }
