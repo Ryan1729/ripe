@@ -22,17 +22,28 @@ const HEX_Y_SCALE: i16 = 25;
 const HEX_X_OFFSET: i16 = 160;
 const HEX_Y_OFFSET: i16 = 140;
 
-struct IndexCtx;
+struct IndexCtx<'tiles>(&'tiles Tiles);
 
-impl pathfinding::XYTrait<IndexCtx, qrs::Dir> for QRS {
+impl pathfinding::XYTrait<IndexCtx<'_>, qrs::Dir> for QRS {
     fn to_i(self, ctx: &IndexCtx) -> usize {
-        todo!();
+        for (i, key) in ctx.0.keys().enumerate() {
+            if self == key {
+                return i
+            }
+        }
+
+        ctx.0.len()
     }
     fn apply_dir(self, dir: qrs::Dir) -> Option<Self> {
-        todo!();
+        Some(self.neighbor(dir))
     }
     fn chebyshev_distance_to(self, other: Self) -> usize {
-        todo!()
+        // TODO? Does this actually work as a proper hueristic?
+        //       Would including S be better?
+        core::cmp::max(
+            (other.q.diff() - self.q.diff()).abs(),
+            (other.r.diff() - self.r.diff()).abs(),
+        ).try_into().unwrap_or(usize::MAX)
     }
 }
 
@@ -1078,7 +1089,7 @@ fn select_move_in_dir(rng: &mut Xs, tiles: &Tiles, mobs: &Mobs, mob_at: QRS, dir
     if mobs.is_free(target)
     && tiles.get(&target).map(|t| t.kind) == Some(TileKind::Warp) {
         let warp_spots = viable_warp_spots(tiles, mobs, target).collect::<Vec<_>>();
-        let warp_spots_offset = xs::index(rng, 0..warp_spots.len());
+        let warp_spots_offset = if warp_spots.len() == 0 { 0 } else { xs::index(rng, 0..warp_spots.len()) };
 
         for i in 0..warp_spots.len() {
             let qrs = warp_spots[(i + warp_spots_offset) % warp_spots.len()];
@@ -1092,7 +1103,7 @@ fn select_move_in_dir(rng: &mut Xs, tiles: &Tiles, mobs: &Mobs, mob_at: QRS, dir
     } else {
         if let Some(bumpee_target) = mobs.get_target(target) {
             let bump_dirs = viable_bump_dirs(tiles, mobs, target).collect::<Vec<_>>();
-            let bump_dir_index = xs::index(rng, 0..bump_dirs.len());
+            let bump_dir_index = if bump_dirs.len() == 0 { 0 } else { xs::index(rng, 0..bump_dirs.len()) };
 
             let bump_dir = bump_dirs[bump_dir_index];
 
@@ -1614,9 +1625,11 @@ impl State {
                                 // TODO avoid twiddling in a way that inconvenices the player
                                 // TODO? Try to trap enemy pieces specifcally?
                                 //    How do we define that?
+                                assert!(self.tiles.len() > 0);
                                 let random_index = xs::index(&mut self.rng, 0..self.tiles.len());
         
                                 if let Some(qrs) = self.tiles.keys().nth(random_index) {
+                                    assert!(Twiddle::ALL.len() > 0);
                                     move_selection = MoveSelection::Twiddle(
                                         *qrs,
                                         Twiddle::ALL[xs::index(&mut self.rng, 0..Twiddle::ALL.len())]
@@ -1671,7 +1684,7 @@ impl State {
                                             }
 
                                             if let Some(m_s) = pathfinding::next_xy_to_nearest_of_given_xys::<IndexCtx, Tile, qrs::Dir, qrs::QRS>(
-                                                &IndexCtx,
+                                                &IndexCtx(&self.tiles),
                                                 self.tiles.len(),
                                                 &qrs::Dir::ALL,
                                                 *mob_at,
@@ -1696,9 +1709,11 @@ impl State {
                     if move_selection == MoveSelection::NoMove {
                         // Random move
                         if xs::range(&mut self.rng, 0..6) == 0 {
+                            assert!(self.tiles.len() > 0);
                             let random_index = xs::index(&mut self.rng, 0..self.tiles.len());
     
                             if let Some(qrs) = self.tiles.keys().nth(random_index) {
+                                assert!(Twiddle::ALL.len() > 0);
                                 move_selection = MoveSelection::Twiddle(
                                     *qrs,
                                     Twiddle::ALL[xs::index(&mut self.rng, 0..Twiddle::ALL.len())]
@@ -1706,7 +1721,11 @@ impl State {
                             }
                         } else {
                             let move_dirs = viable_move_dirs(&self.tiles, *mob_at).collect::<Vec<_>>();
-                            let move_dir_offset = xs::index(&mut self.rng, 0..move_dirs.len());
+                            let move_dir_offset = if move_dirs.len() == 0 {
+                                0
+                            } else {
+                                xs::index(&mut self.rng, 0..move_dirs.len())
+                            };
     
                             'move_dir: for i in 0..move_dirs.len() {
                                 let dir = move_dirs[(i + move_dir_offset) % move_dirs.len()];

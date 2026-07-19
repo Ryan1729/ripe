@@ -74,14 +74,19 @@ impl Dir {
 }
 
 pub type Inner = i16;
+pub type Diff = i32;
 
 pub type Distance = u8;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Q(pub Inner);
 
+impl Q { pub fn diff(self) -> Diff { self.0 as Diff } }
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct R(pub Inner);
+
+impl R { pub fn diff(self) -> Diff { self.0 as Diff } }
 
 #[allow(unused)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
