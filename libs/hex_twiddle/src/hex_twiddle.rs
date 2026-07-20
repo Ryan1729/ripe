@@ -494,12 +494,13 @@ mod mobs {
     }
 
     impl Target {
-        const ALL: [Self; 6] = [
+        /// In turn order, starting with the player
+        pub const ALL: [Self; 6] = [
             Self::Player(Index::Zero),
-            Self::Player(Index::One),
-            Self::Player(Index::Two),
             Self::NonPlayer(Index::Zero),
+            Self::Player(Index::One),
             Self::NonPlayer(Index::One),
+            Self::Player(Index::Two),
             Self::NonPlayer(Index::Two),
         ];
     }
@@ -1103,7 +1104,12 @@ fn select_move_in_dir(rng: &mut Xs, tiles: &Tiles, mobs: &Mobs, mob_at: QRS, dir
     } else {
         if let Some(bumpee_target) = mobs.get_target(target) {
             let bump_dirs = viable_bump_dirs(tiles, mobs, target).collect::<Vec<_>>();
-            let bump_dir_index = if bump_dirs.len() == 0 { 0 } else { xs::index(rng, 0..bump_dirs.len()) };
+            let bump_dir_index = if bump_dirs.len() == 0 {
+                // TODO? Allow bumping other pieces to make more room?
+                return None
+            } else {
+                xs::index(rng, 0..bump_dirs.len())
+            };
 
             let bump_dir = bump_dirs[bump_dir_index];
 
@@ -1622,12 +1628,15 @@ impl State {
                         macro_rules! twiddle_usefully {
                             () => {
                                 // Twiddle randomly
-                                // TODO avoid twiddling in a way that inconvenices the player
+                                // TODO measure how close the player is to an exit now, and how far away they would be
+                                //      after the given twiddle, and if they got further away, try a different twiddle
+                                //      unless we've tried several times already.
+                                // TODO? avoid twiddling in a way that inconvenices the player in any other way?
                                 // TODO? Try to trap enemy pieces specifcally?
                                 //    How do we define that?
                                 assert!(self.tiles.len() > 0);
                                 let random_index = xs::index(&mut self.rng, 0..self.tiles.len());
-        
+
                                 if let Some(qrs) = self.tiles.keys().nth(random_index) {
                                     assert!(Twiddle::ALL.len() > 0);
                                     move_selection = MoveSelection::Twiddle(
@@ -1638,7 +1647,7 @@ impl State {
                             }
                         }
 
-                        // TODO refactor to have one global door mode, to avoid cases like this.
+                        // TODO? refactor to have one global door mode, to avoid cases like this.
                         //    Or mabye calculate it with check_goal as needed, instead of storing it.
                         let mut door_mode = DoorMode::default();
                         for (_, tile) in &mut self.tiles {
@@ -1658,23 +1667,23 @@ impl State {
                                     twiddle_usefully!();
                                 } else {
                                     // Move towards a currently uncovered goal piece
-                                    
+
                                     let GoalTrackers {
                                         player: mut player_tracker,
                                         ..
                                     } = check_goal(&self.tiles, &self.mobs);
-    
+
                                     // Make the two pieces going for the same uncovered piece less likely.
-                                    // TODO? Account for the case where they are almost on one of the 
+                                    // TODO? Account for the case where they are almost on one of the
                                     //       symbols?
-                                    // TODO? Would having each piece checking to see whether the other 
+                                    // TODO? Would having each piece checking to see whether the other
                                     //       piece is going to go for the same symbol be worth it?
                                     xs::shuffle(&mut self.rng, &mut player_tracker);
-    
+
                                     for (i, covered) in player_tracker.iter().enumerate() {
                                         if !covered {
                                             let symbol = Symbol::ALL[i];
-                                            
+
                                             let mut targets = Vec::with_capacity(4);
 
                                             for (key, tile) in self.tiles.iter() {
@@ -1696,7 +1705,7 @@ impl State {
                                                 |dir| select_move_in_dir(&mut self.rng, &self.tiles, &self.mobs, *mob_at, dir)
                                             ) {
                                                 move_selection = m_s;
-                
+
                                                 break
                                             }
                                         }
@@ -1711,7 +1720,7 @@ impl State {
                         if xs::range(&mut self.rng, 0..6) == 0 {
                             assert!(self.tiles.len() > 0);
                             let random_index = xs::index(&mut self.rng, 0..self.tiles.len());
-    
+
                             if let Some(qrs) = self.tiles.keys().nth(random_index) {
                                 assert!(Twiddle::ALL.len() > 0);
                                 move_selection = MoveSelection::Twiddle(
@@ -1726,13 +1735,13 @@ impl State {
                             } else {
                                 xs::index(&mut self.rng, 0..move_dirs.len())
                             };
-    
+
                             'move_dir: for i in 0..move_dirs.len() {
                                 let dir = move_dirs[(i + move_dir_offset) % move_dirs.len()];
-    
+
                                 if let Some(m_s) = select_move_in_dir(&mut self.rng, &self.tiles, &self.mobs, *mob_at, dir) {
                                     move_selection = m_s;
-    
+
                                     break 'move_dir
                                 }
                             }
@@ -1799,8 +1808,6 @@ impl State {
         // Render Section
         //
         //
-
-        // TODO? Display whose turn it is?
 
         // Set it before rendering in case it was modified
         commands.camera_offset = self.camera_offset;
@@ -1947,6 +1954,16 @@ impl State {
         let hex_center_offset = specs.hex_twiddle_tiles.tile() / 2;
         let piece_center_offset = specs.hex_twiddle_pieces.tile() / 2;
 
+        macro_rules! draw_piece {
+            ($commands: expr, $xy: expr, $mob: expr $(,)?) => ({
+                let mob = $mob;
+                $commands.sspr(
+                    specs.hex_twiddle_pieces.xy_from_tile_sprite(mob.sprite + mob.facing.index() as MobSprite),
+                    specs.hex_twiddle_pieces.rect($xy),
+                );
+            })
+        }
+
         for (qrs, mob) in self.mobs.iter() {
             let mut xy = qrs_to_unscaled(*qrs, self.camera_offset);
             for offset in mob.offsets {
@@ -1955,10 +1972,7 @@ impl State {
             xy += hex_center_offset;
             xy -= piece_center_offset;
 
-            commands.sspr(
-                specs.hex_twiddle_pieces.xy_from_tile_sprite(mob.sprite + mob.facing.index() as MobSprite),
-                specs.hex_twiddle_pieces.rect(xy),
-            );
+            draw_piece!(commands, xy, mob);
         }
 
         //
@@ -2120,6 +2134,48 @@ impl State {
                 SIDEBAR_RECT,
             );
 
+            const SPACING: unscaled::Inner = 4;
+            let turn_indicator_h: unscaled::H = specs.hex_twiddle_pieces.tile().h  + unscaled::H::new(SPACING * 2);
+
+            let mut turn_y = SIDEBAR_RECT.y + unscaled::H::new(SPACING);
+
+
+            for target in mobs::Target::ALL {
+                let slice = if target == self.turn {
+                    gfx::nine_slice::TALKING
+                } else {
+                    gfx::nine_slice::CONTEXT_MENU
+                };
+
+                let rect = unscaled::Rect {
+                    x: SIDEBAR_RECT.x + unscaled::W::new(SPACING),
+                    y: turn_y,
+                    w: SIDEBAR_W - unscaled::W::new(SPACING * 2),
+                    h: turn_indicator_h,
+                };
+
+                commands.nine_slice(
+                    slice,
+                    rect,
+                );
+
+                let xy = unscaled::XY {
+                    x: rect.x + unscaled::W::new(SPACING),
+                    y: rect.y + unscaled::H::new(SPACING),
+                };
+
+                let mob = &self.mobs.get(target).1;
+
+                draw_piece!(commands, xy, mob);
+
+                turn_y += turn_indicator_h + unscaled::H::new(SPACING);
+            }
+
+            let controls_upper_left_xy = unscaled::XY {
+                x: SIDEBAR_RECT.x + unscaled::W::new(SPACING),
+                y: turn_y,
+            };
+
             type SidebarSprite = u16;
 
             let up: SidebarSprite = 0;
@@ -2154,11 +2210,6 @@ impl State {
                 })
             }
 
-            let upper_left_xy = unscaled::XY {
-                x: SIDEBAR_RECT.x + unscaled::W::new(4),
-                y: SIDEBAR_RECT.y + unscaled::H::new(128)
-            };
-
             let (
                 up_sprite,
                 right_sprite,
@@ -2191,11 +2242,11 @@ impl State {
                 _ => (up, right, down, left, stick),
             };
 
-            draw_control!(up_sprite, upper_left_xy + tile_w);
-            draw_control!(left_sprite, upper_left_xy + tile_h);
-            draw_control!(stick_sprite, upper_left_xy + tile_w + tile_h);
-            draw_control!(right_sprite, upper_left_xy + tile_w + tile_w + tile_h);
-            draw_control!(down_sprite, upper_left_xy+ tile_w + tile_h + tile_h );
+            draw_control!(up_sprite, controls_upper_left_xy + tile_w);
+            draw_control!(left_sprite, controls_upper_left_xy + tile_h);
+            draw_control!(stick_sprite, controls_upper_left_xy + tile_w + tile_h);
+            draw_control!(right_sprite, controls_upper_left_xy + tile_w + tile_w + tile_h);
+            draw_control!(down_sprite, controls_upper_left_xy + tile_w + tile_h + tile_h );
         }
     }
 }
