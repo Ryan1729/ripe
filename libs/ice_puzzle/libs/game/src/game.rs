@@ -1,6 +1,6 @@
 use common::*;
 use gfx::{Commands};
-use platform_types::{command, sprite::{self, IcePuzzles}, unscaled::{self, H, W}, Button, Input, Speaker};
+use platform_types::{sprite::{self, IcePuzzles}, unscaled::{self, H, W}, Button, Input, Speaker};
 use xs::{Seed};
 
 #[derive(Clone, Debug)]

@@ -76,7 +76,10 @@ impl Dir {
 pub type Inner = i16;
 pub type Diff = i32;
 
+/// Used as parameter, can be small as a result.
 pub type Distance = u8;
+/// Used as output, Seems safer to be larger, as a result.
+pub type ManhattanDistance = u16;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Q(pub Inner);
@@ -108,6 +111,18 @@ pub fn dir_between(from: QRS, to: QRS) -> Option<Dir> {
     }
 
     None
+}
+
+pub fn distance_between(from: QRS, to: QRS) -> ManhattanDistance {
+    // Hexagon grids are like cube grids, except each haxagon is two cube movements away from the nearest one.
+    // Therefore, this is like the manhattan distance on cubes, but we divide by 2.
+
+    (
+        (from.q.0 - to.q.0).abs() as ManhattanDistance
+        + (from.r.0 - to.r.0).abs() as ManhattanDistance
+        // s is q + r, which we've inlined here.
+        + (from.q.0 + from.r.0 - (to.q.0 + to.r.0)).abs() as ManhattanDistance
+    ) / 2
 }
 
 #[macro_export]

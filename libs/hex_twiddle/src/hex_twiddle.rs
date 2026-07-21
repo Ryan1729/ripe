@@ -69,13 +69,6 @@ fn qrs_to_unscaled(qrs: QRS, camera_offset: CameraOffset) -> unscaled::XY {
 fn unscaled_to_qrs(xy: unscaled::XY, camera_offset: CameraOffset) -> QRS {
     let unscaled::XY { x: unscaled::X(x), y: unscaled::Y(y) } = xy - camera_offset;
 
-    let Ok(x) = i16::try_from(x) else {
-        return <_>::default()
-    };
-    let Ok(y) = i16::try_from(y) else {
-        return <_>::default()
-    };
-
     let unsized_x = (x - HEX_X_OFFSET) / HEX_X_SCALE;
     let unsized_y = (y - HEX_Y_OFFSET) / HEX_Y_SCALE;
 
@@ -1074,7 +1067,7 @@ impl CommandsWithCamera<'_> {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum MoveSelection {
     NoMove,
     Dir(qrs::Dir),
@@ -1082,7 +1075,6 @@ enum MoveSelection {
     Bump(qrs::Dir, (mobs::Target, qrs::Dir)),
     Twiddle(QRS, Twiddle),
 }
-
 
 fn select_move_in_dir(rng: &mut Xs, tiles: &Tiles, mobs: &Mobs, mob_at: QRS, dir: qrs::Dir) -> Option<MoveSelection> {
     let target = mob_at.neighbor(dir);
@@ -1118,6 +1110,39 @@ fn select_move_in_dir(rng: &mut Xs, tiles: &Tiles, mobs: &Mobs, mob_at: QRS, dir
     }
 
     None
+}
+
+fn apply_move(
+    tiles: &mut Tiles,
+    mobs: &mut Mobs,
+    camera_offset: CameraOffset,
+    mob_target: mobs::Target,
+    move_selection: MoveSelection,
+) {
+    match move_selection {
+        MoveSelection::NoMove => {} // Must skip turn.
+        MoveSelection::Dir(dir) => {
+            mobs.apply_dir(mob_target, dir);
+        }
+        MoveSelection::Warp(dir, qrs) => {
+            mobs.apply_warp(mob_target, dir, qrs);
+        }
+        MoveSelection::Bump(dir, (bumpee_target, bump_dir)) => {
+            mobs.apply_dir(bumpee_target, bump_dir);
+
+            // mob_target points at the bumper
+            mobs.apply_dir(mob_target, dir);
+        }
+        MoveSelection::Twiddle(qrs, twiddle_) => {
+            twiddle(
+                tiles,
+                mobs,
+                qrs,
+                twiddle_,
+                camera_offset,
+            );
+        }
+    }
 }
 
 impl State {
@@ -1381,7 +1406,11 @@ impl State {
                     let mut player_moved = false;
 
                     macro_rules! move_selectrum {
-                        () => {
+                        () => ({
+                            // We use this macro in palces where we don't happen to read
+                            // player_moved, but we want to keep sharing the code with
+                            // places that do read it.
+                            #![allow(unused_assignments)]
                             if input.pressed_this_frame(Button::UP) {
                                 let dir = if input.gamepad.contains(Button::LEFT) {
                                     qrs::Dir::DecQIncS
@@ -1406,7 +1435,7 @@ impl State {
                                 player_moved = true;
                                 self.selectrum_at = target_qrs;
                             }
-                        };
+                        });
                     }
 
                     match &mut self.ui_mode {
@@ -1599,9 +1628,9 @@ impl State {
                         }
                     }
                 }
-                other => {
+                _other => {
                     let mob_target = self.turn;
-                    let (mob_at, entity) = self.mobs.get(mob_target);
+                    let (mob_at, _entity) = self.mobs.get(mob_target);
 
                     // TODO have the choices be made with more purpose
                     //     Player allies should move towards the goal piece if the doors are not open
@@ -1625,6 +1654,29 @@ impl State {
                     let mut move_selection = MoveSelection::NoMove;
 
                     if let mobs::Target::Player(..) = mob_target {
+                        type TileDistance = u16;
+
+                        fn player_exit_distance(
+                            tiles: &Tiles,
+                            mobs: &Mobs,
+                        ) -> TileDistance {
+                            let (player_key, _) = mobs.player();
+
+                            let mut min_distance = TileDistance::MAX;
+
+                            for (tile_key, tile) in tiles.iter() {
+                                if let TileKind::Door = tile.kind {
+                                    let distance = qrs::distance_between(*player_key, *tile_key);
+    
+                                    if distance < min_distance {
+                                        min_distance = distance;
+                                    }
+                                }
+                            }
+
+                            min_distance
+                        }
+
                         macro_rules! twiddle_usefully {
                             () => {
                                 // Twiddle randomly
@@ -1632,17 +1684,48 @@ impl State {
                                 //      after the given twiddle, and if they got further away, try a different twiddle
                                 //      unless we've tried several times already.
                                 // TODO? avoid twiddling in a way that inconvenices the player in any other way?
-                                // TODO? Try to trap enemy pieces specifcally?
+                                // TODO? Try to trap enemy pieces specifically?
                                 //    How do we define that?
+                                
+                                // Required for xs::index calls below
                                 assert!(self.tiles.len() > 0);
-                                let random_index = xs::index(&mut self.rng, 0..self.tiles.len());
+                                assert!(Twiddle::ALL.len() > 0);
 
-                                if let Some(qrs) = self.tiles.keys().nth(random_index) {
-                                    assert!(Twiddle::ALL.len() > 0);
-                                    move_selection = MoveSelection::Twiddle(
-                                        *qrs,
-                                        Twiddle::ALL[xs::index(&mut self.rng, 0..Twiddle::ALL.len())]
-                                    );
+                                for _ in 0..16 {
+                                    let random_index = xs::index(&mut self.rng, 0..self.tiles.len());
+
+                                    if let Some(qrs) = self.tiles.keys().nth(random_index) {
+                                        let prospective_selection = MoveSelection::Twiddle(
+                                            *qrs,
+                                            Twiddle::ALL[xs::index(&mut self.rng, 0..Twiddle::ALL.len())]
+                                        );
+
+                                        let starting_player_exit_distance = player_exit_distance(
+                                            &self.tiles,
+                                            &self.mobs,
+                                        );
+
+                                        let mut prospective_tiles = self.tiles.clone();
+                                        let mut prospective_mobs = self.mobs.clone();
+
+                                        apply_move(
+                                            &mut prospective_tiles,
+                                            &mut prospective_mobs,
+                                            self.camera_offset,
+                                            mob_target,
+                                            prospective_selection,
+                                        );
+
+                                        let prospective_player_exit_distance = player_exit_distance(
+                                            &prospective_tiles,
+                                            &prospective_mobs,
+                                        );
+
+                                        if prospective_player_exit_distance <= starting_player_exit_distance {
+                                            move_selection = prospective_selection;
+                                            break
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1748,30 +1831,13 @@ impl State {
                         }
                     }
 
-                    match move_selection {
-                        MoveSelection::NoMove => {} // Must skip turn.
-                        MoveSelection::Dir(dir) => {
-                            self.mobs.apply_dir(mob_target, dir);
-                        }
-                        MoveSelection::Warp(dir, qrs) => {
-                            self.mobs.apply_warp(mob_target, dir, qrs);
-                        }
-                        MoveSelection::Bump(dir, (bumpee_target, bump_dir)) => {
-                            self.mobs.apply_dir(bumpee_target, bump_dir);
-
-                            // mob_target points at the bumper
-                            self.mobs.apply_dir(mob_target, dir);
-                        }
-                        MoveSelection::Twiddle(qrs, twiddle_) => {
-                            twiddle(
-                                &mut self.tiles,
-                                &mut self.mobs,
-                                qrs,
-                                twiddle_,
-                                self.camera_offset,
-                            );
-                        }
-                    }
+                    apply_move(
+                        &mut self.tiles,
+                        &mut self.mobs,
+                        self.camera_offset,
+                        mob_target,
+                        move_selection,
+                    );
 
                     self.sync_doors();
                     self.turn = next_turn(self.turn);

@@ -4,7 +4,7 @@
 /// Boulders Often Lope Downwards
 
 use gfx::{Commands};
-use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
+use platform_types::{sprite, unscaled, Button, Dir, Input, Speaker};
 use vec1::{Grid1, Grid1Spec, vec1};
 use xs::{Seed, Xs};
 

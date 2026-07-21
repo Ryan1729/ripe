@@ -1,6 +1,6 @@
 use gfx::{Commands};
 use gfx_sizes::ARGB;
-use platform_types::{command, sprite, unscaled, Button, Input, Speaker};
+use platform_types::{sprite, unscaled, Button, Input, Speaker};
 use qrs::{QRS, QRSD, Q, R};
 use xs::{Seed, Xs};
 

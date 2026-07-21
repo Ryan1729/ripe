@@ -4,9 +4,8 @@ pub use pak_types::*;
 pub type PaletteIndex = u8;
 
 pub mod command {
-    use xs::Xs;
     use gfx_sizes::ARGB;
-    use pak_types::{sprite, unscaled::{self, XD, YD}};
+    use pak_types::{sprite, unscaled};
 
     pub type Inner = u16;
     pub type SignedInner = i16;

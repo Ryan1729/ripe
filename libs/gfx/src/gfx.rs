@@ -5,7 +5,7 @@ pub mod to_tile;
 
 use gfx_sizes::ARGB;
 use pak_types::{sprite::{self, Renderable, BaseFont, BaseUI},};
-use platform_types::{Command, PALETTE, unscaled, command::{self, Rect}, arrow_timer::{self, ArrowTimer}, PaletteIndex};
+use platform_types::{Command, PALETTE, unscaled, command, arrow_timer::{self, ArrowTimer}, PaletteIndex};
 use text::byte_slice as text;
 
 /// 64k fade frames ought to be enough for anybody!
