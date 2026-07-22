@@ -1011,13 +1011,27 @@ pub struct GoalTrackers {
     pub cpu: GoalTracker,
 }
 
-fn check_goal(tiles: &Tiles, mobs: &Mobs) -> GoalTrackers {
+#[derive(Default, PartialEq, Eq)]
+enum CheckGoalMode {
+    #[default]
+    IncludePlayer,
+    ExcludePlayer,
+}
+
+fn check_goal(
+    tiles: &Tiles,
+    mobs: &Mobs,
+    mode: CheckGoalMode,
+) -> GoalTrackers {
     let mut player_tracker: GoalTracker = <_>::default();
     let mut cpu_tracker: GoalTracker = <_>::default();
 
     for (key, mob) in mobs.iter() {
         if let Some(symbol) = tiles.get(&key).and_then(|t| t.kind.symbol()) {
             let tracker: &mut GoalTracker = match mob.sprite {
+                PLAYER_MAIN_BASE..=PLAYER_MAIN_LAST if mode == CheckGoalMode::ExcludePlayer => {
+                    continue
+                },
                 PLAYER_MAIN_BASE..=PLAYER_MAIN_LAST
                 | PLAYER_HELPER_BASE..=PLAYER_HELPER_LAST
                 => &mut player_tracker,
@@ -1269,7 +1283,7 @@ impl State {
         let GoalTrackers {
             player: player_tracker,
             cpu: cpu_tracker,
-        } = check_goal(&self.tiles, &self.mobs);
+        } = check_goal(&self.tiles, &self.mobs, <_>::default());
 
         // Player wins ties.
         if player_tracker.iter().all(|&b| b) {
@@ -1730,71 +1744,65 @@ impl State {
                             }
                         }
 
-                        // TODO? refactor to have one global door mode, to avoid cases like this.
-                        //    Or mabye calculate it with check_goal as needed, instead of storing it.
-                        let mut door_mode = DoorMode::default();
-                        for (_, tile) in &mut self.tiles {
-                            if tile.is_door() {
-                                door_mode = tile.door_mode;
-                            }
-                        }
+                        let GoalTrackers {
+                            player: mut player_tracker,
+                            ..
+                        } = check_goal(
+                            &self.tiles,
+                            &self.mobs,
+                            // We don't count the player for this purpose, because the player will need 
+                            // to go through the door, so we want to move towards states where the doors
+                            // are open without counting the player.
+                            CheckGoalMode::ExcludePlayer,
+                        );
 
-                        match door_mode {
-                            DoorMode::Player(..) => {
-                                twiddle_usefully!();
-                            }
-                            DoorMode::Closed => {
-                                assert_eq!(Symbol::ALL.len(), 2);
+                        if self.tiles.get(mob_at).map(|t| t.kind.symbol().is_some()).unwrap_or(false)
+                        && player_tracker.iter().all(|&covered| covered) {
+                            twiddle_usefully!();
+                        } else {
+                            // Move towards a currently uncovered goal piece
 
-                                if self.tiles.get(mob_at).map(|t| t.kind.symbol().is_some()).unwrap_or(false) {
-                                    twiddle_usefully!();
-                                } else {
-                                    // Move towards a currently uncovered goal piece
+                            // TODO? Make the two pieces going for the same uncovered piece less likely.
+                            // TODO? Account for the case where they are almost on one of the
+                            //       symbols?
+                            // TODO? Would having each piece checking to see whether the other
+                            //       piece is going to go for the same symbol be worth it?
+                            xs::shuffle(&mut self.rng, &mut player_tracker);
 
-                                    let GoalTrackers {
-                                        player: mut player_tracker,
-                                        ..
-                                    } = check_goal(&self.tiles, &self.mobs);
+                            for (i, covered) in player_tracker.iter().enumerate() {
+                                if !covered {
+                                    let symbol = Symbol::ALL[i];
 
-                                    // Make the two pieces going for the same uncovered piece less likely.
-                                    // TODO? Account for the case where they are almost on one of the
-                                    //       symbols?
-                                    // TODO? Would having each piece checking to see whether the other
-                                    //       piece is going to go for the same symbol be worth it?
-                                    xs::shuffle(&mut self.rng, &mut player_tracker);
+                                    let mut targets = Vec::with_capacity(4);
 
-                                    for (i, covered) in player_tracker.iter().enumerate() {
-                                        if !covered {
-                                            let symbol = Symbol::ALL[i];
-
-                                            let mut targets = Vec::with_capacity(4);
-
-                                            for (key, tile) in self.tiles.iter() {
-                                                if Some(symbol) == tile.kind.symbol() {
-                                                    targets.push(*key);
-                                                }
-                                            }
-
-                                            if let Some(m_s) = pathfinding::next_xy_to_nearest_of_given_xys::<IndexCtx, Tile, qrs::Dir, qrs::QRS>(
-                                                &IndexCtx(&self.tiles),
-                                                self.tiles.len(),
-                                                &qrs::Dir::ALL,
-                                                *mob_at,
-                                                &targets,
-                                                &|qrs| self.tiles.get(&qrs).is_some()
-                                            ).ok().and_then(
-                                                |qrs| qrs::dir_between(*mob_at, qrs)
-                                            ).and_then(
-                                                |dir| select_move_in_dir(&mut self.rng, &self.tiles, &self.mobs, *mob_at, dir)
-                                            ) {
-                                                move_selection = m_s;
-
-                                                break
-                                            }
+                                    for (key, tile) in self.tiles.iter() {
+                                        if Some(symbol) == tile.kind.symbol() {
+                                            targets.push(*key);
                                         }
+                                    }
+
+                                    if let Some(m_s) = pathfinding::next_xy_to_nearest_of_given_xys::<IndexCtx, Tile, qrs::Dir, qrs::QRS>(
+                                        &IndexCtx(&self.tiles),
+                                        self.tiles.len(),
+                                        &qrs::Dir::ALL,
+                                        *mob_at,
+                                        &targets,
+                                        &|qrs| self.tiles.get(&qrs).is_some()
+                                    ).ok().and_then(
+                                        |qrs| qrs::dir_between(*mob_at, qrs)
+                                    ).and_then(
+                                        |dir| select_move_in_dir(&mut self.rng, &self.tiles, &self.mobs, *mob_at, dir)
+                                    ) {
+                                        move_selection = m_s;
+
+                                        break
                                     }
                                 }
                             }
+                        }
+
+                        if move_selection == MoveSelection::NoMove {
+                            twiddle_usefully!();
                         }
                     }
 
