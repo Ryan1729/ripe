@@ -496,6 +496,12 @@ mod mobs {
             Self::Player(Index::Two),
             Self::NonPlayer(Index::Two),
         ];
+
+        pub const ALL_PLAYER: [Self; 3] = [
+            Self::Player(Index::Zero),
+            Self::Player(Index::One),
+            Self::Player(Index::Two),
+        ];
     }
 
     const PIECES_PER_PLAYER: usize = 3;
@@ -1647,7 +1653,7 @@ impl State {
                     let (mob_at, _entity) = self.mobs.get(mob_target);
 
                     // TODO have the choices be made with more purpose
-                    //     Player allies should move towards the goal piece if the doors are not open
+                    //     Player allies should move towards the goal piece if the doors are not open ✔
                     //         Otherwise, twiddle something that traps the enemy pieces
                     //     Player enemies should attempt each of the following, in this order, until one is possible:
                     //        * move to bump the player/player allies off of the goal tiles
@@ -1666,6 +1672,27 @@ impl State {
                     // * Option two: Check each move, computing the states as needed, calculating all the predicates as we go, retaining only the answer and the move, so only need one extra state in memory?
                     //
                     let mut move_selection = MoveSelection::NoMove;
+
+                    fn move_towards_a_target(
+                        rng: &mut Xs,
+                        tiles: &Tiles,
+                        mobs: &Mobs,
+                        mob_at: QRS,
+                        targets: &[QRS],
+                    ) -> Option<MoveSelection> {
+                        pathfinding::next_xy_to_nearest_of_given_xys::<IndexCtx, Tile, qrs::Dir, qrs::QRS>(
+                            &IndexCtx(tiles),
+                            tiles.len(),
+                            &qrs::Dir::ALL,
+                            mob_at,
+                            targets,
+                            &|qrs| tiles.get(&qrs).is_some()
+                        ).ok().and_then(
+                            |qrs| qrs::dir_between(mob_at, qrs)
+                        ).and_then(
+                            |dir| select_move_in_dir(rng, tiles, mobs, mob_at, dir)
+                        )
+                    }
 
                     if let mobs::Target::Player(..) = mob_target {
                         type TileDistance = u16;
@@ -1693,10 +1720,10 @@ impl State {
 
                         macro_rules! twiddle_usefully {
                             () => {
-                                // Twiddle randomly
-                                // TODO measure how close the player is to an exit now, and how far away they would be
-                                //      after the given twiddle, and if they got further away, try a different twiddle
-                                //      unless we've tried several times already.
+                                // measure how close the player is to an exit now, and how far away they would be
+                                // after the given twiddle, and if they got further away, try a different twiddle
+                                // unless we've tried several times already.
+
                                 // TODO? avoid twiddling in a way that inconvenices the player in any other way?
                                 // TODO? Try to trap enemy pieces specifically?
                                 //    How do we define that?
@@ -1781,17 +1808,12 @@ impl State {
                                         }
                                     }
 
-                                    if let Some(m_s) = pathfinding::next_xy_to_nearest_of_given_xys::<IndexCtx, Tile, qrs::Dir, qrs::QRS>(
-                                        &IndexCtx(&self.tiles),
-                                        self.tiles.len(),
-                                        &qrs::Dir::ALL,
+                                    if let Some(m_s) = move_towards_a_target(
+                                        &mut self.rng,
+                                        &self.tiles,
+                                        &self.mobs,
                                         *mob_at,
                                         &targets,
-                                        &|qrs| self.tiles.get(&qrs).is_some()
-                                    ).ok().and_then(
-                                        |qrs| qrs::dir_between(*mob_at, qrs)
-                                    ).and_then(
-                                        |dir| select_move_in_dir(&mut self.rng, &self.tiles, &self.mobs, *mob_at, dir)
                                     ) {
                                         move_selection = m_s;
 
@@ -1803,6 +1825,36 @@ impl State {
 
                         if move_selection == MoveSelection::NoMove {
                             twiddle_usefully!();
+                        }
+                    } else {
+                        // Is not a player ally
+                        
+                        let mut targets = Vec::with_capacity(mobs::Target::ALL_PLAYER.len());
+
+                        for target in mobs::Target::ALL_PLAYER {
+                            // It seems reasonable at the moment to not have the non-players distinguish
+                            // between the player and player allies, as a kinda aestethic thing.
+
+                            let (key, _) = self.mobs.get(target);
+                            
+                            if self.tiles.get(mob_at).map(|t| t.kind.symbol().is_some()).unwrap_or(false) {
+                                targets.push(*key);
+                            }
+                        }
+
+                        // Don't always pick the player (the first target)
+                        // TODO? Prioritize ones which would close the doors?
+                        //       Or maybe the one that is closest?
+                        xs::shuffle(&mut self.rng, &mut targets);
+
+                        if let Some(m_s) = move_towards_a_target(
+                            &mut self.rng,
+                            &self.tiles,
+                            &self.mobs,
+                            *mob_at,
+                            &targets,
+                        ) {
+                            move_selection = m_s;
                         }
                     }
 
