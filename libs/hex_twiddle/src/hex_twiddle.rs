@@ -595,6 +595,11 @@ mod mobs {
             current.1 = entity;
         }
 
+        #[cfg(test)]
+        pub fn set_for_test(&mut self, target: Target, key: Key, entity: Entity) {
+            self.set(target, key, entity);
+        }
+
         pub fn player(&self) -> &(Key, Entity) {
             &self.player_mobs[0]
         }
@@ -802,7 +807,7 @@ mod twiddle_works {
         let mut mobs = Mobs::new(<_>::default());
 
         let mut expected_mobs = mobs.clone();
-        let Some(mut previous_ref) = expected_mobs.iter_mut().last() else {
+        let Some(previous_ref) = expected_mobs.iter_mut().last() else {
             panic!("No mobs")
         };
         let mut previous = previous_ref.clone();
@@ -818,7 +823,7 @@ mod twiddle_works {
             &mut mobs,
             <_>::default(),
             Twiddle::OneSixth,
-            self.camera_offset,
+            <_>::default(),
         );
 
         let mut broke_early;
@@ -1130,6 +1135,85 @@ fn select_move_in_dir(rng: &mut Xs, tiles: &Tiles, mobs: &Mobs, mob_at: QRS, dir
     }
 
     None
+}
+
+fn move_towards_a_target(
+    rng: &mut Xs,
+    tiles: &Tiles,
+    mobs: &Mobs,
+    mob_at: QRS,
+    targets: &[QRS],
+) -> Option<MoveSelection> {
+    pathfinding::next_xy_to_nearest_of_given_xys::<IndexCtx, Tile, qrs::Dir, qrs::QRS>(
+        &IndexCtx(tiles),
+        tiles.len(),
+        &qrs::Dir::ALL,
+        mob_at,
+        targets,
+        &|qrs| tiles.get(&qrs).is_some()
+    ).ok().and_then(
+        |qrs| qrs::dir_between(mob_at, qrs)
+    ).and_then(
+        |dir| select_move_in_dir(rng, tiles, mobs, mob_at, dir)
+    )
+}
+
+#[cfg(test)]
+mod move_towards_a_target_works {
+    use super::*;
+
+    #[test]
+    fn on_this_bump_case() {
+        let mut rng = <_>::default();
+
+        let mut mobs = Mobs::new(<_>::default());
+
+        let all_targets = [
+            mobs::Target::Player(mobs::Index::Zero),
+            mobs::Target::Player(mobs::Index::One),
+            mobs::Target::Player(mobs::Index::Two),
+            mobs::Target::NonPlayer(mobs::Index::Zero),
+            mobs::Target::NonPlayer(mobs::Index::One),
+            mobs::Target::NonPlayer(mobs::Index::Two),
+        ];
+
+        let exit_1_at = qr!(0, 0);
+        let exit_2_at = qr!(1, 0);
+        let a_1_at    = qr!(2, 0);
+        let a_2_at    = qr!(3, 0);
+        let b_1_at    = qr!(4, 0);
+        let b_2_at    = qr!(5, 0);
+        let b_3_at    = qr!(6, 0);
+
+        mobs.set_for_test(all_targets[0], exit_1_at, <_>::default());
+        mobs.set_for_test(all_targets[1], exit_2_at, <_>::default());
+        mobs.set_for_test(all_targets[2], a_1_at, <_>::default());
+        mobs.set_for_test(all_targets[3], a_2_at, <_>::default());
+        mobs.set_for_test(all_targets[4], b_1_at, <_>::default());
+        mobs.set_for_test(all_targets[5], b_2_at, <_>::default());
+        // leave a blank on putpose to keep this a valid board
+
+        let mut tiles = Tiles::default();
+        tiles.insert(exit_1_at, Tile { kind: TileKind::Door, ..<_>::default() });
+        tiles.insert(exit_2_at, Tile { kind: TileKind::Door, ..<_>::default() });
+        tiles.insert(a_1_at, Tile { kind: TileKind::Symbol(Symbol::A), ..<_>::default() });
+        tiles.insert(a_2_at, Tile { kind: TileKind::Symbol(Symbol::A), ..<_>::default() });
+        tiles.insert(b_1_at, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
+        tiles.insert(b_2_at, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
+        tiles.insert(b_3_at, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
+
+        let targets = [a_1_at];
+
+        let actual = move_towards_a_target(
+            &mut rng,
+            &tiles,
+            &mobs,
+            exit_2_at,
+            &targets,
+        );
+
+        assert!(matches!(actual, Some(MoveSelection::Bump(_, _))), "{actual:?}");
+    }
 }
 
 fn apply_move(
@@ -1672,27 +1756,6 @@ impl State {
                     // * Option two: Check each move, computing the states as needed, calculating all the predicates as we go, retaining only the answer and the move, so only need one extra state in memory?
                     //
                     let mut move_selection = MoveSelection::NoMove;
-
-                    fn move_towards_a_target(
-                        rng: &mut Xs,
-                        tiles: &Tiles,
-                        mobs: &Mobs,
-                        mob_at: QRS,
-                        targets: &[QRS],
-                    ) -> Option<MoveSelection> {
-                        pathfinding::next_xy_to_nearest_of_given_xys::<IndexCtx, Tile, qrs::Dir, qrs::QRS>(
-                            &IndexCtx(tiles),
-                            tiles.len(),
-                            &qrs::Dir::ALL,
-                            mob_at,
-                            targets,
-                            &|qrs| tiles.get(&qrs).is_some()
-                        ).ok().and_then(
-                            |qrs| qrs::dir_between(mob_at, qrs)
-                        ).and_then(
-                            |dir| select_move_in_dir(rng, tiles, mobs, mob_at, dir)
-                        )
-                    }
 
                     if let mobs::Target::Player(..) = mob_target {
                         type TileDistance = u16;
