@@ -1162,8 +1162,144 @@ fn move_towards_a_target(
 mod move_towards_a_target_works {
     use super::*;
 
+    // TODO Make these tests mor etabel driven, then print out the table needed after each move during a playtest
+    //      so we can capture observed weirdness into a test
+
     #[test]
-    fn on_this_bump_case() {
+    fn on_this_found_bump_case() {
+        let mut rng = <_>::default();
+
+        let mut mobs = Mobs::new(<_>::default());
+
+        let all_targets = [
+            mobs::Target::Player(mobs::Index::Zero),
+            mobs::Target::Player(mobs::Index::One),
+            mobs::Target::Player(mobs::Index::Two),
+            mobs::Target::NonPlayer(mobs::Index::Zero),
+            mobs::Target::NonPlayer(mobs::Index::One),
+            mobs::Target::NonPlayer(mobs::Index::Two),
+        ];
+
+        //  
+        //    b3    a2
+        //       b2    b4
+        //          b1    e1
+        //             a1 
+        //                e2
+
+        let exit_1_at = qr!(1, -1);
+        let exit_2_at = qr!(1, 0);
+        let a_1_at    = qr!(0, 0);
+        let a_2_at    = qr!(-1, -1);
+        let b_1_at    = qr!(-1, 0);
+        let b_2_at    = qr!(-2, 0);
+        let b_3_at    = qr!(-3, 0);
+        let b_4_at    = qr!(0, -1);
+
+        let bumper_at = exit_2_at;
+        let player_at = exit_1_at;
+        let bumpee_at = a_1_at;
+        let empty_at = b_4_at;
+        let ally_at = b_1_at;
+
+        assert_eq!(bumper_at.neighbor(qrs::Dir::UP), player_at);
+        assert_eq!(bumper_at.neighbor(qrs::Dir::UP_LEFT), bumpee_at);
+        assert_eq!(bumpee_at.neighbor(qrs::Dir::UP), empty_at);
+        assert_eq!(bumpee_at.neighbor(qrs::Dir::UP_LEFT), ally_at);
+        
+        mobs.set_for_test(all_targets[0], exit_1_at, <_>::default());
+        mobs.set_for_test(all_targets[1], exit_2_at, <_>::default());
+        mobs.set_for_test(all_targets[2], b_1_at, <_>::default());
+        mobs.set_for_test(all_targets[3], bumpee_at, <_>::default());
+        mobs.set_for_test(all_targets[4], b_2_at, <_>::default());
+        mobs.set_for_test(all_targets[5], b_3_at, <_>::default());
+
+        let mut tiles = Tiles::default();
+        tiles.insert(exit_1_at, Tile { kind: TileKind::Door, ..<_>::default() });
+        tiles.insert(exit_2_at, Tile { kind: TileKind::Door, ..<_>::default() });
+        tiles.insert(a_1_at, Tile { kind: TileKind::Symbol(Symbol::A), ..<_>::default() });
+        tiles.insert(a_2_at, Tile { kind: TileKind::Symbol(Symbol::A), ..<_>::default() });
+        tiles.insert(b_1_at, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
+        tiles.insert(b_2_at, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
+        tiles.insert(b_3_at, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
+        tiles.insert(b_4_at, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
+
+        let targets = [a_1_at];
+
+        let actual = move_towards_a_target(
+            &mut rng,
+            &tiles,
+            &mobs,
+            exit_2_at,
+            &targets,
+        );
+
+        match actual {
+            Some(MoveSelection::Bump(dir, (bumpee_target, bump_dir)))
+                if bump_dir == qrs::Dir::UP 
+                && bumpee_target == all_targets[3] => {},
+            _ => {panic!("actual not as expected! {actual:?}");},
+        }
+    }
+
+    #[test]
+    fn on_this_island_bump_case() {
+        let mut rng = <_>::default();
+
+        let mut mobs = Mobs::new(qr!(5, 5));
+
+        let all_targets = [
+            mobs::Target::Player(mobs::Index::Zero),
+            mobs::Target::Player(mobs::Index::One),
+            mobs::Target::Player(mobs::Index::Two),
+            mobs::Target::NonPlayer(mobs::Index::Zero),
+            mobs::Target::NonPlayer(mobs::Index::One),
+            mobs::Target::NonPlayer(mobs::Index::Two),
+        ];
+
+        //
+        //       a1
+        //    e1    
+        //
+
+        let mover_at = qr!(-1, 1);
+        let empty_at = qr!(0, 0);
+
+        assert_eq!(mover_at.neighbor(qrs::Dir::UP_RIGHT), empty_at);
+        
+        mobs.set_for_test(all_targets[1], mover_at, <_>::default());
+
+        let mut tiles = Tiles::default();
+        tiles.insert(mover_at, Tile { kind: TileKind::Door, ..<_>::default() });
+        tiles.insert(empty_at, Tile { kind: TileKind::Symbol(Symbol::A), ..<_>::default() });
+
+        for target in all_targets {
+            if target == all_targets[1] { continue }
+
+            let &(key, _) = mobs.get(target);
+
+            tiles.insert(key, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
+        }
+
+        let targets = [empty_at];
+
+        let actual = move_towards_a_target(
+            &mut rng,
+            &tiles,
+            &mobs,
+            mover_at,
+            &targets,
+        );
+
+        match actual {
+            Some(MoveSelection::Dir(dir)) if dir == qrs::Dir::UP_RIGHT => {},
+            _ => {panic!("actual not as expected! {actual:?}");},
+        }
+    }
+
+    #[cfg(false)] // Not sure we want this or not
+    #[test]
+    fn on_this_multi_bump_case() {
         let mut rng = <_>::default();
 
         let mut mobs = Mobs::new(<_>::default());
@@ -1191,7 +1327,7 @@ mod move_towards_a_target_works {
         mobs.set_for_test(all_targets[3], a_2_at, <_>::default());
         mobs.set_for_test(all_targets[4], b_1_at, <_>::default());
         mobs.set_for_test(all_targets[5], b_2_at, <_>::default());
-        // leave a blank on putpose to keep this a valid board
+        // leave a blank on purpose to keep this a valid board
 
         let mut tiles = Tiles::default();
         tiles.insert(exit_1_at, Tile { kind: TileKind::Door, ..<_>::default() });
@@ -2356,6 +2492,8 @@ impl State {
                 let mob = &self.mobs.get(target).1;
 
                 draw_piece!(commands, xy, mob);
+
+                // TODO render what piece kind they are on
 
                 turn_y += turn_indicator_h + unscaled::H::new(SPACING);
             }

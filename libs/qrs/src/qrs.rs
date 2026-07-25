@@ -5,12 +5,12 @@
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Dir {
     #[default]
-    DecRIncS,
-    DecRIncQ,
-    DecSIncQ,
-    DecSIncR,
-    DecQIncR,
-    DecQIncS,
+    DecRIncS, // Up
+    DecRIncQ, // Up-Right
+    DecSIncQ, // Down-Right
+    DecSIncR, // Down
+    DecQIncR, // Down-Left
+    DecQIncS, // Up-Left
 }
 
 type RotationAmount = i8;
@@ -24,6 +24,13 @@ impl Dir {
         Dir::DecQIncR,
         Dir::DecQIncS,
     ];
+
+    pub const UP: Dir = Dir::DecRIncS;
+    pub const UP_RIGHT: Dir = Dir::DecRIncQ;
+    pub const DOWN_RIGHT: Dir = Dir::DecSIncQ;
+    pub const DOWN: Dir = Dir::DecSIncR;
+    pub const DOWN_LEFT: Dir = Dir::DecQIncR;
+    pub const UP_LEFT: Dir = Dir::DecQIncS;
 
     fn basis(self) -> QRSD {
         match self {
