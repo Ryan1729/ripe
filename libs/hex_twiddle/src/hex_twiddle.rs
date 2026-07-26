@@ -1158,27 +1158,132 @@ fn move_towards_a_target(
     )
 }
 
-#[cfg(test)]
+#[cfg(any(true, test))]
 mod move_towards_a_target_works {
     use super::*;
 
-    // TODO Make these tests mor etabel driven, then print out the table needed after each move during a playtest
-    //      so we can capture observed weirdness into a test
+    #[allow(unused)]
+    pub fn print_table(tiles: &Tiles, mobs: &Mobs, mob_target: mobs::Target, targets: &[QRS]) {
+        println!("let tiles_spec = [");
+        for (key, tile) in tiles.iter() {
+            println!("    ({key:?}, {:?}),", tile.kind);
+        }
+        println!("];\n");
+
+        println!("let mobs_spec = [");
+        for target in mobs::Target::ALL {
+            let &(key, _) = mobs.get(target);
+
+            println!("    ({target:?}, {key:?}),");
+        }
+        println!("];\n");
+
+        println!("let targets = [");
+        for target in targets {
+            println!("    {target:?},");
+        }
+        println!("];\n");
+
+        println!("let mob_target = {mob_target:?};\n");
+    }
 
     #[test]
-    fn on_this_found_bump_case() {
+    fn on_this_found_island_case() {
+        use super::{TileKind::*, Symbol::*, mobs::{Index::*, Target::*}};
+
         let mut rng = <_>::default();
+
+        let tiles_spec = [
+            (QRS { r: R(-5), q: Q(4) }, Symbol(A)),
+            (QRS { r: R(-5), q: Q(5) }, Symbol(B)),
+            (QRS { r: R(-4), q: Q(1) }, Symbol(A)),
+            (QRS { r: R(-4), q: Q(4) }, Warp),
+            (QRS { r: R(-3), q: Q(1) }, Door),
+            (QRS { r: R(-2), q: Q(1) }, Symbol(B)),
+            (QRS { r: R(-2), q: Q(2) }, Door),
+            (QRS { r: R(-1), q: Q(4) }, Warp),
+            (QRS { r: R(0), q: Q(-2) }, Warp),
+            (QRS { r: R(0), q: Q(1) }, Symbol(B)),
+            (QRS { r: R(1), q: Q(1) }, Warp),
+            (QRS { r: R(2), q: Q(-4) }, Warp),
+            (QRS { r: R(2), q: Q(-3) }, Door),
+            (QRS { r: R(2), q: Q(2) }, Symbol(B)),
+            (QRS { r: R(3), q: Q(-2) }, Door),
+            (QRS { r: R(3), q: Q(0) }, Symbol(B)),
+            (QRS { r: R(3), q: Q(1) }, Warp),
+            (QRS { r: R(4), q: Q(-2) }, Symbol(B)),
+            (QRS { r: R(5), q: Q(1) }, Symbol(B)),
+        ];
+        
+        let mobs_spec = [
+            (Player(Zero), QRS { r: R(-4), q: Q(1) }),
+            (NonPlayer(Zero), QRS { r: R(5), q: Q(1) }),
+            (Player(One), QRS { r: R(3), q: Q(-2) }),
+            (NonPlayer(One), QRS { r: R(-3), q: Q(1) }),
+            (Player(Two), QRS { r: R(-5), q: Q(4) }),
+            (NonPlayer(Two), QRS { r: R(-1), q: Q(4) }),
+        ];
+        
+        let targets = [
+            QRS { r: R(-5), q: Q(5) },
+            QRS { r: R(-2), q: Q(1) },
+            QRS { r: R(0), q: Q(1) },
+            QRS { r: R(2), q: Q(2) },
+            QRS { r: R(3), q: Q(0) },
+            // (Player(One), QRS { r: R(3), q: Q(-2) }),
+            // DOWN == DecSIncR, so we expect this one to be selected.
+            QRS { r: R(4), q: Q(-2) },
+            QRS { r: R(5), q: Q(1) },
+        ];
+        
+        let mob_target = Player(One);
+
+        // Setup
 
         let mut mobs = Mobs::new(<_>::default());
 
-        let all_targets = [
-            mobs::Target::Player(mobs::Index::Zero),
-            mobs::Target::Player(mobs::Index::One),
-            mobs::Target::Player(mobs::Index::Two),
-            mobs::Target::NonPlayer(mobs::Index::Zero),
-            mobs::Target::NonPlayer(mobs::Index::One),
-            mobs::Target::NonPlayer(mobs::Index::Two),
-        ];
+        for (target, at) in mobs_spec {
+            mobs.set_for_test(target, at, <_>::default());
+        }
+
+        let mut tiles = Tiles::default();
+
+        for (at, kind) in tiles_spec {
+            tiles.insert(at, Tile { kind, ..<_>::default() });
+        }
+
+        let mob_at = {
+            let mut mob_at = None;
+
+            for (target, at) in mobs_spec {
+                if mob_target == target {
+                    mob_at = Some(at);
+                    break
+                }
+            }
+
+            mob_at
+        }.expect("mob_at was None");
+
+        let actual = move_towards_a_target(
+            &mut rng,
+            &tiles,
+            &mobs,
+            mob_at,
+            &targets,
+        );
+
+        match actual {
+            Some(MoveSelection::Dir(dir)) if dir == qrs::Dir::DOWN => {},
+            _ => {panic!("actual not as expected! {actual:?}");},
+        }
+    }
+
+    #[test]
+    fn on_this_found_bump_case() {
+        use super::{TileKind::*, Symbol::*, mobs::{Index::*, Target::*}};
+
+        let mut rng = <_>::default();
 
         //  
         //    b3    a2
@@ -1187,107 +1292,143 @@ mod move_towards_a_target_works {
         //             a1 
         //                e2
 
-        let exit_1_at = qr!(1, -1);
-        let exit_2_at = qr!(1, 0);
-        let a_1_at    = qr!(0, 0);
-        let a_2_at    = qr!(-1, -1);
-        let b_1_at    = qr!(-1, 0);
-        let b_2_at    = qr!(-2, 0);
-        let b_3_at    = qr!(-3, 0);
-        let b_4_at    = qr!(0, -1);
+        let tiles_spec = [
+            (QRS { r: R(-1), q: Q(-1) }, Symbol(A)),
+            (QRS { r: R(-1), q: Q(0) }, Symbol(B)),
+            (QRS { r: R(-1), q: Q(1) }, Door),
+            (QRS { r: R(0), q: Q(-3) }, Symbol(B)),
+            (QRS { r: R(0), q: Q(-2) }, Symbol(B)),
+            (QRS { r: R(0), q: Q(-1) }, Symbol(B)),
+            (QRS { r: R(0), q: Q(0) }, Symbol(A)),
+            (QRS { r: R(0), q: Q(1) }, Door),
+        ];
 
-        let bumper_at = exit_2_at;
-        let player_at = exit_1_at;
-        let bumpee_at = a_1_at;
-        let empty_at = b_4_at;
-        let ally_at = b_1_at;
+        let mobs_spec = [
+            (Player(Zero), QRS { r: R(-1), q: Q(1) }),
+            (NonPlayer(Zero), QRS { r: R(0), q: Q(0) }),
+            (Player(One), QRS { r: R(0), q: Q(1) }),
+            (NonPlayer(One), QRS { r: R(0), q: Q(-2) }),
+            (Player(Two), QRS { r: R(0), q: Q(-1) }),
+            (NonPlayer(Two), QRS { r: R(0), q: Q(-3) }),
+        ];
 
-        assert_eq!(bumper_at.neighbor(qrs::Dir::UP), player_at);
-        assert_eq!(bumper_at.neighbor(qrs::Dir::UP_LEFT), bumpee_at);
-        assert_eq!(bumpee_at.neighbor(qrs::Dir::UP), empty_at);
-        assert_eq!(bumpee_at.neighbor(qrs::Dir::UP_LEFT), ally_at);
-        
-        mobs.set_for_test(all_targets[0], exit_1_at, <_>::default());
-        mobs.set_for_test(all_targets[1], exit_2_at, <_>::default());
-        mobs.set_for_test(all_targets[2], b_1_at, <_>::default());
-        mobs.set_for_test(all_targets[3], bumpee_at, <_>::default());
-        mobs.set_for_test(all_targets[4], b_2_at, <_>::default());
-        mobs.set_for_test(all_targets[5], b_3_at, <_>::default());
+        let targets = [
+            QRS { r: R(0), q: Q(0) }
+        ];
+
+        let mob_target = Player(One);
+
+        // Setup
+
+        let mut mobs = Mobs::new(<_>::default());
+
+        for (target, at) in mobs_spec {
+            mobs.set_for_test(target, at, <_>::default());
+        }
 
         let mut tiles = Tiles::default();
-        tiles.insert(exit_1_at, Tile { kind: TileKind::Door, ..<_>::default() });
-        tiles.insert(exit_2_at, Tile { kind: TileKind::Door, ..<_>::default() });
-        tiles.insert(a_1_at, Tile { kind: TileKind::Symbol(Symbol::A), ..<_>::default() });
-        tiles.insert(a_2_at, Tile { kind: TileKind::Symbol(Symbol::A), ..<_>::default() });
-        tiles.insert(b_1_at, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
-        tiles.insert(b_2_at, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
-        tiles.insert(b_3_at, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
-        tiles.insert(b_4_at, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
 
-        let targets = [a_1_at];
+        for (at, kind) in tiles_spec {
+            tiles.insert(at, Tile { kind, ..<_>::default() });
+        }
+
+        let mob_at = {
+            let mut mob_at = None;
+
+            for (target, at) in mobs_spec {
+                if mob_target == target {
+                    mob_at = Some(at);
+                    break
+                }
+            }
+
+            mob_at
+        }.expect("mob_at was None");
 
         let actual = move_towards_a_target(
             &mut rng,
             &tiles,
             &mobs,
-            exit_2_at,
+            mob_at,
             &targets,
         );
 
         match actual {
             Some(MoveSelection::Bump(dir, (bumpee_target, bump_dir)))
                 if bump_dir == qrs::Dir::UP 
-                && bumpee_target == all_targets[3] => {},
+                && bumpee_target == NonPlayer(Zero) => {},
             _ => {panic!("actual not as expected! {actual:?}");},
         }
     }
 
     #[test]
     fn on_this_island_bump_case() {
+        use super::{TileKind::*, Symbol::*, mobs::{Index::*, Target::*}};
+
         let mut rng = <_>::default();
-
-        let mut mobs = Mobs::new(qr!(5, 5));
-
-        let all_targets = [
-            mobs::Target::Player(mobs::Index::Zero),
-            mobs::Target::Player(mobs::Index::One),
-            mobs::Target::Player(mobs::Index::Two),
-            mobs::Target::NonPlayer(mobs::Index::Zero),
-            mobs::Target::NonPlayer(mobs::Index::One),
-            mobs::Target::NonPlayer(mobs::Index::Two),
-        ];
 
         //
         //       a1
         //    e1    
         //
 
-        let mover_at = qr!(-1, 1);
-        let empty_at = qr!(0, 0);
-
-        assert_eq!(mover_at.neighbor(qrs::Dir::UP_RIGHT), empty_at);
+        let tiles_spec = [
+            (QRS { r: R(0), q: Q(0) }, Symbol(A)),
+            (QRS { r: R(1), q: Q(-1) }, Door),
+            (QRS { r: R(4), q: Q(5) }, Symbol(B)),
+            (QRS { r: R(4), q: Q(6) }, Symbol(B)),
+            (QRS { r: R(5), q: Q(4) }, Symbol(B)),
+            (QRS { r: R(6), q: Q(4) }, Symbol(B)),
+            (QRS { r: R(6), q: Q(5) }, Symbol(B)),
+        ];
         
-        mobs.set_for_test(all_targets[1], mover_at, <_>::default());
+        let mobs_spec = [
+            (Player(Zero), QRS { r: R(4), q: Q(5) }),
+            (NonPlayer(Zero), QRS { r: R(4), q: Q(6) }),
+            (Player(One), QRS { r: R(1), q: Q(-1) }),
+            (NonPlayer(One), QRS { r: R(6), q: Q(5) }),
+            (Player(Two), QRS { r: R(6), q: Q(4) }),
+            (NonPlayer(Two), QRS { r: R(5), q: Q(4) }),
+        ];
+        
+        let targets = [
+            QRS { r: R(0), q: Q(0) },
+        ];
+        
+        let mob_target = Player(One);
 
-        let mut tiles = Tiles::default();
-        tiles.insert(mover_at, Tile { kind: TileKind::Door, ..<_>::default() });
-        tiles.insert(empty_at, Tile { kind: TileKind::Symbol(Symbol::A), ..<_>::default() });
+        // Setup
 
-        for target in all_targets {
-            if target == all_targets[1] { continue }
+        let mut mobs = Mobs::new(<_>::default());
 
-            let &(key, _) = mobs.get(target);
-
-            tiles.insert(key, Tile { kind: TileKind::Symbol(Symbol::B), ..<_>::default() });
+        for (target, at) in mobs_spec {
+            mobs.set_for_test(target, at, <_>::default());
         }
 
-        let targets = [empty_at];
+        let mut tiles = Tiles::default();
+
+        for (at, kind) in tiles_spec {
+            tiles.insert(at, Tile { kind, ..<_>::default() });
+        }
+
+        let mob_at = {
+            let mut mob_at = None;
+
+            for (target, at) in mobs_spec {
+                if mob_target == target {
+                    mob_at = Some(at);
+                    break
+                }
+            }
+
+            mob_at
+        }.expect("mob_at was None");
 
         let actual = move_towards_a_target(
             &mut rng,
             &tiles,
             &mobs,
-            mover_at,
+            mob_at,
             &targets,
         );
 
@@ -2006,6 +2147,13 @@ impl State {
                                             targets.push(*key);
                                         }
                                     }
+                                    dbg!(symbol);
+                                    move_towards_a_target_works::print_table(
+                                        &self.tiles,
+                                        &self.mobs,
+                                        mob_target,
+                                        &targets,
+                                    );
 
                                     if let Some(m_s) = move_towards_a_target(
                                         &mut self.rng,
