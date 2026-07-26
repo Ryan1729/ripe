@@ -18,6 +18,7 @@ pub trait XYTrait<IndexContext, Direction: Clone + Copy> : PartialEq + Sized + C
     fn chebyshev_distance_to(self, other: Self) -> usize;
 }
 
+#[derive(Debug)]
 pub enum Error {
     Unreachable,
     BadIndex,
@@ -143,6 +144,8 @@ pub fn next_xy_to_nearest_of_given_xys<IndexContext, Tile, Direction, XY>(
                     shortest_path_start_and_len = Some((xy, path_len));
                 }
             },
+            // Another target may be reachable
+            Err(Error::Unreachable) => continue,
             Err(other_err) => return Err(other_err),
         }
     }
