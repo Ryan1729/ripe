@@ -306,6 +306,15 @@ impl TileKind {
             | Self::Door => None
         }
     }
+
+    pub fn label_bytes(&self) -> &'static [u8] {
+        match self {
+            Self::Symbol(Symbol::A) => b"(a)",
+            Self::Symbol(Symbol::B) => b"(b)",
+            Self::Warp => b"warp",
+            Self::Door => b"door"
+        }
+    }
 }
 
 type Offsets = [Offset; 4];
@@ -2424,8 +2433,10 @@ impl State {
         // Render Pieces
         //
 
+        let piece_wh = specs.hex_twiddle_pieces.tile();
+
         let hex_center_offset = specs.hex_twiddle_tiles.tile() / 2;
-        let piece_center_offset = specs.hex_twiddle_pieces.tile() / 2;
+        let piece_center_offset = piece_wh / 2;
 
         macro_rules! draw_piece {
             ($commands: expr, $xy: expr, $mob: expr $(,)?) => ({
@@ -2609,6 +2620,7 @@ impl State {
 
             const SPACING: unscaled::Inner = 4;
             let turn_indicator_h: unscaled::H = specs.hex_twiddle_pieces.tile().h  + unscaled::H::new(SPACING * 2);
+            let font_up_nudge = specs.base_font.tile().h / 2;
 
             let mut turn_y = SIDEBAR_RECT.y + unscaled::H::new(SPACING);
 
@@ -2637,11 +2649,15 @@ impl State {
                     y: rect.y + unscaled::H::new(SPACING),
                 };
 
-                let mob = &self.mobs.get(target).1;
+                let (at, mob) = self.mobs.get(target);
 
                 draw_piece!(commands, xy, mob);
 
-                // TODO render what piece kind they are on
+                let text_xy = xy + (piece_wh.w * 2) + (piece_wh.h / 2) - font_up_nudge;
+
+                if let Some(tile) = self.tiles.get(&at) {
+                    commands.print_line(tile.kind.label_bytes(), text_xy, 6);
+                }
 
                 turn_y += turn_indicator_h + unscaled::H::new(SPACING);
             }
