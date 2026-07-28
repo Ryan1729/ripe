@@ -142,6 +142,7 @@ pub mod hallway {
         BOLD(bold::State),
         HexHop(hex_hop::State),
         HexTwiddle(hex_twiddle::State),
+        CubeMaze(cube_maze::State),
     }
 
     impl State {
@@ -153,6 +154,7 @@ pub mod hallway {
                 BOLD(inner) => inner.is_complete(),
                 HexHop(inner) => inner.is_complete(),
                 HexTwiddle(inner) => inner.is_complete(),
+                CubeMaze(inner) => inner.is_complete(),
             }
         }
     }
@@ -960,14 +962,17 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                     hallway_states.insert(
                         key_i,
                         key_j,
+                        // Historical note: We used to pass just the needed specs, but we needed multiple in some cases,
+                        // so we decided if just pass the whole specs into each of them. Seems like no reason to care
+                        // if other games can use each other's sprites.
                         match hallway {
                             HallwaySpec::None => { break 'insert },
-                            HallwaySpec::IcePuzzle => hallway::State::IcePuzzle(ice_puzzle::State::new(rng, &specs.ice_puzzles)),
-                            HallwaySpec::SWORD => hallway::State::SWORD(sword::State::new(rng, &specs.wall)),
-                            HallwaySpec::BOLD => hallway::State::BOLD(bold::State::new(rng, &specs.bold)),
-                            HallwaySpec::HexHop => hallway::State::HexHop(hex_hop::State::new(rng, &specs.hex_pieces)),
-                            // TODO just pass the whole specs into each of them, who cares if other games can use each other's sprites?!
+                            HallwaySpec::IcePuzzle => hallway::State::IcePuzzle(ice_puzzle::State::new(rng, &specs)),
+                            HallwaySpec::SWORD => hallway::State::SWORD(sword::State::new(rng, &specs)),
+                            HallwaySpec::BOLD => hallway::State::BOLD(bold::State::new(rng, &specs)),
+                            HallwaySpec::HexHop => hallway::State::HexHop(hex_hop::State::new(rng, &specs)),
                             HallwaySpec::HexTwiddle => hallway::State::HexTwiddle(hex_twiddle::State::new(rng, &specs)),
+                            HallwaySpec::CubeMaze => hallway::State::CubeMaze(cube_maze::State::new(rng, &specs)),
                         }
                     );
                 }

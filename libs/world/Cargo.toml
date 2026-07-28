@@ -11,6 +11,9 @@ path = "src/world.rs"
 [dependencies.bold]
 path = "../bold"
 
+[dependencies.cube_maze]
+path = "../cube_maze"
+
 [dependencies.features]
 path = "../features"
 

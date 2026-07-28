@@ -2224,10 +2224,10 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(rng: &mut Xs, wall_spec: &sprite::Spec<sprite::Wall>) -> Self {
+    pub fn new(rng: &mut Xs, specs: &sprite::Specs) -> Self {
         let seed = xs::new_seed(rng);
 
-        Self::init(seed, wall_spec)
+        Self::init(seed, &specs.wall)
     }
 
     fn init(seed: Seed, wall_spec: &sprite::Spec<sprite::Wall>) -> Self {
@@ -2969,13 +2969,15 @@ impl State {
     pub fn update_and_render(
         &mut self,
         commands: &mut Commands,
-        sword_spec: &sprite::Spec::<sprite::SWORD>,
-        wall_spec: &sprite::Spec::<sprite::Wall>,
-        floor_spec: &sprite::Spec::<sprite::Floor>,
-        toggle_wall_spec: &sprite::Spec::<sprite::ToggleWall>,
+        specs: &sprite::Specs,
         input: Input,
         _speaker: &mut Speaker,
     ) {
+        let sword_spec: &sprite::Spec::<sprite::SWORD> = &specs.sword;
+        let wall_spec: &sprite::Spec::<sprite::Wall> = &specs.wall;
+        let floor_spec: &sprite::Spec::<sprite::Floor> = &specs.floor;
+        let toggle_wall_spec: &sprite::Spec::<sprite::ToggleWall> = &specs.toggle_wall;
+
         //
         // Update
         //

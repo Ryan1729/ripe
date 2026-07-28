@@ -869,13 +869,13 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(rng: &mut Xs, hex_pieces_spec: &sprite::Spec::<sprite::HexPieces>) -> Self {
+    pub fn new(rng: &mut Xs, specs: &sprite::Specs) -> Self {
         let seed = xs::new_seed(rng);
 
-        Self::init(seed, hex_pieces_spec)
+        Self::init(seed, specs)
     }
 
-    fn init(seed: Seed, _hex_pieces_spec: &sprite::Spec::<sprite::HexPieces>) -> Self {
+    fn init(seed: Seed, _specs: &sprite::Specs) -> Self {
         let mut rng_ = xs::from_seed(seed);
         let rng = &mut rng_;
 
@@ -1050,8 +1050,8 @@ impl State {
         }
     }
 
-    fn restart(&mut self, hex_pieces_spec: &sprite::Spec::<sprite::HexPieces>) {
-        *self = Self::init(self.seed, hex_pieces_spec);
+    fn restart(&mut self, specs: &sprite::Specs) {
+        *self = Self::init(self.seed, specs);
     }
 
     pub fn is_complete(&self) -> bool {
@@ -1080,11 +1080,13 @@ impl State {
     pub fn update_and_render(
         &mut self,
         commands: &mut Commands,
-        hex_pieces_spec: &sprite::Spec::<sprite::HexPieces>,
-        hex_hop_mobs_spec: &sprite::Spec::<sprite::HexHopMobs>,
+        specs: &sprite::Specs,
         input: Input,
         _speaker: &mut Speaker,
     ) {
+        let hex_pieces_spec: &sprite::Spec::<sprite::HexPieces> = &specs.hex_pieces;
+        let hex_hop_mobs_spec: &sprite::Spec::<sprite::HexHopMobs> = &specs.hex_hop_mobs;
+
         //
         //
         // Update Section
@@ -1220,7 +1222,7 @@ impl State {
         if colliding {
             // TODO good place for SFX
 
-            self.restart(hex_pieces_spec);
+            self.restart(specs);
         }
 
         //

@@ -8,9 +8,9 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(rng: &mut Xs, spec: &sprite::Spec<sprite::IcePuzzles>) -> Self {
+    pub fn new(rng: &mut Xs, spec: &sprite::Specs) -> Self {
         Self {
-            state: game::State::new(xs::new_seed(rng), spec),
+            state: game::State::new(xs::new_seed(rng), &spec.ice_puzzles),
         }
     }
 
@@ -21,10 +21,12 @@ impl State {
     pub fn update_and_render(
         &mut self,
         commands: &mut Commands,
-        spec: &sprite::Spec::<sprite::IcePuzzles>,
+        specs: &sprite::Specs,
         input: Input,
         speaker: &mut Speaker,
     ) {
+        let spec: &sprite::Spec::<sprite::IcePuzzles> = &specs.ice_puzzles;
+
         // TODO allow backing out in case the player wants to give up on the puzzle
 
         game::State::update_and_render(

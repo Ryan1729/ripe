@@ -1,11 +1,8 @@
 #![deny(unreachable_patterns)]
 
 use gfx::{Commands};
-//use gfx_sizes::ARGB;
-#[allow(unused)]
 use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
 use qrs::{QRS, QRSD, Q, R, qr};
-//use vec1::{Grid1, Grid1Spec, vec1, Vec1};
 use xs::{Seed, Xs};
 
 use std::collections::{BTreeMap};

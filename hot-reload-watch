@@ -18,4 +18,5 @@ cargo watch \
     -w libs/colour \
     -w libs/hex_twiddle \
     -w libs/qrs \
+    -w libs/cube_maze \
     -x 'build --release --package app --features "invariant-checking,reload,refresh"'

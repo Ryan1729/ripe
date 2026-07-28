@@ -1,0 +1,21 @@
+[package]
+name = "cube_maze"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/cube_maze.rs"
+
+[dependencies]
+
+[dependencies.gfx]
+path = "../gfx"
+
+[dependencies.platform_types]
+path = "../platform_types"
+
+[dependencies.qrs]
+path = "../qrs"
+
+[dependencies.xs]
+path = "../xs"

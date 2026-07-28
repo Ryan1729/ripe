@@ -208,51 +208,23 @@ fn game_update(commands: &mut Commands, specs: &Specs, state: &mut game::State, 
             // TODO? Allow cancelling going in the door?
         },
         Mode::Hallway{ source, target } => {
-            match state.hallway_states.get_mut(*source, *target) {
-                Some(HallwayState::IcePuzzle(ice_puzzle)) => {
-                    ice_puzzle.update_and_render(
-                        commands,
-                        &specs.ice_puzzles,
-                        input,
-                        speaker,
-                    );
-                },
-                Some(HallwayState::SWORD(sword)) => {
-                    sword.update_and_render(
-                        commands,
-                        &specs.sword,
-                        &specs.wall,
-                        &specs.floor,
-                        &specs.toggle_wall,
-                        input,
-                        speaker,
-                    );
-                },
-                Some(HallwayState::BOLD(bold)) => {
-                    bold.update_and_render(
-                        commands,
-                        &specs.bold,
-                        input,
-                        speaker,
-                    );
-                },
-                Some(HallwayState::HexHop(hex_hop)) => {
-                    hex_hop.update_and_render(
-                        commands,
-                        &specs.hex_pieces,
-                        &specs.hex_hop_mobs,
-                        input,
-                        speaker,
-                    );
-                },
-                Some(HallwayState::HexTwiddle(hex_twiddle)) => {
-                    hex_twiddle.update_and_render(
+            macro_rules! u_and_r_call { 
+                ($obj: ident) => ({
+                    $obj.update_and_render(
                         commands,
                         specs,
                         input,
                         speaker,
                     );
-                },
+                })
+            }
+            match state.hallway_states.get_mut(*source, *target) {
+                Some(HallwayState::IcePuzzle(ice_puzzle)) => u_and_r_call!(ice_puzzle),
+                Some(HallwayState::SWORD(sword)) => u_and_r_call!(sword),
+                Some(HallwayState::BOLD(bold)) => u_and_r_call!(bold),
+                Some(HallwayState::HexHop(hex_hop)) => u_and_r_call!(hex_hop),
+                Some(HallwayState::HexTwiddle(hex_twiddle)) => u_and_r_call!(hex_twiddle),
+                Some(HallwayState::CubeMaze(cube_maze)) => u_and_r_call!(cube_maze),
                 None => {
                     invariant_assert!(false, "Hallway was not found while in Hallway mode!");
                     state.mode = Mode::Walking;

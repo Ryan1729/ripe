@@ -485,6 +485,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b365fabc795046672053e29c954733ec3b05e4be654ab130fe8f1f94d7051f35"
 
 [[package]]
+name = "cube_maze"
+version = "0.1.0"
+dependencies = [
+ "gfx",
+ "platform_types",
+ "qrs",
+ "xs",
+]
+
+[[package]]
 name = "darling"
 version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2939,6 +2949,7 @@ name = "world"
 version = "0.1.0"
 dependencies = [
  "bold",
+ "cube_maze",
  "features",
  "hex_hop",
  "hex_twiddle",

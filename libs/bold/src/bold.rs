@@ -787,13 +787,15 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(rng: &mut Xs, bold_spec: &sprite::Spec::<sprite::BOLD>) -> Self {
+    pub fn new(rng: &mut Xs, specs: &sprite::Specs) -> Self {
         let seed = xs::new_seed(rng);
 
-        Self::init(seed, bold_spec)
+        Self::init(seed, specs)
     }
 
-    fn init(seed: Seed, bold_spec: &sprite::Spec::<sprite::BOLD>) -> Self {
+    fn init(seed: Seed, specs: &sprite::Specs) -> Self {
+        let bold_spec = &specs.bold;
+
         let mut rng_ = xs::from_seed(seed);
         let rng = &mut rng_;
 
@@ -1032,7 +1034,7 @@ impl State {
         }
     }
 
-    fn restart(&mut self, bold_spec: &sprite::Spec::<sprite::BOLD>) {
+    fn restart(&mut self, bold_spec: &sprite::Specs) {
         *self = Self::init(self.seed, bold_spec);
     }
 
@@ -1138,10 +1140,12 @@ impl State {
     pub fn update_and_render(
         &mut self,
         commands: &mut Commands,
-        bold_spec: &sprite::Spec::<sprite::BOLD>,
+        specs: &sprite::Specs,
         input: Input,
         _speaker: &mut Speaker,
     ) {
+        let bold_spec = &specs.bold;
+
         //
         //
         // Update Section
@@ -1206,7 +1210,7 @@ impl State {
                 skip_animation_section = false;
             }
         } else if input.pressed_this_frame(Button::START) {
-            self.restart(bold_spec);
+            self.restart(specs);
         } else {
             skip_animation_section = false;
         }

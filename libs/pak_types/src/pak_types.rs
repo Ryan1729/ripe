@@ -1321,6 +1321,7 @@ mod hallway_spec {
         BOLD BOLD = 3,
         HexHop HEX_HOP = 4,
         HexTwiddle HEX_TWIDDLE = 5,
+        CubeMaze CUBE_MAZE = 6,
     }
 }
 pub use hallway_spec::const_to_hallway_spec;
