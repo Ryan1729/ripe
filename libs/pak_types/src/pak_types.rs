@@ -1128,6 +1128,7 @@ pub mod sprite {
         pub hex_twiddle_tiles: Spec<HexTwiddleTiles>,
         pub hex_twiddle_pieces: Spec<HexTwiddlePieces>,
         pub hex_twiddle_sidebar: Spec<HexTwiddleSidebar>,
+        pub cube_maze_sides: Spec<CubeMazeSides>,
     }
 
     impl Default for Specs {
@@ -1205,6 +1206,11 @@ pub mod sprite {
                     offset: WH{ w: W::new(448), h: H::new(256) },
                     tile: WH{ w: W::new(40), h: H::new(40) },
                     tiles_per_row: 8,
+                }),
+                cube_maze_sides: spec::<CubeMazeSides>(SpecPieces{
+                    offset: WH{ w: W::new(592), h: H::new(336) },
+                    tile: WH{ w: W::new(28), h: H::new(16) },
+                    tiles_per_row: 5,
                 }),
             }
         }
