@@ -6,7 +6,9 @@ use xs::{Seed, Xs};
 
 type TileSprite = u8;
 
+#[derive(Clone, Copy, Default, Debug)]
 enum GoalFrame {
+    #[default]
     Zero, // Blank
     One,
     Two,
@@ -14,12 +16,37 @@ enum GoalFrame {
     Four,
 }
 
+impl GoalFrame {
+    fn index(self) -> u8 {
+        match self {
+            Self::Zero => 0,
+            Self::One => 1,
+            Self::Two => 2,
+            Self::Three => 3,
+            Self::Four => 4,
+        }
+    }
+
+    const DEFAULT: Self = Self::Zero;
+}
+
+#[derive(Clone, Copy, Default, Debug)]
 enum TileKind {
+    #[default]
     Wall,
-    Empty,
+    Blank,
     Goal(GoalFrame),
 }
 
+impl TileKind {
+    const ALL: [Self; 3] = [
+        Self::Wall,
+        Self::Blank,
+        Self::Goal(GoalFrame::DEFAULT),
+    ];
+}
+
+#[derive(Clone, Default, Debug)]
 struct Tile {
     kind: TileKind,
 }
@@ -57,11 +84,54 @@ fn qrs_to_unscaled(qrs: QRS) -> unscaled::XY {
 }
 */
 
+mod face {
+    use super::*;
+
+    type Width = u8;
+    type Face = Vec<Tile>;
+
+    #[derive(Clone, Default, Debug)]
+    pub struct Faces {
+        pub width: Width,
+        pub top: Face,
+        pub left: Face,
+        pub right: Face,
+    }
+
+    impl Faces {
+        pub fn new(rng: &mut Xs) -> Self {
+            let width: Width = 3;
+            let length = width as usize * width as usize;
+
+            let mut top = Vec::with_capacity(length);
+            let mut left = Vec::with_capacity(length);
+            let mut right = Vec::with_capacity(length);
+
+            // TODO ensure solvabilty
+
+            for i in 0..length {
+                let kind = TileKind::ALL[xs::index(rng, 0..TileKind::ALL.len())];
+                top.push(Tile { kind });
+                left.push(Tile { kind });
+                right.push(Tile { kind });
+            }
+
+            Self {
+                width,
+                top,
+                left,
+                right,
+            }
+        }
+    }
+}
+use face::Faces;
+
 #[derive(Clone, Debug, Default)]
 pub struct State {
     pub seed: Seed, // For restarting
     pub rng: Xs,
-    pub tiles: Tiles,
+    pub faces: Faces,
     pub mobs: Mobs,
 }
 
@@ -76,13 +146,13 @@ impl State {
         let mut rng_ = xs::from_seed(seed);
         let rng = &mut rng_;
 
-        let tiles = Tiles::default();
+        let faces = Faces::new(rng);
         let mobs = Mobs::default();
 
         Self {
             seed,
             rng: rng_,
-            tiles,
+            faces,
             mobs,
             .. <_>::default()
         }
@@ -171,20 +241,76 @@ impl State {
         }
         */
 
-        draw_side!(
-            top,
-            cube_corner_xy - tile_wh.h,
-            PALETTE[6],
-        );
-        draw_side!(
-            left,
-            cube_corner_xy - tile_wh.w,
-            PALETTE[0],
-        );
-        draw_side!(
-            right,
-            cube_corner_xy,
-            PALETTE[1],
-        );
+        let top_base = cube_corner_xy - tile_wh.h;
+
+        for (i, tile) in self.faces.top.iter().enumerate() {
+            if i > unscaled::Inner::MAX as usize { break }
+            let i = i as unscaled::Inner;
+
+            let offset = unscaled::XYD {
+                // TODO scale these
+                xd: unscaled::XD(i % (self.faces.width as unscaled::Inner)),
+                yd: unscaled::YD(i / (self.faces.width as unscaled::Inner)),
+            };
+
+            draw_side!(
+                match tile.kind {
+                    TileKind::Wall => top,
+                    TileKind::Blank => continue,
+                    TileKind::Goal(GoalFrame::Zero) => continue,
+                    TileKind::Goal(frame) => top + frame.index(),
+                },
+                top_base + offset,
+                PALETTE[6],
+            );
+        }
+
+        let left_base = cube_corner_xy + tile_wh.h;
+
+        for (i, tile) in self.faces.left.iter().enumerate() {
+            if i > unscaled::Inner::MAX as usize { break }
+            let i = i as unscaled::Inner;
+
+            let offset = unscaled::XYD {
+                // TODO scale these
+                xd: unscaled::XD(i % (self.faces.width as unscaled::Inner)),
+                yd: unscaled::YD(i / (self.faces.width as unscaled::Inner)),
+            };
+
+            draw_side!(
+                match tile.kind {
+                    TileKind::Wall => left,
+                    TileKind::Blank => continue,
+                    TileKind::Goal(GoalFrame::Zero) => continue,
+                    TileKind::Goal(frame) => left + frame.index(),
+                },
+                left_base + offset,
+                PALETTE[0],
+            );
+        }
+
+        let right_base = cube_corner_xy;
+
+        for (i, tile) in self.faces.right.iter().enumerate() {
+            if i > unscaled::Inner::MAX as usize { break }
+            let i = i as unscaled::Inner;
+
+            let offset = unscaled::XYD {
+                // TODO scale these
+                xd: unscaled::XD(i % (self.faces.width as unscaled::Inner)),
+                yd: unscaled::YD(i / (self.faces.width as unscaled::Inner)),
+            };
+
+            draw_side!(
+                match tile.kind {
+                    TileKind::Wall => right,
+                    TileKind::Blank => continue,
+                    TileKind::Goal(GoalFrame::Zero) => continue,
+                    TileKind::Goal(frame) => right + frame.index(),
+                },
+                right_base + offset,
+                PALETTE[1],
+            );
+        }
     }
 }
