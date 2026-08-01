@@ -57,33 +57,6 @@ struct Tiles; // placeholder
 #[derive(Clone, Debug, Default)]
 struct Mobs; // placeholder
 
-/*
-const X_Q_FACTOR: i16 = 2;
-const X_R_FACTOR: i16 = 0;
-
-const Y_Q_FACTOR: i16 = 1;
-const Y_R_FACTOR: i16 = 2;
-
-const HEX_X_SCALE: i16 = 22;
-const HEX_Y_SCALE: i16 = 25;
-
-const HEX_X_OFFSET: i16 = 160;
-const HEX_Y_OFFSET: i16 = 140;
-
-fn qrs_to_unscaled(qrs: QRS) -> unscaled::XY {
-    let q = qrs.q.0;
-    let r = qrs.r.0;
-
-    let x = (X_Q_FACTOR * q + X_R_FACTOR * r) * HEX_X_SCALE + HEX_X_OFFSET;
-    let y = (Y_Q_FACTOR * q + Y_R_FACTOR * r) * HEX_Y_SCALE + HEX_Y_OFFSET;
-
-    unscaled::XY {
-        x: unscaled::X(x.try_into().unwrap_or(0)),
-        y: unscaled::Y(y.try_into().unwrap_or(0)),
-    }
-}
-*/
-
 mod face {
     use super::*;
 
@@ -100,7 +73,7 @@ mod face {
 
     impl Faces {
         pub fn new(rng: &mut Xs) -> Self {
-            let width: Width = 3;
+            let width: Width = 11;
             let length = width as usize * width as usize;
 
             let mut top = Vec::with_capacity(length);
@@ -200,7 +173,7 @@ impl State {
         let top: TileSprite = 0;
         let right: TileSprite = tiles_per_row;
         let left: TileSprite = tiles_per_row * 2;
-        
+
         let cube_corner_xy = unscaled::XY {
             x: unscaled::X(command::WIDTH_SIGNED / 3),
             y: unscaled::Y(command::HEIGHT_SIGNED / 2),
@@ -216,41 +189,58 @@ impl State {
             }
         }
 
-        // TODO define a face::XY instead of using QRS,
-        // and convert to the given face in a special
-        // way in each of three loops
-        /*
-        for (qrs, tile) in [
-            (QRS{ q: qrs::Q(0), r: qrs::R(0) }, Tile { kind: TileKind::Wall }),
-            (QRS{ q: qrs::Q(1), r: qrs::R(0) }, Tile { kind: TileKind::Blank }),
-            (QRS{ q: qrs::Q(0), r: qrs::R(1) }, Tile { kind: TileKind::Goal(GoalFrame::Three) }),
-            (QRS{ q: qrs::Q(1), r: qrs::R(1) }, Tile { kind: TileKind::Wall }),
-        ] {
-            let xy = qrs_to_unscaled(qrs);
+        // These constants were found for the original art by measurement/trial and error.
+        // Then we attemtped to convert them to be based on the tile dimensions, without
+        // bothering to check if changing them behaved at all reasonably. Probably the way
+        // to address this at such time that we really need to support different graphics
+        // sizes is to allow configuring these values as well.
 
-            draw_side!(
-                match tile.kind {
-                    TileKind::Wall => top,
-                    TileKind::Blank => continue,
-                    TileKind::Goal(GoalFrame::Zero) => continue,
-                    TileKind::Goal(frame) => top + frame.index(),
-                },
-                cube_corner_xy - tile_wh.h,
-                PALETTE[6],
-            );
-        }
-        */
+        let top_x_face_x_factor: i16 = tile_wh.h.get() - 2;
+        let top_x_face_y_factor: i16 = top_x_face_x_factor;
 
-        let top_base = cube_corner_xy - tile_wh.h;
+        let top_y_face_x_factor: i16 = -top_x_face_x_factor/2;
+        let top_y_face_y_factor: i16 = top_x_face_x_factor/2;
+
+        let left_x_face_x_factor: i16 = top_x_face_x_factor;
+        let left_x_face_y_factor: i16 = 0;
+
+        let left_y_face_x_factor: i16 = top_x_face_x_factor/2;
+        let left_y_face_y_factor: i16 = left_y_face_x_factor + (left_y_face_x_factor/2);
+
+        let right_x_face_x_factor: i16 = top_x_face_x_factor;
+        let right_x_face_y_factor: i16 = 0;
+
+        let right_y_face_x_factor: i16 = -top_x_face_x_factor/2;
+        let right_y_face_y_factor: i16 = left_y_face_x_factor + (left_y_face_x_factor/2);
+
+        // This part makes evident that either some ergonomic additions, or the removal of
+        // the W, H, and WH types in favour of the XD, YD, and XYD types, would be an
+        // improvement on te status quo. Doesn't currently seem to come up that often though.
+        let top_base_offset: unscaled::XYD = unscaled::XYD::default();
+        let left_base_offset: unscaled::XYD = unscaled::XYD::default() - unscaled::XYD::from(unscaled::WH::default() + (tile_wh.w / 4) - (tile_wh.h / 2) - unscaled::H::new(1));
+        let right_base_offset: unscaled::XYD = unscaled::XYD::default() - unscaled::XYD::from(unscaled::WH::default() + (tile_wh.w / 4) - unscaled::H::new(2));
+
+        let width_inner = self.faces.width as unscaled::Inner;
+
+        let top_base = cube_corner_xy + top_base_offset;
 
         for (i, tile) in self.faces.top.iter().enumerate() {
             if i > unscaled::Inner::MAX as usize { break }
             let i = i as unscaled::Inner;
 
+            let face_x = (i % width_inner);
+            // "- width_inner" to shift up by the width amount,
+            // making the bottom row's location fixed as the
+            // width changes.
+            let face_y = i / width_inner - width_inner;
+
             let offset = unscaled::XYD {
-                // TODO scale these
-                xd: unscaled::XD(i % (self.faces.width as unscaled::Inner)),
-                yd: unscaled::YD(i / (self.faces.width as unscaled::Inner)),
+                xd: unscaled::XD(
+                    face_x * top_x_face_x_factor + face_y * top_x_face_y_factor
+                ),
+                yd: unscaled::YD(
+                    face_x * top_y_face_x_factor + face_y * top_y_face_y_factor
+                ),
             };
 
             draw_side!(
@@ -265,16 +255,25 @@ impl State {
             );
         }
 
-        let left_base = cube_corner_xy + tile_wh.h;
+        let left_base = cube_corner_xy + left_base_offset;
 
         for (i, tile) in self.faces.left.iter().enumerate() {
             if i > unscaled::Inner::MAX as usize { break }
             let i = i as unscaled::Inner;
 
+            // "- width_inner" to shift left by the width amount,
+            // making the bottom row's location fixed as the
+            // width changes.
+            let face_x = (i % width_inner) - width_inner;
+            let face_y = i / width_inner;
+
             let offset = unscaled::XYD {
-                // TODO scale these
-                xd: unscaled::XD(i % (self.faces.width as unscaled::Inner)),
-                yd: unscaled::YD(i / (self.faces.width as unscaled::Inner)),
+                xd: unscaled::XD(
+                    face_x * left_x_face_x_factor + face_y * left_x_face_y_factor
+                ),
+                yd: unscaled::YD(
+                    face_x * left_y_face_x_factor + face_y * left_y_face_y_factor
+                ),
             };
 
             draw_side!(
@@ -289,16 +288,22 @@ impl State {
             );
         }
 
-        let right_base = cube_corner_xy;
+        let right_base = cube_corner_xy + right_base_offset;
 
         for (i, tile) in self.faces.right.iter().enumerate() {
             if i > unscaled::Inner::MAX as usize { break }
             let i = i as unscaled::Inner;
 
+            let face_x = i % (self.faces.width as unscaled::Inner);
+            let face_y = i / (self.faces.width as unscaled::Inner);
+
             let offset = unscaled::XYD {
-                // TODO scale these
-                xd: unscaled::XD(i % (self.faces.width as unscaled::Inner)),
-                yd: unscaled::YD(i / (self.faces.width as unscaled::Inner)),
+                xd: unscaled::XD(
+                    face_x * right_x_face_x_factor + face_y * right_x_face_y_factor
+                ),
+                yd: unscaled::YD(
+                    face_x * right_y_face_x_factor + face_y * right_y_face_y_factor
+                ),
             };
 
             draw_side!(

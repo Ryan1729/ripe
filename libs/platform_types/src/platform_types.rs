@@ -130,10 +130,10 @@ pub mod command {
                 (rect.y.0 as u16, 0)
             };
 
-            let x_max_raw = x as unscaled::NextUp + (rect.w.get() as unscaled::NextUp - x_min_clip_amount) - 1;
-            let y_max_raw = y as unscaled::NextUp + (rect.h.get() as unscaled::NextUp - y_min_clip_amount) - 1;
+            let x_max_raw = x as unscaled::NextUp + (rect.w.get() as unscaled::NextUp - x_min_clip_amount as unscaled::NextUp) - 1;
+            let y_max_raw = y as unscaled::NextUp + (rect.h.get() as unscaled::NextUp - y_min_clip_amount as unscaled::NextUp) - 1;
 
-            let x_max = if x_max_raw > X_MAX_SIGNED {
+            let x_max = if x_max_raw > X_MAX_SIGNED as unscaled::NextUp {
                 X::MAX
             } else if x_max_raw < 0 {
                 return None
@@ -141,7 +141,7 @@ pub mod command {
                 X(x_max_raw as Inner)
             };
 
-            let y_max = if y_max_raw > Y_MAX_SIGNED {
+            let y_max = if y_max_raw > Y_MAX_SIGNED as unscaled::NextUp {
                 Y::MAX
             } else if y_max_raw < 0 {
                 return None

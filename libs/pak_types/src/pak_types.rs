@@ -7,8 +7,8 @@ pub mod unscaled {
     ///! Values are in pixels.
 
     pub type Inner = i16;
-    // Useful for intermeadiate calculations
-    pub type NextUp = i16;
+    // Useful for intermediate calculations
+    pub type NextUp = i32;
 
     pub const fn inner_from_u8(byte: u8) -> Inner {
         byte as Inner
@@ -49,6 +49,18 @@ pub mod unscaled {
         Y, YInner = Inner
         XD, XDInner = Inner
         YD, YDInner = Inner
+    }
+
+    impl From<W> for XD {
+        fn from(w: W) -> XD {
+            XD(w.0)
+        }
+    }
+
+    impl From<H> for YD {
+        fn from(h: H) -> YD {
+            YD(h.0)
+        }
     }
 
     pub type WInner = Inner;
@@ -490,6 +502,15 @@ pub mod unscaled {
     pub struct XYD {
         pub xd: XD,
         pub yd: YD,
+    }
+
+    impl From<WH> for XYD {
+        fn from(wh: WH) -> XYD {
+            XYD {
+                xd: wh.w.into(),
+                yd: wh.h.into(),
+            }
+        }
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
