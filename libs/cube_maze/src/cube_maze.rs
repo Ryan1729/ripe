@@ -51,17 +51,49 @@ struct Tile {
     kind: TileKind,
 }
 
-#[derive(Clone, Debug, Default)]
-struct Tiles; // placeholder
-
-#[derive(Clone, Debug, Default)]
-struct Mobs; // placeholder
-
 mod face {
     use super::*;
 
+    pub type Index = unscaled::Inner;
+
+    pub type X = unscaled::Inner;
+    pub type Y = unscaled::Inner;
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct XY {
+        pub x: X,
+        pub y: Y,
+    }
+
+    pub fn i_to_xy(width: Width, i: Index) -> XY {
+        XY {
+            x: i % (width as unscaled::Inner),
+            y: i / (width as unscaled::Inner),
+        }
+    }
+
     type Width = u8;
-    type Face = Vec<Tile>;
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Face {
+        pub player: XY,
+        pub tiles: Vec<Tile>,
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub enum Kind {
+        Top,
+        Left,
+        Right,
+    }
+
+    impl Kind {
+        pub const ALL: [Kind; 3] = [
+            Kind::Top,
+            Kind::Left,
+            Kind::Right,
+        ];
+    }
 
     #[derive(Clone, Default, Debug)]
     pub struct Faces {
@@ -76,17 +108,26 @@ mod face {
             let width: Width = 11;
             let length = width as usize * width as usize;
 
-            let mut top = Vec::with_capacity(length);
-            let mut left = Vec::with_capacity(length);
-            let mut right = Vec::with_capacity(length);
+            let mut top = Face {
+                player: <_>::default(),
+                tiles: Vec::with_capacity(length),
+            };
+            let mut left = Face {
+                player: <_>::default(),
+                tiles: Vec::with_capacity(length),
+            };
+            let mut right = Face {
+                player: <_>::default(),
+                tiles: Vec::with_capacity(length),
+            };
 
             // TODO ensure solvabilty
 
             for i in 0..length {
                 let kind = TileKind::ALL[xs::index(rng, 0..TileKind::ALL.len())];
-                top.push(Tile { kind });
-                left.push(Tile { kind });
-                right.push(Tile { kind });
+                top.tiles.push(Tile { kind });
+                left.tiles.push(Tile { kind });
+                right.tiles.push(Tile { kind });
             }
 
             Self {
@@ -105,7 +146,6 @@ pub struct State {
     pub seed: Seed, // For restarting
     pub rng: Xs,
     pub faces: Faces,
-    pub mobs: Mobs,
 }
 
 impl State {
@@ -120,13 +160,11 @@ impl State {
         let rng = &mut rng_;
 
         let faces = Faces::new(rng);
-        let mobs = Mobs::default();
 
         Self {
             seed,
             rng: rng_,
             faces,
-            mobs,
             .. <_>::default()
         }
     }
@@ -222,100 +260,83 @@ impl State {
 
         let width_inner = self.faces.width as unscaled::Inner;
 
-        let top_base = cube_corner_xy + top_base_offset;
+        macro_rules! face_xy_to_offset {
+            ($xy: expr, $face_kind: expr) => ({
+                // (xy: face::XY, kind: face::Kind) -> unscaled::XYD
+                let xy: face::XY = $xy;
 
-        for (i, tile) in self.faces.top.iter().enumerate() {
-            if i > unscaled::Inner::MAX as usize { break }
-            let i = i as unscaled::Inner;
-
-            let face_x = (i % width_inner);
-            // "- width_inner" to shift up by the width amount,
-            // making the bottom row's location fixed as the
-            // width changes.
-            let face_y = i / width_inner - width_inner;
-
-            let offset = unscaled::XYD {
-                xd: unscaled::XD(
-                    face_x * top_x_face_x_factor + face_y * top_x_face_y_factor
-                ),
-                yd: unscaled::YD(
-                    face_x * top_y_face_x_factor + face_y * top_y_face_y_factor
-                ),
-            };
-
-            draw_side!(
-                match tile.kind {
-                    TileKind::Wall => top,
-                    TileKind::Blank => continue,
-                    TileKind::Goal(GoalFrame::Zero) => continue,
-                    TileKind::Goal(frame) => top + frame.index(),
-                },
-                top_base + offset,
-                PALETTE[6],
-            );
+                match $face_kind {
+                    face::Kind::Top => {
+                        // "- width_inner" to shift up by the width amount,
+                        // making the bottom row's location fixed as the
+                        // width changes.
+                        unscaled::XYD {
+                            xd: unscaled::XD(
+                                xy.x * top_x_face_x_factor + (xy.y - width_inner) * top_x_face_y_factor
+                            ),
+                            yd: unscaled::YD(
+                                xy.x * top_y_face_x_factor + (xy.y - width_inner) * top_y_face_y_factor
+                            ),
+                        }
+                    }
+                    face::Kind::Left => {
+                        // "- width_inner" to shift left by the width amount,
+                        // making the bottom row's location fixed as the
+                        // width changes.
+                        unscaled::XYD {
+                            xd: unscaled::XD(
+                                (xy.x - width_inner) * left_x_face_x_factor + xy.y * left_x_face_y_factor
+                            ),
+                            yd: unscaled::YD(
+                                (xy.x - width_inner) * left_y_face_x_factor + xy.y * left_y_face_y_factor
+                            ),
+                        }
+                    }
+                    face::Kind::Right => {
+                        unscaled::XYD {
+                            xd: unscaled::XD(
+                                xy.x * right_x_face_x_factor + xy.y * right_x_face_y_factor
+                            ),
+                            yd: unscaled::YD(
+                                xy.x * right_y_face_x_factor + xy.y * right_y_face_y_factor
+                            ),
+                        }
+                    }
+                }
+            })
         }
 
-        let left_base = cube_corner_xy + left_base_offset;
-
-        for (i, tile) in self.faces.left.iter().enumerate() {
-            if i > unscaled::Inner::MAX as usize { break }
-            let i = i as unscaled::Inner;
-
-            // "- width_inner" to shift left by the width amount,
-            // making the bottom row's location fixed as the
-            // width changes.
-            let face_x = (i % width_inner) - width_inner;
-            let face_y = i / width_inner;
-
-            let offset = unscaled::XYD {
-                xd: unscaled::XD(
-                    face_x * left_x_face_x_factor + face_y * left_x_face_y_factor
-                ),
-                yd: unscaled::YD(
-                    face_x * left_y_face_x_factor + face_y * left_y_face_y_factor
-                ),
+        for face_kind in face::Kind::ALL {
+            let (face, tile_sprite, base_offset, wall_colour) = match face_kind {
+                face::Kind::Top => (&self.faces.top, top, top_base_offset, PALETTE[6]),
+                face::Kind::Left => (&self.faces.left, left, left_base_offset, PALETTE[0]),
+                face::Kind::Right => (&self.faces.right, right, right_base_offset, PALETTE[1]),
             };
 
-            draw_side!(
-                match tile.kind {
-                    TileKind::Wall => left,
-                    TileKind::Blank => continue,
-                    TileKind::Goal(GoalFrame::Zero) => continue,
-                    TileKind::Goal(frame) => left + frame.index(),
-                },
-                left_base + offset,
-                PALETTE[0],
-            );
-        }
+            let base = cube_corner_xy + base_offset;
 
-        let right_base = cube_corner_xy + right_base_offset;
+            for (i, tile) in face.tiles.iter().enumerate() {
+                if i > unscaled::Inner::MAX as usize { break }
+                let i = i as unscaled::Inner;
 
-        for (i, tile) in self.faces.right.iter().enumerate() {
-            if i > unscaled::Inner::MAX as usize { break }
-            let i = i as unscaled::Inner;
-
-            let face_x = i % (self.faces.width as unscaled::Inner);
-            let face_y = i / (self.faces.width as unscaled::Inner);
-
-            let offset = unscaled::XYD {
-                xd: unscaled::XD(
-                    face_x * right_x_face_x_factor + face_y * right_x_face_y_factor
-                ),
-                yd: unscaled::YD(
-                    face_x * right_y_face_x_factor + face_y * right_y_face_y_factor
-                ),
-            };
+                draw_side!(
+                    match tile.kind {
+                        TileKind::Wall => tile_sprite,
+                        TileKind::Blank => continue,
+                        TileKind::Goal(GoalFrame::Zero) => continue,
+                        TileKind::Goal(frame) => tile_sprite + frame.index(),
+                    },
+                    base + face_xy_to_offset!(face::i_to_xy(self.faces.width, i), face_kind),
+                    wall_colour,
+                );
+            }
 
             draw_side!(
-                match tile.kind {
-                    TileKind::Wall => right,
-                    TileKind::Blank => continue,
-                    TileKind::Goal(GoalFrame::Zero) => continue,
-                    TileKind::Goal(frame) => right + frame.index(),
-                },
-                right_base + offset,
-                PALETTE[1],
+                tile_sprite,
+                base + face_xy_to_offset!(face.player, face_kind),
+                PALETTE[2],
             );
+
         }
     }
 }
