@@ -31,18 +31,22 @@ impl GoalFrame {
 }
 
 #[derive(Clone, Copy, Default, Debug)]
+struct Goal {
+    xy: face::XY,
+    frame: GoalFrame,
+}
+
+#[derive(Clone, Copy, Default, Debug)]
 enum TileKind {
     #[default]
     Wall,
     Blank,
-    Goal(GoalFrame),
 }
 
 impl TileKind {
-    const ALL: [Self; 3] = [
+    const ALL: [Self; 2] = [
         Self::Wall,
         Self::Blank,
-        Self::Goal(GoalFrame::DEFAULT),
     ];
 }
 
@@ -77,6 +81,7 @@ mod face {
     #[derive(Clone, Debug, Default)]
     pub struct Face {
         pub player: XY,
+        pub goal: Goal,
         pub tiles: Vec<Tile>,
     }
 
@@ -110,14 +115,17 @@ mod face {
 
             let mut top = Face {
                 player: <_>::default(),
+                goal: <_>::default(),
                 tiles: Vec::with_capacity(length),
             };
             let mut left = Face {
                 player: <_>::default(),
+                goal: <_>::default(),
                 tiles: Vec::with_capacity(length),
             };
             let mut right = Face {
                 player: <_>::default(),
+                goal: <_>::default(),
                 tiles: Vec::with_capacity(length),
             };
 
@@ -128,6 +136,15 @@ mod face {
                 top.tiles.push(Tile { kind });
                 left.tiles.push(Tile { kind });
                 right.tiles.push(Tile { kind });
+
+                if let TileKind::Wall = kind { continue }
+
+                if i > unscaled::Inner::MAX as usize { break }
+                let i = i as unscaled::Inner;
+
+                top.goal.xy = i_to_xy(width as _, i);
+                left.goal.xy = i_to_xy(width as _, i);
+                right.goal.xy = i_to_xy(width as _, i);
             }
 
             Self {
@@ -146,6 +163,7 @@ pub struct State {
     pub seed: Seed, // For restarting
     pub rng: Xs,
     pub faces: Faces,
+    pub tick_count: u64,
 }
 
 impl State {
@@ -187,13 +205,45 @@ impl State {
         false
     }
 
+    fn tick(&mut self) {
+        if self.tick_count & 15 == 0 {
+            for face_kind in face::Kind::ALL {
+                let face = match face_kind {
+                    face::Kind::Top => &mut self.faces.top,
+                    face::Kind::Left => &mut self.faces.left,
+                    face::Kind::Right => &mut self.faces.right,
+                };
+    
+                face.goal.frame = match face.goal.frame {
+                    GoalFrame::Zero => GoalFrame::One,
+                    GoalFrame::One => GoalFrame::Two,
+                    GoalFrame::Two => GoalFrame::Three,
+                    GoalFrame::Three => GoalFrame::Four,
+                    GoalFrame::Four => GoalFrame::Zero,
+                };
+            }
+        }
+
+        self.tick_count = self.tick_count.wrapping_add(1);
+    }
+
     pub fn update_and_render(
         &mut self,
         commands: &mut Commands,
         specs: &sprite::Specs,
         input: Input,
-        speaker: &mut Speaker,
+        _speaker: &mut Speaker,
     ) {
+        //
+        // Update
+        //
+
+        self.tick();
+
+        //
+        // Render
+        //
+
         let tile_wh = specs.cube_maze_sides.tile();
         let tiles_per_row = specs.cube_maze_sides.tiles_per_row();
 
@@ -307,7 +357,7 @@ impl State {
         }
 
         for face_kind in face::Kind::ALL {
-            let (face, tile_sprite, base_offset, wall_colour) = match face_kind {
+            let (face, base_tile_sprite, base_offset, wall_colour) = match face_kind {
                 face::Kind::Top => (&self.faces.top, top, top_base_offset, PALETTE[6]),
                 face::Kind::Left => (&self.faces.left, left, left_base_offset, PALETTE[0]),
                 face::Kind::Right => (&self.faces.right, right, right_base_offset, PALETTE[1]),
@@ -321,22 +371,30 @@ impl State {
 
                 draw_side!(
                     match tile.kind {
-                        TileKind::Wall => tile_sprite,
+                        TileKind::Wall => base_tile_sprite,
                         TileKind::Blank => continue,
-                        TileKind::Goal(GoalFrame::Zero) => continue,
-                        TileKind::Goal(frame) => tile_sprite + frame.index(),
                     },
                     base + face_xy_to_offset!(face::i_to_xy(self.faces.width, i), face_kind),
                     wall_colour,
                 );
             }
 
+            match face.goal.frame {
+                GoalFrame::Zero => {}
+                frame => {
+                    draw_side!(
+                        base_tile_sprite + frame.index(),
+                        base + face_xy_to_offset!(face.goal.xy, face_kind),
+                        PALETTE[2],
+                    );
+                }
+            }
+
             draw_side!(
-                tile_sprite,
+                base_tile_sprite,
                 base + face_xy_to_offset!(face.player, face_kind),
                 PALETTE[2],
             );
-
         }
     }
 }
