@@ -15,7 +15,7 @@ pub trait XYTrait<IndexContext, Direction: Clone + Copy> : PartialEq + Sized + C
     /// Chebyshev distance works as an A* hueristic on 8 way movement
     /// and 4 way movement, where for example, Manhattan distance
     /// only works on 4 way, and messed things up for 8.
-    fn chebyshev_distance_to(self, other: Self) -> usize;
+    fn chebyshev_distance_to(self, other: Self) -> TileCount;
 }
 
 #[derive(Debug)]

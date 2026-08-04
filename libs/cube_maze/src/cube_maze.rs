@@ -130,6 +130,14 @@ mod face {
             };
 
             // TODO ensure solvabilty
+            // Sketch of how to ensure solvabilty:
+            // generate solvable maze for one random face, including placing the exit. wlog, assume the top face.
+            //    Can just pick a random exit spot for this too
+            // define a random non-optimal solution to the top face.
+            //    Pick a few random points and pathfind paths across them
+            //        Allows scaling difficulty: more points, more difficult
+            // for the other faces, generate mazes selecting start area, without selecting exit.
+            // play the non-optimal solution across the other two faces and mark wherever we end up as the exits
 
             for i in 0..length {
                 let kind = TileKind::ALL[xs::index(rng, 0..TileKind::ALL.len())];
