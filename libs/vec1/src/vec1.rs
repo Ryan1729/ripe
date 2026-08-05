@@ -65,6 +65,10 @@ impl <T> Vec1<T> {
 
         Vec1::try_from(output).expect("The input being a Vec1 should prevent this case!")
     }
+
+    pub fn slice(&self) -> &[T] {
+        &self.0
+    }
 }
 
 impl<T, I: std::slice::SliceIndex<[T]>> Index<I> for Vec1<T> {

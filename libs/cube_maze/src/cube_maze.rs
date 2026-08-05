@@ -113,21 +113,30 @@ mod face {
             let width: Width = 11;
             let length = width as usize * width as usize;
 
-            let mut top = Face {
-                player: <_>::default(),
-                goal: <_>::default(),
-                tiles: Vec::with_capacity(length),
-            };
-            let mut left = Face {
-                player: <_>::default(),
-                goal: <_>::default(),
-                tiles: Vec::with_capacity(length),
-            };
-            let mut right = Face {
-                player: <_>::default(),
-                goal: <_>::default(),
-                tiles: Vec::with_capacity(length),
-            };
+            let mut faces = [
+                Face {
+                    player: <_>::default(),
+                    goal: <_>::default(),
+                    tiles: Vec::with_capacity(length),
+                },
+                Face {
+                    player: <_>::default(),
+                    goal: <_>::default(),
+                    tiles: Vec::with_capacity(length),
+                },
+                Face {
+                    player: <_>::default(),
+                    goal: <_>::default(),
+                    tiles: Vec::with_capacity(length),
+                },
+            ];
+
+            //via_backtracking<At, IndexContex>(
+                //proto_tiles: &mut [ProtoTileFlags],
+                //rng: &mut Xs,
+                //index_contex: IndexContex,
+                //current_at: At,
+            //)
 
             // TODO ensure solvabilty
             // Sketch of how to ensure solvabilty:
@@ -141,19 +150,25 @@ mod face {
 
             for i in 0..length {
                 let kind = TileKind::ALL[xs::index(rng, 0..TileKind::ALL.len())];
-                top.tiles.push(Tile { kind });
-                left.tiles.push(Tile { kind });
-                right.tiles.push(Tile { kind });
+                faces[0].tiles.push(Tile { kind });
+                faces[1].tiles.push(Tile { kind });
+                faces[2].tiles.push(Tile { kind });
 
                 if let TileKind::Wall = kind { continue }
 
                 if i > unscaled::Inner::MAX as usize { break }
                 let i = i as unscaled::Inner;
 
-                top.goal.xy = i_to_xy(width as _, i);
-                left.goal.xy = i_to_xy(width as _, i);
-                right.goal.xy = i_to_xy(width as _, i);
+                faces[0].goal.xy = i_to_xy(width as _, i);
+                faces[1].goal.xy = i_to_xy(width as _, i);
+                faces[2].goal.xy = i_to_xy(width as _, i);
             }
+
+            xs::shuffle(rng, &mut faces);
+
+            let top = std::mem::replace(&mut faces[0], <_>::default());
+            let left = std::mem::replace(&mut faces[1], <_>::default());
+            let right = std::mem::replace(&mut faces[2], <_>::default());
 
             Self {
                 width,

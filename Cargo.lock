@@ -548,6 +548,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fb4b71acc1405be2431a93892a79a0d82ed5ba6885649ddbdfc62caa4d67b1c"
 
 [[package]]
+name = "dir"
+version = "0.1.0"
+
+[[package]]
 name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1118,6 +1122,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
 dependencies = [
  "regex-automata",
+]
+
+[[package]]
+name = "maze"
+version = "0.1.0"
+dependencies = [
+ "dir",
+ "xs",
 ]
 
 [[package]]
@@ -1701,6 +1713,7 @@ dependencies = [
 name = "platform_types"
 version = "0.1.0"
 dependencies = [
+ "dir",
  "gfx_sizes",
  "pak_types",
  "xs",
@@ -2197,6 +2210,7 @@ name = "sword"
 version = "0.1.0"
 dependencies = [
  "gfx",
+ "maze",
  "offset",
  "pathfinding",
  "platform_types",

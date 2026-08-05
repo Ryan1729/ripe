@@ -1,0 +1,15 @@
+[package]
+name = "maze"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/maze.rs"
+
+[dependencies]
+
+[dependencies.dir]
+path = "../dir"
+
+[dependencies.xs]
+path = "../xs"

@@ -11,6 +11,9 @@ path = "src/sword.rs"
 [dependencies.gfx]
 path = "../gfx"
 
+[dependencies.maze]
+path = "../maze"
+
 [dependencies.offset]
 path = "../offset"
 

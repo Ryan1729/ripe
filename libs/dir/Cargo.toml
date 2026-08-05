@@ -1,0 +1,9 @@
+[package]
+name = "dir"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/dir.rs"
+
+[dependencies]

@@ -4,6 +4,7 @@
 ///! S.W.O.R.D.: Staff Whacking Ordeal Required, Duh
 
 use gfx::{Commands};
+use maze::{ProtoTileFlags, SKIP};
 use platform_types::{sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
 use vec1::{Grid1, Grid1Spec, Vec1, vec1};
 use xs::{Seed, Xs};
@@ -968,296 +969,6 @@ impl Sizes {
     }
 }
 
-mod maze {
-    use super::{Dir};
-    use xs::Xs;
-
-    type Index = usize;
-
-    pub trait AtTrait<IndexContext, Direction: Clone + Copy> : PartialEq + Sized + Clone + Copy {
-        /// The index context might be something like the width of the tile grid, which is useful to calculate the
-        /// index given a regular (x,y) coord pair.
-        fn to_i(self, context: IndexContext) -> Option<Index>;
-
-        fn apply_dir(self, dir: Direction) -> Option<Self>;
-    }
-
-    pub type ProtoTileFlags = u8;
-
-    /// A flag that is outside the range of the Dir flags, which is meant to indicate that the given cell
-    /// should not be filled at all.
-    pub const SKIP: ProtoTileFlags = 1 << (Dir::ALL.len());
-
-    pub fn via_backtracking<At, IndexContex>(
-        proto_tiles: &mut [ProtoTileFlags],
-        rng: &mut Xs,
-        index_contex: IndexContex,
-        current_at: At,
-    ) where
-        At: AtTrait<IndexContex, Dir>,
-        IndexContex: Copy,
-    {
-        let mut dirs = Dir::ALL;
-        xs::shuffle(rng, &mut dirs);
-
-        for dir in dirs {
-            let option: Option<At> = current_at.apply_dir(dir);
-            if let Some(new_at) = option {
-                let pair: (Option<Index>, Option<Index>) = (current_at.to_i(index_contex), new_at.to_i(index_contex));
-
-                if let (Some(current_index), Some(new_index)) = pair
-                {
-                    if let Ok([flags, adjacent_flags])
-                        = proto_tiles.get_disjoint_mut([current_index, new_index])
-                    {
-                        // Don't revisit previously visited spots
-                        if *adjacent_flags != 0 { continue }
-
-                        *flags |= dir.flag();
-                        *adjacent_flags |= dir.opposite().flag();
-                        via_backtracking(proto_tiles, rng, index_contex, new_at);
-                    }
-                }
-            }
-        }
-    }
-
-    #[cfg(false)]
-    #[allow(unused)]
-    fn print_proto_tiles(
-        tiles: &[ProtoTileFlags],
-        ProtoTilesWidth(width): ProtoTilesWidth,
-    ) {
-        let mut output = String::with_capacity(tiles.len());
-
-        output.push(' ');
-        for _ in 0..(width.get() * 2 - 1) {
-            output.push('_');
-        }
-        output.push('\n');
-
-        let height = calc_height(width, tiles);
-
-        for y in 0..height {
-            output.push('|');
-            for x in 0..width.get() {
-                let xy = XY { x: xy::x(x), y: xy::y(y) };
-
-                let Ok(i) = xy_to_i(width, xy) else { continue };
-
-                let tile = tiles[i];
-
-                output.push(if tile & Dir::Down.flag() != 0 { ' ' } else { '_' });
-
-                if tile & Dir::Right.flag() != 0 {
-                    output.push(
-                        if (tile | tiles.get(i + 1).cloned().unwrap_or(0)) & Dir::Down.flag() != 0 {
-                            ' '
-                        } else {
-                            '_'
-                        }
-                    );
-                } else {
-                    output.push('|');
-                }
-            }
-
-            output.push('\n');
-        }
-
-        eprintln!("{output}");
-    }
-
-    #[cfg(test)]
-    mod via_backtracking_connects_all_cells_on {
-        use super::*;
-
-        pub(crate) fn are_all_cells_connected_options(
-            proto_tiles: &mut Vec1<ProtoTileFlags>,
-            width: ProtoTilesWidth,
-            skip_mask: ProtoTileFlags,
-        ) -> bool {
-            use std::collections::HashSet;
-            let mut seen = HashSet::with_capacity(proto_tiles.len());
-
-            let mut to_see = vec![XY::default()];
-
-            while let Some(xy) = to_see.pop() {
-                if let Ok(i) = xy_to_i(width, xy) {
-                    let tile = proto_tiles[i];
-
-                    if tile & skip_mask != 0 { continue }
-
-                    // Don't even look at ones that should be skipped.
-                    seen.insert(i);
-
-                    for dir in Dir::ALL {
-                        if tile & dir.flag() != 0
-                        && let Some(new_xy) = xy.checked_push(dir)
-                        && let Ok(new_i) = xy_to_i(width, new_xy)
-                        && new_i < proto_tiles.len()
-                        && !seen.contains(&new_i) {
-                            to_see.push(new_xy);
-                        }
-                    }
-                }
-            }
-
-            let mut skip_count = 0;
-
-            for i in 0..proto_tiles.len() {
-                let tile = proto_tiles[i];
-
-                if tile & skip_mask != 0 { skip_count += 1 }
-            }
-
-            seen.len() == (proto_tiles.len() - skip_count)
-        }
-
-        pub(crate) fn are_all_cells_connected(
-            proto_tiles: &mut Vec1<ProtoTileFlags>,
-            width: ProtoTilesWidth,
-        ) -> bool {
-            are_all_cells_connected_options(proto_tiles, width, 0)
-        }
-
-        // Test predicate test
-        #[test]
-        fn are_all_cells_connected_returns_false_sometimes() {
-            use Dir::*;
-
-            let width = ProtoTilesWidth::new(4).unwrap();
-
-            let rd = Right.flag() | Down.flag();
-            let ru = Right.flag() | Up.flag();
-            let rl = Right.flag() | Left.flag();
-            let ld =  Left.flag() | Down.flag();
-            let lu =  Left.flag() | Up.flag();
-
-            // All walls
-            let mut tiles = vec1![0; 16usize];
-
-            assert!(!are_all_cells_connected(&mut tiles, width));
-
-            // Top half
-            let mut tiles = vec1![
-                rd, rl, rl, ld,
-                ru, rl, rl, lu,
-                 0,  0,  0,  0,
-                 0,  0,  0,  0,
-            ];
-
-            assert!(!are_all_cells_connected(&mut tiles, width));
-
-            // Disjoint top and bottom
-            let mut tiles = vec1![
-                rd, rl, rl, ld,
-                ru, rl, rl, lu,
-
-                rd, rl, rl, ld,
-                ru, rl, rl, lu,
-            ];
-
-            assert!(!are_all_cells_connected(&mut tiles, width));
-        }
-
-        #[test]
-        fn are_all_cells_connected_options_respects_the_skip_flag() {
-            use Dir::*;
-
-            let f = Up.flag() | Down.flag() | Right.flag() | Left.flag();
-
-            let width = ProtoTilesWidth::new(4).unwrap();
-
-            // All floor
-            let mut tiles = vec1![f; 16usize];
-
-            assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
-
-            // Top half
-            let mut tiles = vec1![
-                 f,  f,  f,  f,
-                 f,  f,  f,  f,
-                 SKIP,  SKIP,  SKIP,  SKIP,
-                 SKIP,  SKIP,  SKIP,  SKIP,
-            ];
-
-            assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
-
-            // Disjoint top and bottom
-            let mut tiles = vec1![
-                f,  f,  f,  f,
-
-                SKIP,  SKIP,  SKIP,  SKIP,
-                SKIP,  SKIP,  SKIP,  SKIP,
-
-                f,  f,  f,  f,
-            ];
-
-            assert!(!are_all_cells_connected_options(&mut tiles, width, SKIP));
-        }
-
-        #[test]
-        fn this_small_example() {
-            let width = ProtoTilesWidth::new(10).unwrap();
-            let mut tiles = vec1![0; 100usize];
-            let mut rng = xs::from_seed([
-                0x0, 0x1, 0x2, 0x3,
-                0x4, 0x5, 0x6, 0x7,
-                0x8, 0x9, 0xA, 0xB,
-                0xC, 0xD, 0xE, 0xF,
-            ]);
-
-            assert!(!are_all_cells_connected(&mut tiles, width));
-
-            via_backtracking(&mut tiles, &mut rng, width, <_>::default());
-
-            assert!(are_all_cells_connected(&mut tiles, width));
-        }
-    }
-
-    #[cfg(test)]
-    mod via_backtracking_allows_blocking_out_areas_on {
-        use super::*;
-        use via_backtracking_connects_all_cells_on::{are_all_cells_connected, are_all_cells_connected_options};
-
-        #[test]
-        fn this_small_example() {
-            let width = ProtoTilesWidth::new(10).unwrap();
-            let mut tiles = vec1![0; 100usize];
-
-            for i in 0..tiles.len() {
-                if i % usize::from(width.get()) > 5 {
-                    tiles[i] |= SKIP;
-                }
-            }
-
-            let mut rng = xs::from_seed([
-                0x0, 0x1, 0x2, 0x3,
-                0x4, 0x5, 0x6, 0x7,
-                0x8, 0x9, 0xA, 0xB,
-                0xC, 0xD, 0xE, 0xF,
-            ]);
-
-            assert!(!are_all_cells_connected(&mut tiles, width));
-            assert!(!are_all_cells_connected_options(&mut tiles, width, SKIP));
-
-            via_backtracking(&mut tiles, &mut rng, width, <_>::default());
-
-            assert!(!are_all_cells_connected(&mut tiles, width));
-            assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
-
-            for i in 0..tiles.len() {
-                if i % usize::from(width.get()) > 5 {
-                    // The dir flags should all be 0, still
-                    assert_eq!(tiles[i], SKIP);
-                }
-            }
-        }
-    }
-}
-use maze::{ProtoTileFlags, SKIP};
-
 impl maze::AtTrait<ProtoTilesWidth, Dir> for XY {
     fn to_i(self, proto_width: ProtoTilesWidth) -> Option<Index> {
         xy_to_i(proto_width.0, self).ok()
@@ -1362,6 +1073,7 @@ pub struct ProtoTilesWidth(TilesWidth);
 
 impl ProtoTilesWidth {
     #[cfg(test)]
+    #[allow(unused)]
     fn new(inner: TilesWidthInner) -> Option<Self> {
         TilesWidth::new(inner).map(Self)
     }
@@ -1374,6 +1086,12 @@ impl ProtoTilesWidth {
 impl From<ProtoTilesWidth> for TilesWidth {
     fn from(ProtoTilesWidth(width): ProtoTilesWidth) -> Self {
         width
+    }
+}
+
+impl From<ProtoTilesWidth> for usize {
+    fn from(ProtoTilesWidth(width): ProtoTilesWidth) -> Self {
+        width.get().into()
     }
 }
 
@@ -1729,7 +1447,7 @@ mod set_flags_for_exit_produces_the_exact_result_on {
                 let width = $width;
                 let width_usize = usize::from(width.get());
                 println!("actual:");
-                print_proto_tiles(&actual, width);
+
                 for i in 0..actual.len() {
                     print!(" {:#04X}", actual[i]);
                     if i % width_usize == width_usize - 1 { println!(); }
@@ -1737,7 +1455,7 @@ mod set_flags_for_exit_produces_the_exact_result_on {
                 println!();
 
                 println!("expected:");
-                print_proto_tiles(&expected, width);
+
                 for i in 0..expected.len() {
                     print!(" {:#04X}", expected[i]);
                     if i % width_usize == width_usize - 1 { println!(); }
@@ -2029,11 +1747,11 @@ mod to_one_thick_connects_all_cells_on {
             0xC, 0xD, 0xE, 0xF,
         ]);
 
-        assert!(!are_all_proto_cells_connected(&mut proto_tiles, sizes.proto_width));
+        assert!(!are_all_proto_cells_connected(proto_tiles.slice(), sizes.proto_width));
 
-        maze::via_backtracking(&mut proto_tiles, &mut rng, sizes.proto_width, <_>::default());
+        maze::via_backtracking(&mut proto_tiles, &mut rng, sizes.proto_width, XY::default());
 
-        assert!(are_all_proto_cells_connected(&mut proto_tiles, sizes.proto_width));
+        assert!(are_all_proto_cells_connected(proto_tiles.slice(), sizes.proto_width));
 
         let tiles = to_one_thick(
             &proto_tiles,
@@ -2059,11 +1777,12 @@ mod to_one_thick_connects_all_cells_on {
             0xC, 0xD, 0xE, 0xF,
         ]);
 
-        assert!(!are_all_proto_cells_connected(&mut proto_tiles, sizes.proto_width));
+        
+        assert!(!are_all_proto_cells_connected(proto_tiles.slice(), sizes.proto_width));
 
-        maze::via_backtracking(&mut proto_tiles, &mut rng, sizes.proto_width, <_>::default());
+        maze::via_backtracking(&mut proto_tiles, &mut rng, sizes.proto_width, XY::default());
 
-        assert!(are_all_proto_cells_connected(&mut proto_tiles, sizes.proto_width));
+        assert!(are_all_proto_cells_connected(proto_tiles.slice(), sizes.proto_width));
 
         let tiles = to_one_thick(
             &proto_tiles,
@@ -2075,6 +1794,37 @@ mod to_one_thick_connects_all_cells_on {
         let slice = tiles.slice();
 
         assert!(are_all_one_floor_tiles_connected(slice.0, slice.1));
+    }
+}
+
+struct Generated {
+    tiles: Tiles,
+    exit_index: usize,
+    exit_facing: Dir,
+}
+// FIXME move this into the `maze` crate.
+fn generate(
+    rng: &mut Xs,
+    (w, h): (u16, u16)
+) -> Generated {
+    let sizes = Sizes::new(w, h);
+
+    let width_usize = w as usize;
+
+    let mut proto_tiles = vec1![0; sizes.proto_length];
+
+    let (proto_exit_index, exit_facing) = generate_maze(rng, &mut proto_tiles, sizes.proto_width);
+
+    let exit_index = xy_to_i(sizes.tiles_width, proto_i_to_tile_xy(sizes.proto_width, proto_exit_index))
+        // Default to the first non-edge tile
+        .unwrap_or(width_usize + 2);
+
+    let tiles = to_one_thick(&proto_tiles, sizes.proto_width, sizes.tiles_length, sizes.tiles_width);
+
+    Generated {
+        tiles,
+        exit_index,
+        exit_facing,
     }
 }
 
@@ -2379,21 +2129,15 @@ impl State {
             //
             // End of planning/proposals
 
-            let sizes = Sizes::new(max_tile_w as _, max_tile_h as _);
-
             let width_usize = usize::from(width.get());
 
-            let mut proto_tiles = vec1![0; sizes.proto_length];
+            let generated = generate(&mut rng, (max_tile_w as _, max_tile_h as _));
 
-            let (proto_exit_index, exit_facing) = generate_maze(&mut rng, &mut proto_tiles, sizes.proto_width);
+            let mut tiles: Tiles = generated.tiles;
+            let exit_index = generated.exit_index;
+            let exit_facing = generated.exit_facing;
 
             const F: TileIndex = Floor;
-
-            let mut tiles: Tiles = to_one_thick(&proto_tiles, sizes.proto_width, sizes.tiles_length, sizes.tiles_width);
-
-            let exit_index = xy_to_i(sizes.tiles_width, proto_i_to_tile_xy(sizes.proto_width, proto_exit_index))
-                // Default to the first non-edge tile
-                .unwrap_or(width_usize + 2);
 
             //
             // Pick sections for things to be placed in
