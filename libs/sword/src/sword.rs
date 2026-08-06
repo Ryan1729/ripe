@@ -1307,10 +1307,14 @@ impl State {
                 |i| { matches!(tiles.get(i).map(|t| t.sprite_index), Some(Floor)) },
                 &mut paths,
             );
-            dbg!(&paths);
+
+            if paths.is_empty() {
+                panic!("No paths through the generated maze");
+            }
+
             // Currently there's always only one path. Might pick the longest path among multiple later.
             let path: Path = paths.swap_remove(0);
-            dbg!();
+
 
             // There's a few types of indexes flying around in this part of the code, and it feels like mistakes are
             // likely to happen. So we define some index types and wrap the relevant collections with structs to
