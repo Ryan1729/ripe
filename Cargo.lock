@@ -488,6 +488,7 @@ checksum = "b365fabc795046672053e29c954733ec3b05e4be654ab130fe8f1f94d7051f35"
 name = "cube_maze"
 version = "0.1.0"
 dependencies = [
+ "dir",
  "gfx",
  "gfx_sizes",
  "platform_types",
@@ -1129,6 +1130,7 @@ name = "maze"
 version = "0.1.0"
 dependencies = [
  "dir",
+ "vec1",
  "xs",
 ]
 

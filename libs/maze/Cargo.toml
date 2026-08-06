@@ -11,5 +11,8 @@ path = "src/maze.rs"
 [dependencies.dir]
 path = "../dir"
 
+[dependencies.vec1]
+path = "../vec1"
+
 [dependencies.xs]
 path = "../xs"

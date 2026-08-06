@@ -69,6 +69,10 @@ impl <T> Vec1<T> {
     pub fn slice(&self) -> &[T] {
         &self.0
     }
+
+    pub fn slice_mut(&mut self) -> &mut [T] {
+        &mut self.0
+    }
 }
 
 impl<T, I: std::slice::SliceIndex<[T]>> Index<I> for Vec1<T> {

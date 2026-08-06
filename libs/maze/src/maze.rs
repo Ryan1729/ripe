@@ -1,14 +1,44 @@
-use dir::{Dir};
+use dir::{Dir, DirFlag};
+use vec1::{Grid1, Grid1Spec, vec1};
 use xs::Xs;
 
-type Index = usize;
+// TODO cleanup/merge these types
 
-pub trait AtTrait<IndexContext, Direction: Clone + Copy> : PartialEq + Sized + Clone + Copy {
-    /// The index context might be something like the width of the tile grid, which is useful to calculate the
-    /// index given a regular (x,y) coord pair.
-    fn to_i(self, context: IndexContext) -> Option<Index>;
+pub type Index = usize;
+pub type TileIndex = usize;
+pub type ProtoIndex = usize;
 
-    fn apply_dir(self, dir: Direction) -> Option<Self>;
+pub type TilesWidthInner = u16;
+pub type TilesWidth = std::num::NonZeroU16;
+
+#[derive(Clone, Copy)]
+pub struct ProtoTilesIndex(Index);
+
+#[derive(Clone, Copy)]
+pub struct ProtoTilesWidth(TilesWidth);
+
+impl ProtoTilesWidth {
+    #[cfg(test)]
+    #[allow(unused)]
+    fn new(inner: TilesWidthInner) -> Option<Self> {
+        TilesWidth::new(inner).map(Self)
+    }
+
+    fn get(&self) -> TilesWidthInner {
+        self.0.get()
+    }
+}
+
+impl From<ProtoTilesWidth> for TilesWidth {
+    fn from(ProtoTilesWidth(width): ProtoTilesWidth) -> Self {
+        width
+    }
+}
+
+impl From<ProtoTilesWidth> for usize {
+    fn from(ProtoTilesWidth(width): ProtoTilesWidth) -> Self {
+        width.get().into()
+    }
 }
 
 pub type ProtoTileFlags = u8;
@@ -17,22 +47,30 @@ pub type ProtoTileFlags = u8;
 /// should not be filled at all.
 pub const SKIP: ProtoTileFlags = 1 << (Dir::ALL.len());
 
-pub fn via_backtracking<At, IndexContex>(
-    proto_tiles: &mut [ProtoTileFlags],
+pub fn via_backtracking(
     rng: &mut Xs,
-    index_contex: IndexContex,
-    current_at: At,
-) where
-    At: AtTrait<IndexContex, Dir>,
-    IndexContex: Copy,
-{
+    proto_tiles: &mut [ProtoTileFlags],
+    width: ProtoTilesWidth,
+) {
+    via_backtracking_helper(rng, proto_tiles, width, <_>::default())
+}
+
+fn via_backtracking_helper(
+    rng: &mut Xs,
+    proto_tiles: &mut [ProtoTileFlags],
+    width: ProtoTilesWidth,
+    current_xy: XY,
+) {
     let mut dirs = Dir::ALL;
     xs::shuffle(rng, &mut dirs);
 
     for dir in dirs {
-        let option: Option<At> = current_at.apply_dir(dir);
-        if let Some(new_at) = option {
-            let pair: (Option<Index>, Option<Index>) = (current_at.to_i(index_contex), new_at.to_i(index_contex));
+        let option: Option<XY> = current_xy.checked_push(dir);
+        if let Some(new_xy) = option {
+            let pair: (Option<Index>, Option<Index>) = (
+                xy_to_i(width, current_xy).ok(),
+                xy_to_i(width, new_xy).ok(),
+            );
 
             if let (Some(current_index), Some(new_index)) = pair
             {
@@ -44,11 +82,49 @@ pub fn via_backtracking<At, IndexContex>(
 
                     *flags |= dir.flag();
                     *adjacent_flags |= dir.opposite().flag();
-                    via_backtracking(proto_tiles, rng, index_contex, new_at);
+                    via_backtracking_helper(rng, proto_tiles, width, new_xy);
                 }
             }
         }
     }
+}
+
+
+type XYInner = u16;
+type X = XYInner;
+type Y = XYInner;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+struct XY {
+    x: X,
+    y: Y,
+}
+
+impl XY {
+    pub fn checked_push(self, dir: impl Into<Dir>) -> Option<XY> {
+        Some(match dir.into() {
+            Dir::Up => XY { x: self.x, y: self.y.checked_sub(1)? },
+            Dir::Right => XY { x: self.x.checked_add(1)?, y: self.y },
+            Dir::Down => XY { x: self.x, y: self.y.checked_add(1)? },
+            Dir::Left => XY { x: self.x.checked_sub(1)?, y: self.y },
+        })
+    }
+}
+
+#[derive(Debug)]
+enum XYToIError {
+    XPastWidth
+}
+
+fn xy_to_i(width: impl Into<usize>, xy: XY) -> Result<usize, XYToIError> {
+    let width_usize = width.into();
+
+    let x_usize = usize::from(xy.x);
+    if x_usize >= width_usize {
+        return Err(XYToIError::XPastWidth);
+    }
+
+    Ok(usize::from(xy.y) * width_usize + x_usize)
 }
 
 #[cfg(false)]
@@ -70,7 +146,7 @@ fn print_proto_tiles(
     for y in 0..height {
         output.push('|');
         for x in 0..width.get() {
-            let xy = XY { x: xy::x(x), y: xy::y(y) };
+            let xy = XY { x: (x), y: (y) };
 
             let Ok(i) = xy_to_i(width, xy) else { continue };
 
@@ -102,45 +178,6 @@ fn print_proto_tiles(
 pub mod via_backtracking_connects_all_cells_on {
     use dir::Dir;
     use super::*;
-
-    type ProtoTilesWidth = usize;
-
-    type X = u16;
-    type Y = u16;
-
-    /// An example XY for these tests
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct XY {
-        pub x: X,
-        pub y: Y,
-    }
-
-    impl XY {
-        pub fn checked_push(self, dir: impl Into<Dir>) -> Option<XY> {
-            Some(match dir.into() {
-                Dir::Up => XY { x: self.x, y: self.y.checked_sub(1)? },
-                Dir::Right => XY { x: self.x.checked_add(1)?, y: self.y },
-                Dir::Down => XY { x: self.x, y: self.y.checked_add(1)? },
-                Dir::Left => XY { x: self.x.checked_sub(1)?, y: self.y },
-            })
-        }
-    }
-
-    #[derive(Debug)]
-    pub enum XYToIError {
-        XPastWidth
-    }
-
-    pub fn xy_to_i(width: impl Into<usize>, xy: XY) -> Result<usize, XYToIError> {
-        let width_usize = width.into();
-    
-        let x_usize = usize::from(xy.x);
-        if x_usize >= width_usize {
-            return Err(XYToIError::XPastWidth);
-        }
-    
-        Ok(usize::from(xy.y) * width_usize + x_usize)
-    }
     
     pub(crate) fn are_all_cells_connected_options(
         proto_tiles: &[ProtoTileFlags],
@@ -280,7 +317,7 @@ pub mod via_backtracking_connects_all_cells_on {
 
         assert!(!are_all_cells_connected(&mut tiles, width));
 
-        via_backtracking(&mut tiles, &mut rng, width, <_>::default());
+        via_backtracking(&mut rng, &mut tiles, width);
 
         assert!(are_all_cells_connected(&mut tiles, width));
     }
@@ -312,7 +349,7 @@ mod via_backtracking_allows_blocking_out_areas_on {
         assert!(!are_all_cells_connected(&mut tiles, width));
         assert!(!are_all_cells_connected_options(&mut tiles, width, SKIP));
 
-        via_backtracking(&mut tiles, &mut rng, width, <_>::default());
+        via_backtracking(&mut rng, &mut tiles, width);
 
         assert!(!are_all_cells_connected(&mut tiles, width));
         assert!(are_all_cells_connected_options(&mut tiles, width, SKIP));
@@ -323,5 +360,843 @@ mod via_backtracking_allows_blocking_out_areas_on {
                 assert_eq!(tiles[i], SKIP);
             }
         }
+    }
+}
+
+fn generate_maze(
+    rng: &mut Xs,
+    proto_tiles: &mut [ProtoTileFlags],
+    proto_width: ProtoTilesWidth
+) -> (ProtoTilesIndex, Dir) {
+    let ProtoTilesWidth(width) = proto_width;
+    let width_usize = usize::from(width.get());
+
+    //
+    // Place the exit first
+    //
+
+    // Multiple things in the generation function rely on the starting exit_index being an non-edge tile!
+    let exit_index_result = random::non_edge_index(
+        Grid1Spec { width, len: proto_tiles.len() },
+        rng
+    );
+    debug_assert!(exit_index_result.is_ok(), "got {exit_index_result:?}");
+    // Default to the first non-edge tile
+    let exit_index = exit_index_result.unwrap_or(width_usize + 2);
+
+    let exit_facing = generate_with_exit_at_index(rng, proto_tiles, proto_width, exit_index);
+
+    (ProtoTilesIndex(exit_index), exit_facing)
+}
+
+fn generate_with_exit_at_index(
+    rng: &mut Xs,
+    proto_tiles: &mut [ProtoTileFlags],
+    proto_width: ProtoTilesWidth,
+    exit_index: Index,
+) -> Dir {
+    assert!(
+        random::is_non_edge_index(Grid1Spec::<TilesWidth> { width: proto_width.into(), len: proto_tiles.len() }, exit_index),
+        "{:?} {:?}",
+        Grid1Spec::<TilesWidth> { width: proto_width.into(), len: proto_tiles.len() },
+        exit_index,
+    );
+
+    let exit_xy = i_to_xy(proto_width, exit_index);
+
+    let height = calc_height(proto_width.into(), proto_tiles);
+
+    let exit_facing = 'exit_facing: {
+        let mut available_dirs = [
+            if exit_xy.y >= (2) { Some(Dir::Up) } else { None },
+            if exit_xy.y < (height.saturating_sub(2).into()) { Some(Dir::Down) } else { None },
+            if exit_xy.x >= (2) { Some(Dir::Left) } else { None },
+            if exit_xy.x < (proto_width.get().saturating_sub(2).into()) { Some(Dir::Right) } else { None },
+        ];
+
+        xs::shuffle(rng, &mut available_dirs);
+
+        for dir_opt in available_dirs {
+            if let Some(dir) = dir_opt {
+                break 'exit_facing dir;
+            }
+        }
+
+        unreachable!()
+    };
+
+    let (exit_hallway_index, fix_flags) = set_flags_for_exit(
+        proto_tiles,
+        proto_width,
+        exit_index,
+        exit_facing
+    );
+
+    //
+    // Generate the maze in the area we didn't block out
+    //
+
+    via_backtracking(rng, proto_tiles, proto_width);
+
+    //
+    // Hook up the maze to the blocked out exit
+    //
+
+    proto_tiles[exit_hallway_index] |= fix_flags;
+
+    exit_facing
+}
+
+#[cfg(test)]
+mod generate_with_exit_at_index_generates_reachable_rooms_on {
+    use super::*;
+    use std::collections::HashSet;
+
+    // Short for assert. We can be this terse because the scope here is limited.
+    macro_rules! a {
+        ($proto_tiles: expr, $width: expr, $exit_index: expr $(,)?) => ({
+            let proto_tiles = $proto_tiles;
+            let width = $width;
+
+            fn is_open(flags: ProtoTileFlags) -> bool {
+                // 0b1111 are the dir flags.
+                // TODO? Add constant for that?
+                flags & 0b1111 != 0
+            }
+
+            let mut open_tiles_count = 0;
+            for &tile in &proto_tiles {
+                if is_open(tile) {
+                    open_tiles_count += 1;
+                }
+            }
+
+            fn get_reachable_from(
+                proto_tiles: &[ProtoTileFlags],
+                width: ProtoTilesWidth,
+                start_index: Index,
+            ) -> HashSet<Index> {
+                use std::collections::HashSet;
+                let mut seen = HashSet::with_capacity(proto_tiles.len() / 2 /* was not thought about too hard */);
+
+                let mut to_see = vec![i_to_xy(width, start_index)];
+
+                while let Some(xy) = to_see.pop() {
+                    if let Ok(i) = xy_to_i(width, xy)
+                    && let Some(&proto_tile) = proto_tiles.get(i) {
+                        if !is_open(proto_tile) { continue }
+
+                        seen.insert(i);
+
+                        for dir in Dir::ALL {
+                            if let Some(new_xy) = xy.checked_push(dir)
+                            && let Ok(new_i) = xy_to_i(width, new_xy)
+                            && !seen.contains(&new_i) {
+                                to_see.push(new_xy);
+                            }
+                        }
+                    }
+                }
+
+                seen
+            }
+
+            let seen = get_reachable_from(
+                &proto_tiles,
+                width,
+                $exit_index
+            );
+
+            let reachable_from_exit_count = seen.len();
+
+            assert_eq!(reachable_from_exit_count, open_tiles_count);
+        })
+    }
+
+    #[test]
+    fn these_random_examples_in_the_top_of_a_small_vertical_maze() {
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        let exit_index = 4; // The center of the top 3 x 3
+        // A 3 x 4 room
+        let mut proto_tiles;
+
+        for _ in 0..16 {
+            proto_tiles = vec1![0; 12usize];
+
+            generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
+
+            a!(
+                proto_tiles,
+                proto_width,
+                exit_index
+            );
+        }
+    }
+
+    #[test]
+    fn these_random_examples_in_the_bottom_of_a_small_vertical_maze() {
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        let exit_index = 7; // The center of the bottom 3 x 3
+        // A 3 x 4 room
+        let mut proto_tiles;
+
+        for _ in 0..16 {
+            proto_tiles = vec1![0; 12usize];
+
+            generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
+
+            a!(
+                proto_tiles,
+                proto_width,
+                exit_index
+            );
+        }
+    }
+
+    #[test]
+    fn these_random_examples_in_the_left_of_a_small_horizontal_maze() {
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        let proto_width = ProtoTilesWidth(TilesWidth::new(4).unwrap());
+        let exit_index = 5; // The center of the left 3 x 3
+        // A 4 x 3 room
+        let mut proto_tiles;
+
+        for _ in 0..16 {
+            proto_tiles = vec1![0; 12usize];
+
+            generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
+
+            a!(
+                proto_tiles,
+                proto_width,
+                exit_index
+            );
+        }
+    }
+
+    #[test]
+    fn these_random_examples_in_the_right_of_a_small_horizontal_maze() {
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        let proto_width = ProtoTilesWidth(TilesWidth::new(4).unwrap());
+        let exit_index = 6; // The center of the right 3 x 3
+        // A 4 x 3 room
+        let mut proto_tiles;
+
+        for _ in 0..16 {
+            proto_tiles = vec1![0; 12usize];
+
+            generate_with_exit_at_index(&mut rng, &mut proto_tiles, proto_width, exit_index);
+
+            a!(
+                proto_tiles,
+                proto_width,
+                exit_index
+            );
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Tile {
+    #[default]
+    Wall,
+    Floor
+}
+
+pub type Tiles = Grid1<Tile, TilesWidth>;
+
+pub struct Generated {
+    pub tiles: Tiles,
+    pub exit_index: usize,
+    pub exit_facing: Dir,
+}
+
+// FIXME move this into the `maze` crate.
+pub fn generate(
+    rng: &mut Xs,
+    (w, h): (u16, u16)
+) -> Generated {
+    let sizes = Sizes::new(w, h);
+
+    let width_usize = w as usize;
+
+    let mut proto_tiles = vec1![0; sizes.proto_length];
+
+    let (proto_exit_index, exit_facing) = generate_maze(rng, &mut proto_tiles, sizes.proto_width);
+
+    let exit_index = proto_i_to_tile_i(&sizes, proto_exit_index)
+        // Default to the first non-edge tile
+        .unwrap_or(width_usize + 2);
+
+    let tiles = to_one_thick(&proto_tiles, &sizes);
+
+    Generated {
+        tiles,
+        exit_index,
+        exit_facing,
+    }
+}
+
+pub fn i_to_xy(width: impl Into<TilesWidth>, index: usize) -> XY {
+    let width = width.into();
+    XY {
+        x: ((index % usize::from(width.get())) as _),
+        y: ((index / usize::from(width.get())) as _),
+    }
+}
+
+fn proto_i_to_tile_i(sizes: &Sizes, proto_index: ProtoTilesIndex) -> Option<TileIndex> {
+    fn proto_i_to_tile_xy(proto_width: ProtoTilesWidth, proto_i: ProtoTilesIndex) -> XY {
+        let proto_xy = i_to_xy(proto_width.0, proto_i.0);
+    
+         XY { x: proto_xy.x * 2 + 1, y: proto_xy.y * 2 + 1 }
+    }
+
+    // FIXME: inline these
+    xy_to_i(sizes.tiles_width.get(), proto_i_to_tile_xy(sizes.proto_width, proto_index)).ok()
+}
+
+/// Relies on the exit_index being an non-edge tile!
+fn set_flags_for_exit(
+    proto_tiles: &mut [ProtoTileFlags],
+    proto_width: ProtoTilesWidth,
+    exit_index: Index,
+    exit_facing: Dir
+) -> (Index, DirFlag) {
+    let ProtoTilesWidth(width) = proto_width;
+    let width_usize = usize::from(width.get());
+
+    let u = Dir::Up.flag();
+    let d = Dir::Down.flag();
+    let l = Dir::Left.flag();
+    let r = Dir::Right.flag();
+
+    proto_tiles[exit_index - width_usize - 1] = SKIP;
+    proto_tiles[exit_index - width_usize] = SKIP;
+    proto_tiles[exit_index - width_usize + 1] = SKIP;
+    proto_tiles[exit_index - 1] = SKIP;
+    proto_tiles[exit_index] = SKIP;
+    proto_tiles[exit_index + 1] = SKIP;
+    proto_tiles[exit_index + width_usize - 1] = SKIP;
+    proto_tiles[exit_index + width_usize] = SKIP;
+    proto_tiles[exit_index + width_usize + 1] = SKIP;
+
+    let flag = exit_facing.flag();
+    let opposite_flag = exit_facing.opposite().flag();
+
+    let (exit_hallway_index, fix_flags) = match exit_facing {
+        Dir::Up
+        | Dir::Down => {
+            proto_tiles[exit_index - 1] |= r | flag;
+            proto_tiles[exit_index] |= r | l | flag;
+            proto_tiles[exit_index + 1] |= l | flag;
+
+            let exit_hallway_index = if exit_facing == Dir::Up {
+                exit_index - width_usize
+            } else {
+                exit_index + width_usize
+            };
+
+            proto_tiles[exit_hallway_index - 1] |= r | opposite_flag;
+            // Clear flags so the maze reaches here
+            proto_tiles[exit_hallway_index] = 0;
+            proto_tiles[exit_hallway_index + 1] |= l | opposite_flag;
+
+            (exit_hallway_index, r | l | opposite_flag)
+        },
+        Dir::Left
+        | Dir::Right => {
+            proto_tiles[exit_index - width_usize] |= d | flag;
+            proto_tiles[exit_index] |= u | d | flag;
+            proto_tiles[exit_index + width_usize] |= u | flag;
+
+            let exit_hallway_index = if exit_facing == Dir::Left {
+                exit_index - 1
+            } else {
+                exit_index + 1
+            };
+
+            proto_tiles[exit_hallway_index - width_usize] |= d | opposite_flag;
+            // Clear flags so the maze reaches here
+            proto_tiles[exit_hallway_index] = 0;
+            proto_tiles[exit_hallway_index + width_usize] |= u | opposite_flag;
+
+            (exit_hallway_index, u | d | opposite_flag)
+        },
+    };
+
+    (exit_hallway_index, fix_flags)
+}
+
+#[cfg(test)]
+mod set_flags_for_exit_produces_the_exact_result_on {
+    use super::*;
+
+    const U: DirFlag = Dir::Up.flag();
+    const D: DirFlag = Dir::Down.flag();
+    const L: DirFlag = Dir::Left.flag();
+    const R: DirFlag = Dir::Right.flag();
+    const S: DirFlag = SKIP;
+
+    // Short for assert. We can be this terse because the scope here is limited.
+    macro_rules! a {
+        ($actual: expr, $expected: expr, $width: expr $(,)?) => {
+            let actual = $actual;
+            let expected = $expected;
+
+            if actual != expected {
+                let width = $width;
+                let width_usize = usize::from(width.get());
+                println!("actual:");
+
+                for i in 0..actual.len() {
+                    print!(" {:#04X}", actual[i]);
+                    if i % width_usize == width_usize - 1 { println!(); }
+                }
+                println!();
+
+                println!("expected:");
+
+                for i in 0..expected.len() {
+                    print!(" {:#04X}", expected[i]);
+                    if i % width_usize == width_usize - 1 { println!(); }
+                }
+                println!();
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn the_minimal_up_case() {
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        let mut proto_tiles = vec1![0; 9usize];
+        let exit_index = 4; // The center of the 3 x 3
+
+        set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Up);
+
+        a!(
+            proto_tiles,
+            // One cell intentionally leaves out the flags
+            // to give a place to hook the maze onto.
+            vec1![
+                S | R | D,             0, S | L | D,
+                S | R | U, S | L | R | U, S | L | U,
+                        S,             S,         S,
+            ],
+            proto_width,
+        );
+    }
+
+    #[test]
+    fn the_minimal_down_case() {
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        let mut proto_tiles = vec1![0; 9usize];
+        let exit_index = 4; // The center of the 3 x 3
+
+        set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Down);
+
+        a!(
+            proto_tiles,
+            // One cell intentionally leaves out the S
+            // to give a place to hook the maze onto.
+            vec1![
+                        S,             S,         S,
+                S | R | D, S | L | R | D, S | L | D,
+                S | R | U,             0, S | L | U,
+            ],
+            proto_width,
+        );
+    }
+
+    #[test]
+    fn the_minimal_left_case() {
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        let mut proto_tiles = vec1![0; 9usize];
+        let exit_index = 4; // The center of the 3 x 3
+
+        set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Left);
+
+        a!(
+            proto_tiles,
+            // One cell intentionally leaves out the S
+            // to give a place to hook the maze onto.
+            vec1![
+                    S | R | D,     S | L | D, S,
+                            0, S | L | U | D, S,
+                    S | R | U,     S | L | U, S,
+            ],
+            proto_width,
+        );
+    }
+
+    #[test]
+    fn the_minimal_right_case() {
+        let proto_width = ProtoTilesWidth(TilesWidth::new(3).unwrap());
+        let mut proto_tiles = vec1![0; 9usize];
+        let exit_index = 4; // The center of the 3 x 3
+
+        set_flags_for_exit(&mut proto_tiles, proto_width, exit_index, Dir::Right);
+
+        a!(
+            proto_tiles,
+            // One cell intentionally leaves out the S
+            // to give a place to hook the maze onto.
+            vec1![
+                        S,     S | R | D, S | L | D,
+                        S, S | R | U | D,         0,
+                        S,     S | R | U, S | L | U,
+            ],
+            proto_width,
+        );
+    }
+}
+
+// FIXME remove the tile stuff from this function, and more that conversion elsewhere.
+/// Convert the tiles to 1-thick walls
+fn to_one_thick(
+    proto_tiles: &[ProtoTileFlags],
+    sizes: &Sizes
+) -> Grid1<Tile, TilesWidth> {
+    use Tile::*;
+
+    const F: Tile = Floor;
+
+    let mut tiles = vec1![Tile::default(); sizes.tiles_length];
+
+    for proto_i in 0..proto_tiles.len() {
+        let proto_tile_flags = proto_tiles[proto_i];
+
+        if proto_tile_flags != 0 {
+            // The cell is open on at least one side.
+
+            if let Some(tile_i) = proto_i_to_tile_i(sizes, ProtoTilesIndex(proto_i)) {
+                tiles[tile_i] = F;
+            }
+        }
+    }
+
+    Grid1{
+        width: sizes.tiles_width,
+        cells: tiles,
+    }
+}
+
+pub type TilesLength = usize;
+
+pub struct Sizes {
+    pub tiles_width: TilesWidth,
+    pub tiles_length: TilesLength,
+    pub proto_width: ProtoTilesWidth,
+    pub proto_length: TilesLength,
+}
+
+impl Sizes {
+    pub fn new(w: u16, h: u16) -> Self {
+        let tiles_length = (w * h).into();
+
+        let proto_width = ProtoTilesWidth(TilesWidth::new((w / 2).saturating_sub(1)).unwrap_or(TilesWidth::MIN));
+        let proto_height = TilesWidth::new((h / 2).saturating_sub(1)).unwrap_or(TilesWidth::MIN);
+        let proto_length = usize::from(proto_width.get()) * usize::from(proto_height.get());
+
+        let tiles_width = TilesWidth::new(w).unwrap_or(TilesWidth::MIN);
+
+        Sizes {
+            tiles_width,
+            tiles_length,
+            proto_width,
+            proto_length,
+        }
+    }
+}
+
+mod random {
+    use super::*;
+    use std::num::TryFromIntError;
+
+    #[derive(Debug)]
+    pub enum NonEdgeError {
+        WidthTooSmall,
+        TilesTooShort,
+        XYToI(XYToIError),
+        TryFromInt(TryFromIntError)
+    }
+
+    impl From<XYToIError> for NonEdgeError {
+        fn from(e: XYToIError) -> Self {
+            NonEdgeError::XYToI(e)
+        }
+    }
+
+    impl From<TryFromIntError> for NonEdgeError {
+        fn from(e: TryFromIntError) -> Self {
+            NonEdgeError::TryFromInt(e)
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    pub struct XYXY {
+        pub min: XY,
+        pub one_past_max: XY,
+    }
+
+    impl XYXY {
+        pub fn contains(self, xy: XY) -> bool {
+            xy.x >= self.min.x
+            && xy.y >= self.min.y
+            && xy.x < self.one_past_max.x
+            && xy.y < self.one_past_max.y
+        }
+    }
+
+    pub fn non_edge_rect(Grid1Spec { width, len }: Grid1Spec<TilesWidth>) -> Result<XYXY, NonEdgeError> {
+        if width.get() < 3 {
+            return Err(NonEdgeError::WidthTooSmall);
+        }
+
+        // The min/max non-edge corners; The corners of the rectangle of non-edge pieces.
+        let min_corner_xy = XY { x: 1, y: 1 };
+        let height = Y::try_from(len)? / width.get();
+        if height < 3 {
+            return Err(NonEdgeError::TilesTooShort);
+        }
+
+        let max_corner_xy = XY { x: (width.get() - 1), y: (height - 1) };
+
+        Ok(XYXY{min: min_corner_xy, one_past_max: max_corner_xy})
+    }
+
+    // Written for an assert
+    #[allow(unused)]
+    pub fn is_non_edge_index(spec: Grid1Spec<TilesWidth>, index_to_check: Index) -> bool {
+        let xy = i_to_xy(spec.width, index_to_check);
+
+        non_edge_rect(spec)
+            .map(|xyxy| xyxy.contains(xy))
+            .unwrap_or(false)
+    }
+
+    pub fn non_edge_index(spec: Grid1Spec<TilesWidth>, rng: &mut Xs) -> Result<Index, NonEdgeError> {
+        let width = spec.width;
+        let XYXY { min, one_past_max } = non_edge_rect(spec)?;
+
+        let selected_xy = XY {
+            x: (xs::range(rng, u32::from(min.x)..u32::from(one_past_max.x)) as XYInner),
+            y: (xs::range(rng, u32::from(min.y)..u32::from(one_past_max.y)) as XYInner)
+        };
+
+        let min_corner_index = xy_to_i(width.get(), min)?;
+        let max_corner_index = xy_to_i(width.get(), one_past_max)?;
+
+        if max_corner_index < min_corner_index {
+            return Err(NonEdgeError::TilesTooShort);
+        }
+
+        Ok(xy_to_i(width.get(), selected_xy)?)
+    }
+}
+
+fn calc_height<A>(
+    width: TilesWidth,
+    tiles: &[A],
+) -> XYInner {
+    calc_height_len(Grid1Spec { width, len: tiles.len() })
+}
+
+fn calc_height_len(
+    Grid1Spec { width, len }: Grid1Spec<TilesWidth>
+) -> XYInner {
+    XYInner::try_from(len).map(|len| len / width.get()).unwrap_or(XYInner::MAX)
+}
+
+#[allow(unused)]
+pub fn print_tiles(
+    tiles: &[Tile],
+    width: TilesWidth,
+) {
+    let mut output = String::with_capacity(tiles.len());
+
+    let height = calc_height(width, tiles);
+
+    let space_count = 3;
+
+    for y in 0..height {
+        for x in 0..width.get() {
+            let xy = XY { x, y };
+
+            let Ok(i) = xy_to_i(width.get(), xy) else { continue };
+
+            let tile = tiles[i];
+
+            if let Tile::Wall = tile {
+                // default (space_count = n)
+                let ch = '#';
+                for _ in 0..space_count {
+                    output.push(ch);
+                }
+
+                // decimal digits (space_count = 3)
+                //let hundreds = index as u32/100;
+                //let tens = (index as u32 - hundreds * 100)/10;
+                //let ones = (index as u32 - hundreds * 100 - tens * 10);
+                //output.push(char::from_digit(hundreds, 10).unwrap_or('?'));
+                //output.push(char::from_digit(tens, 10).unwrap_or('?'));
+                //output.push(char::from_digit(ones, 10).unwrap_or('?'));
+
+                // Braille (space_count = 1)
+                //output.push(char::from_u32(0x2800 + index as u32).unwrap_or('?'));
+            } else {
+                let ch = ' ';
+
+                for _ in 0..space_count {
+                    output.push(ch);
+                }
+            }
+        }
+
+        output.push('\n');
+    }
+
+    eprintln!("{output}");
+}
+
+#[cfg(test)]
+mod to_one_thick_connects_all_cells_on {
+    use super::*;
+    use via_backtracking_connects_all_cells_on::are_all_cells_connected as are_all_proto_cells_connected;
+
+    fn are_all_one_floor_tiles_connected(
+        tiles: &[Tile],
+        width: TilesWidth
+    ) -> bool {
+        print_tiles(tiles, width);
+
+        let mut expected = 0;
+
+        let mut start_floor_i = None;
+
+        for i in 0..tiles.len() {
+            if tiles[i] == Tile::Floor {
+                expected += 1;
+
+                if start_floor_i.is_none() {
+                    start_floor_i = Some(i);
+                }
+            }
+        }
+
+        if expected == 0 {
+            return true
+        }
+
+        let start_floor_i = start_floor_i.unwrap();
+
+        use std::collections::HashSet;
+        let mut seen = HashSet::with_capacity(tiles.len() / 2 /* was not thought about too hard */);
+
+        let mut to_see = vec![i_to_xy(width, start_floor_i)];
+
+        while let Some(xy) = to_see.pop() {
+            if let Ok(i) = xy_to_i(width.get(), xy) {
+                let tile = tiles[i];
+
+                if tile != Tile::Floor { continue }
+
+                seen.insert(i);
+
+                for dir in Dir::ALL {
+                    if let Some(new_xy) = xy.checked_push(dir)
+                    && let Ok(new_i) = xy_to_i(width.get(), new_xy)
+                    && !seen.contains(&new_i) {
+                        to_see.push(new_xy);
+                    }
+                }
+            }
+        }
+
+        seen.len() == expected
+    }
+
+    #[test]
+    fn this_generated_example() {
+        let sizes = Sizes::new(8, 8);
+
+        let mut proto_tiles = vec1![0; sizes.proto_length];
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        assert!(!are_all_proto_cells_connected(proto_tiles.slice(), sizes.proto_width));
+
+        via_backtracking(&mut rng, &mut proto_tiles, sizes.proto_width);
+
+        assert!(are_all_proto_cells_connected(proto_tiles.slice(), sizes.proto_width));
+
+        let tiles = to_one_thick(
+            &proto_tiles,
+            &sizes,
+        );
+
+        let slice = tiles.slice();
+
+        assert!(are_all_one_floor_tiles_connected(slice.0, slice.1));
+    }
+
+    #[test]
+    fn this_larger_non_square_example() {
+        let sizes = Sizes::new(30, 20);
+
+        let mut proto_tiles = vec1![0; sizes.proto_length];
+        let mut rng = xs::from_seed([
+            0x0, 0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        
+        assert!(!are_all_proto_cells_connected(proto_tiles.slice(), sizes.proto_width));
+
+        via_backtracking(&mut rng, &mut proto_tiles, sizes.proto_width);
+
+        assert!(are_all_proto_cells_connected(proto_tiles.slice(), sizes.proto_width));
+
+        let tiles = to_one_thick(
+            &proto_tiles,
+            &sizes,
+        );
+
+        let slice = tiles.slice();
+
+        assert!(are_all_one_floor_tiles_connected(slice.0, slice.1));
     }
 }

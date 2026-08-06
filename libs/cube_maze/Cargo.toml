@@ -8,6 +8,9 @@ path = "src/cube_maze.rs"
 
 [dependencies]
 
+[dependencies.dir]
+path = "../dir"
+
 [dependencies.gfx]
 path = "../gfx"
 
