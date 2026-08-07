@@ -128,11 +128,11 @@ pub fn main() /* -> Result<Object, String> */ {
                 kind: HW::ICE_PUZZLE,
                 // TODO configuration of ice puzzle. Width and height probably?
             },
-            */#{
+            #{
                 kind: HW::SWORD,
                 // TODO configuration of SWORD.
             },
-            /*#{
+            #{
                 kind: HW::BOLD,
                 // TODO configuration of BOLD.
             },
@@ -145,10 +145,10 @@ pub fn main() /* -> Result<Object, String> */ {
                 // TODO configuration of Hex Twiddle.
             },
             */
-            //#{
-                //kind: HW::CUBE_MAZE,
-                //// TODO configuration of Cube Maze.
-            //},
+            #{
+                kind: HW::CUBE_MAZE,
+                // TODO configuration of Cube Maz.
+            },
         ],
         entities: entities,
         segments: [

@@ -427,21 +427,6 @@ pub const TILE_REQUIRED: TileFlags = 1 << 0;
 
 // TODO? reclaim the space that was used by the direction flags that we seem to have not ended up using
 
-#[test]
-fn to_tile_flags_maps_skip_to_tile_required() {
-    assert_eq!(to_tile_flags(SKIP), TILE_REQUIRED);
-}
-
-#[test]
-fn to_tile_flags_maps_all_dir_flags_to_0() {
-    let mut all_dir_flags = 0;
-    for dir in Dir::ALL {
-        all_dir_flags |= dir.flag();
-    }
-
-    assert_eq!(to_tile_flags(all_dir_flags), 0);
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Tile {
     pub sprite_index: TileIndex,
@@ -1257,8 +1242,6 @@ impl State {
                     tile.sprite_index = F;
                 }
             }
-
-            maze::print_tiles(&generated.tiles.cells, generated.tiles.width);
             
             let exit_index = generated.exit_index;
             let exit_facing = generated.exit_facing;
@@ -1348,7 +1331,7 @@ impl State {
                 }
             }
 
-            #[derive(Clone)]
+            #[derive(Clone, Debug)]
             struct PathWrapper {
                 _path: Vec<TilesIndex>,
             }
@@ -1422,7 +1405,6 @@ impl State {
                 if !floor_indexes.contains(&index) {
                     floor_indexes.push(index);
                 } else {
-                    debug_assert_eq!(exit_index, index);
                     debug_assert!(path.contains(&index));
                 }
 

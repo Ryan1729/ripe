@@ -637,7 +637,6 @@ pub struct Generated {
     pub exit_facing: Dir,
 }
 
-// FIXME move this into the `maze` crate.
 pub fn generate(
     rng: &mut Xs,
     (w, h): (u16, u16)
@@ -663,7 +662,7 @@ pub fn generate(
     }
 }
 
-pub fn i_to_xy(width: impl Into<TilesWidth>, index: usize) -> XY {
+fn i_to_xy(width: impl Into<TilesWidth>, index: usize) -> XY {
     let width = width.into();
     XY {
         x: ((index % usize::from(width.get())) as _),
@@ -672,14 +671,11 @@ pub fn i_to_xy(width: impl Into<TilesWidth>, index: usize) -> XY {
 }
 
 fn proto_i_to_tile_i(sizes: &Sizes, proto_index: ProtoTilesIndex) -> Option<TileIndex> {
-    fn proto_i_to_tile_xy(proto_width: ProtoTilesWidth, proto_i: ProtoTilesIndex) -> XY {
-        let proto_xy = i_to_xy(proto_width.0, proto_i.0);
+    let proto_xy = i_to_xy(sizes.proto_width.0, proto_index.0);
     
-         XY { x: proto_xy.x * 2 + 1, y: proto_xy.y * 2 + 1 }
-    }
+    let tile_xy = XY { x: proto_xy.x * 2 + 1, y: proto_xy.y * 2 + 1 };
 
-    // FIXME: inline these
-    xy_to_i(sizes.tiles_width.get(), proto_i_to_tile_xy(sizes.proto_width, proto_index)).ok()
+    xy_to_i(sizes.tiles_width.get(), tile_xy).ok()
 }
 
 /// Relies on the exit_index being an non-edge tile!
@@ -878,7 +874,6 @@ mod set_flags_for_exit_produces_the_exact_result_on {
     }
 }
 
-// FIXME remove the tile stuff from this function, and more that conversion elsewhere.
 /// Convert the tiles to 1-thick walls
 fn to_one_thick(
     proto_tiles: &[ProtoTileFlags],
@@ -898,6 +893,14 @@ fn to_one_thick(
 
             if let Some(tile_i) = proto_i_to_tile_i(sizes, ProtoTilesIndex(proto_i)) {
                 tiles[tile_i] = F;
+
+                if proto_tile_flags & Dir::Right.flag() != 0 {
+                    tiles[tile_i + 1] = F;
+                }
+    
+                if proto_tile_flags & Dir::Down.flag() != 0 {
+                    tiles[tile_i + usize::from(sizes.tiles_width.get())] = F;
+                }
             }
         }
     }
@@ -1036,7 +1039,7 @@ fn calc_height_len(
 }
 
 #[allow(unused)]
-pub fn print_tiles(
+fn print_tiles(
     tiles: &[Tile],
     width: TilesWidth,
 ) {
