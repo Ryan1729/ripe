@@ -47,7 +47,7 @@ pub type ProtoTileFlags = u8;
 /// should not be filled at all.
 pub const SKIP: ProtoTileFlags = 1 << (Dir::ALL.len());
 
-pub fn via_backtracking(
+fn via_backtracking(
     rng: &mut Xs,
     proto_tiles: &mut [ProtoTileFlags],
     width: ProtoTilesWidth,

@@ -491,8 +491,10 @@ dependencies = [
  "dir",
  "gfx",
  "gfx_sizes",
+ "maze",
  "platform_types",
  "qrs",
+ "vec1",
  "xs",
 ]
 

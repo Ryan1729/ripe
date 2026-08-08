@@ -2,6 +2,7 @@ use gfx::{Commands};
 use gfx_sizes::{ARGB};
 use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
 use qrs::{QRS, QRSD, Q, R, qr};
+use vec1::{Grid1, Grid1Spec};
 use xs::{Seed, Xs};
 
 type TileSprite = u8;
@@ -36,7 +37,7 @@ struct Goal {
     frame: GoalFrame,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 enum TileKind {
     #[default]
     Wall,
@@ -58,6 +59,8 @@ struct Tile {
 mod face {
     use super::*;
 
+    type Width = u8;
+
     pub type Index = unscaled::Inner;
 
     pub type X = unscaled::Inner;
@@ -69,6 +72,17 @@ mod face {
         pub y: Y,
     }
 
+    impl XY {
+        pub fn checked_push(self, dir: impl Into<Dir>) -> Option<XY> {
+            Some(match dir.into() {
+                Dir::Up => XY { x: self.x, y: self.y.checked_sub(1)? },
+                Dir::Right => XY { x: self.x.checked_add(1)?, y: self.y },
+                Dir::Down => XY { x: self.x, y: self.y.checked_add(1)? },
+                Dir::Left => XY { x: self.x.checked_sub(1)?, y: self.y },
+            })
+        }
+    }
+
     pub fn i_to_xy(width: Width, i: Index) -> XY {
         XY {
             x: i % (width as unscaled::Inner),
@@ -76,7 +90,22 @@ mod face {
         }
     }
 
-    type Width = u8;
+    #[derive(Debug)]
+    pub enum XYToIError {
+         XPastWidth
+    }
+
+    pub fn xy_to_i(width: Width, xy: XY) -> Result<Index, XYToIError> {    
+        let width = width as unscaled::Inner;
+
+        if xy.x >= width {
+            return Err(XYToIError::XPastWidth);
+        }
+    
+        let i = xy.y * width + xy.x;
+
+        Ok(i)
+    }
 
     #[derive(Clone, Debug, Default)]
     pub struct Face {
@@ -108,6 +137,36 @@ mod face {
         pub right: Face,
     }
 
+    fn to_tiles(maze_tiles: &Grid1<maze::Tile, std::num::NonZero<u16>>) -> Vec<Tile> {
+        let mut output = Vec::with_capacity(maze_tiles.cells.len());
+
+        for maze_tile in &maze_tiles.cells {
+            output.push(Tile {
+                kind: match maze_tile {
+                    maze::Tile::Wall => TileKind::Wall,
+                    maze::Tile::Floor => TileKind::Blank,
+                },
+            });
+        }
+
+        output
+    }
+
+    fn random_floor_xy(rng: &mut Xs, tiles: &[Tile], width: Width) -> Option<face::XY> {
+        let len = tiles.len();
+
+        let start = xs::range(rng, 0..len as u32) as usize;
+
+        for offset in 0..tiles.len() {
+            let i = ((start + offset) % len) as u16;
+            if tiles[i as usize].kind == TileKind::Blank {
+                return Some(face::i_to_xy(width, i as i16));
+            }
+        }
+
+        None
+    }
+
     impl Faces {
         pub fn new(rng: &mut Xs) -> Self {
             let width: Width = 11;
@@ -131,37 +190,118 @@ mod face {
                 },
             ];
 
-            //via_backtracking<At, IndexContex>(
-                //proto_tiles: &mut [ProtoTileFlags],
-                //rng: &mut Xs,
-                //index_contex: IndexContex,
-                //current_at: At,
-            //)
+            let dimensions = (width.into(), width.into()); // square
 
-            // TODO ensure solvabilty
-            // Sketch of how to ensure solvabilty:
-            // generate solvable maze for one random face, including placing the exit. wlog, assume the top face.
-            //    Can just pick a random exit spot for this too
+            // generate solvable maze for one random face, including placing the exit.
+            // FIXME: This generates the large exit for SWORD. Move that back to SWORD and avoid it here.
+            let base_generated = maze::generate(
+                rng,
+                dimensions,
+            );
+
+            faces[0].goal.xy = i_to_xy(width, base_generated.exit_index.try_into().expect("exit index invalid"));
+            faces[0].tiles = to_tiles(&base_generated.tiles);
+
+            let spec = Grid1Spec {
+                len: faces[0].tiles.len(),
+                width: width.into(),
+            };
+
             // define a random non-optimal solution to the top face.
-            //    Pick a few random points and pathfind paths across them
-            //        Allows scaling difficulty: more points, more difficult
+            let mut selected_path: Vec<usize> = Vec::with_capacity(64 /* not thought about too hard */);
+            let mut temp_paths = Vec::with_capacity(16 /* not thought about too hard */);
+
+            faces[0].player = random_floor_xy(rng, &faces[0].tiles, width).expect("No starting floor tile found in face 0 maze");
+            let mut start_index = face::xy_to_i(width, faces[0].player).expect("Start xy is invalid") as usize;
+
+            // Pick a few random points and pathfind paths across them
+            for i in 0..3 {
+                temp_paths.clear();
+        
+                let next_xy = random_floor_xy(rng, &faces[0].tiles, width).expect("No floor tile found in face 0 maze");
+
+                let next_index = face::xy_to_i(width, next_xy).expect("Next xy is invalid") as usize;
+
+                spec.find_all_paths(
+                    start_index,
+                    next_index,
+                    |i| { matches!(faces[0].tiles.get(i).map(|t| t.kind), Some(TileKind::Blank)) },
+                    &mut temp_paths,
+                );
+
+                let path: Vec<_> = temp_paths.pop().expect("No path in face 0 maze");
+
+                assert_eq!(Some(&start_index), path.first());
+                assert_eq!(Some(&next_index), path.last());
+
+                // We want the last element of the output path to be the last next_index, but we don't want duplicates.
+                if let Some(previous_end) = selected_path.pop() {
+                    start_index = previous_end;
+                }
+                
+                selected_path.extend(&path);
+            }
+
             // for the other faces, generate mazes selecting start area, without selecting exit.
+            faces[1].tiles = to_tiles(
+                &maze::generate(
+                    rng,
+                    dimensions,
+                ).tiles
+            );
+
+            faces[2].tiles = to_tiles(
+                &maze::generate(
+                    rng,
+                    dimensions,
+                ).tiles
+            );
+
+            faces[1].player = random_floor_xy(rng, &faces[1].tiles, width).expect("No floor tile found in face 1 maze");
+            faces[1].goal.xy = faces[1].player;
+
+            faces[2].player = random_floor_xy(rng, &faces[2].tiles, width).expect("No floor tile found in face 2 maze");
+            faces[2].goal.xy = faces[2].player;
+
+            let width_isize = width as isize;
+
             // play the non-optimal solution across the other two faces and mark wherever we end up as the exits
+            for window in selected_path.windows(2) {
+                let from = window[0] as isize;
+                let to = window[1] as isize;
 
-            for i in 0..length {
-                let kind = TileKind::ALL[xs::index(rng, 0..TileKind::ALL.len())];
-                faces[0].tiles.push(Tile { kind });
-                faces[1].tiles.push(Tile { kind });
-                faces[2].tiles.push(Tile { kind });
+                let delta = from - to;
 
-                if let TileKind::Wall = kind { continue }
+                let dir;
 
-                if i > unscaled::Inner::MAX as usize { break }
-                let i = i as unscaled::Inner;
+                if delta == -1 {
+                    dir = Dir::Right;
+                } else if delta == 1 {
+                    dir = Dir::Left;
+                } else if delta == width_isize {
+                    dir = Dir::Up;
+                } else if delta == -width_isize {
+                    dir = Dir::Down;
+                } else {
+                    debug_assert!(false, "Disconnected path");
+                    continue
+                }
 
-                faces[0].goal.xy = i_to_xy(width as _, i);
-                faces[1].goal.xy = i_to_xy(width as _, i);
-                faces[2].goal.xy = i_to_xy(width as _, i);
+                if let Some(new_xy) = faces[1].goal.xy.checked_push(dir) {
+                    if let Ok(new_i) = face::xy_to_i(width, new_xy) {
+                        if let Some(TileKind::Blank) = faces[1].tiles.get(new_i as usize).map(|t| t.kind) {
+                            faces[1].goal.xy = new_xy;
+                        }
+                    }
+                }
+
+                if let Some(new_xy) = faces[2].goal.xy.checked_push(dir) {
+                    if let Ok(new_i) = face::xy_to_i(width, new_xy) {
+                        if let Some(TileKind::Blank) = faces[2].tiles.get(new_i as usize).map(|t| t.kind) {
+                            faces[2].goal.xy = new_xy;
+                        }
+                    }
+                }
             }
 
             xs::shuffle(rng, &mut faces);
