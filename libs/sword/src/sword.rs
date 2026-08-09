@@ -1228,7 +1228,11 @@ impl State {
 
             let width_usize = usize::from(width.get());
 
-            let generated = maze::generate(&mut rng, (max_tile_w as _, max_tile_h as _));
+            let generated = maze::generate(
+                &mut rng,
+                (max_tile_w as _, max_tile_h as _),
+                maze::EXIT_STAIRS
+            );
 
             let mut tiles: Tiles = Grid1 { 
                 cells: vec1![<_>::default(); generated.tiles.len()],

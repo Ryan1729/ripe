@@ -169,7 +169,7 @@ mod face {
 
     impl Faces {
         pub fn new(rng: &mut Xs) -> Self {
-            let width: Width = 11;
+            let width: Width = 12;
             let length = width as usize * width as usize;
 
             let mut faces = [
@@ -190,13 +190,17 @@ mod face {
                 },
             ];
 
-            let dimensions = (width.into(), width.into()); // square
+            let dimension = width.into();
+
+            let dimensions = (dimension, dimension); // square
+
+            let maze_flags: maze::Flags = 0;
 
             // generate solvable maze for one random face, including placing the exit.
-            // FIXME: This generates the large exit for SWORD. Move that back to SWORD and avoid it here.
             let base_generated = maze::generate(
                 rng,
                 dimensions,
+                maze_flags,
             );
 
             faces[0].goal.xy = i_to_xy(width, base_generated.exit_index.try_into().expect("exit index invalid"));
@@ -204,7 +208,7 @@ mod face {
 
             let spec = Grid1Spec {
                 len: faces[0].tiles.len(),
-                width: width.into(),
+                width: dimensions.0.into(),
             };
 
             // define a random non-optimal solution to the top face.
@@ -247,6 +251,7 @@ mod face {
                 &maze::generate(
                     rng,
                     dimensions,
+                    maze_flags,
                 ).tiles
             );
 
@@ -254,6 +259,7 @@ mod face {
                 &maze::generate(
                     rng,
                     dimensions,
+                    maze_flags,
                 ).tiles
             );
 
