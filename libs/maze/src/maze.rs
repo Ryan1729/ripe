@@ -14,7 +14,7 @@ pub type TilesWidth = std::num::NonZeroU16;
 #[derive(Clone, Copy)]
 pub struct ProtoTilesIndex(Index);
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct ProtoTilesWidth(TilesWidth);
 
 impl ProtoTilesWidth {
@@ -390,9 +390,9 @@ fn generate_maze(
             Grid1Spec::<TilesWidth> { width: proto_width.into(), len: proto_tiles.len() },
             exit_index
         ),
-        "{:?} {:?}",
-        Grid1Spec::<TilesWidth> { width: proto_width.into(), len: proto_tiles.len() },
+        "{:?} is an edge index! ({:?})",
         exit_index,
+        Grid1Spec::<TilesWidth> { width: proto_width.into(), len: proto_tiles.len() },
     );
 
     let exit_xy = i_to_xy(proto_width, exit_index);
@@ -415,6 +415,8 @@ fn generate_maze(
             }
         }
 
+        // FIXME we hit this, after hitting the above assert. Let's make all the assertions/panics here into errors
+        //       and actually give them clear errors and/or make the prerequisites on the params baked into the types.
         unreachable!()
     };
 
@@ -651,6 +653,7 @@ pub fn generate(
     (w, h): (u16, u16),
     flags: Flags,
 ) -> Generated {
+    // TODO? assert/return error for (w, h) where there are no non-edge proto tiles?
     let sizes = Sizes::new(w, h);
 
     let width_usize = w as usize;
@@ -992,6 +995,7 @@ fn to_one_thick(
 
 pub type TilesLength = usize;
 
+#[derive(Clone, Copy, Debug)]
 pub struct Sizes {
     pub tiles_width: TilesWidth,
     pub tiles_length: TilesLength,
@@ -1003,8 +1007,8 @@ impl Sizes {
     pub fn new(w: u16, h: u16) -> Self {
         let tiles_length = (w * h).into();
 
-        let proto_width = ProtoTilesWidth(TilesWidth::new((w / 2).saturating_sub(1)).unwrap_or(TilesWidth::MIN));
-        let proto_height = TilesWidth::new((h / 2).saturating_sub(1)).unwrap_or(TilesWidth::MIN);
+        let proto_width = ProtoTilesWidth(TilesWidth::new((w - 1) / 2).unwrap_or(TilesWidth::MIN));
+        let proto_height = TilesWidth::new((h - 1) / 2).unwrap_or(TilesWidth::MIN);
         let proto_length = usize::from(proto_width.get()) * usize::from(proto_height.get());
 
         let tiles_width = TilesWidth::new(w).unwrap_or(TilesWidth::MIN);
@@ -1015,6 +1019,53 @@ impl Sizes {
             proto_width,
             proto_length,
         }
+    }
+}
+
+#[cfg(test)]
+mod sizes_new_works_on {
+    use super::*;
+
+    #[test]
+    fn these_examples() {
+        macro_rules! a {
+            ($tile_size: expr => $expected_proto_size: expr) => ({
+                let expected_proto_size = $expected_proto_size;
+
+                let sizes = Sizes::new($tile_size, $tile_size);
+                assert_eq!(expected_proto_size as i128, sizes.proto_width.0.get() as i128, "{} => {}", $tile_size, $expected_proto_size);
+                assert_eq!((expected_proto_size * expected_proto_size) as i128, sizes.proto_length as i128, "{} => {}", $tile_size, $expected_proto_size);
+            })
+        }
+        // #: always wall
+        // .: proto-tile cell
+        // _: possible connecting hallway
+        
+        // # # #
+        // # . #
+        // # # #
+        a!(3 => 1);
+        // # # # # #
+        // # . _ . #
+        // # _ # _ #
+        // # . _ . #
+        // # # # # #
+        a!(5 => 2);
+        // # # # # # # #
+        // # . _ . _ . #
+        // ... omitting for brevity
+        // # # # # # # #
+        a!(7 => 3);
+        // # # # # # # # # #
+        // # . _ . _ . _ . #
+        // ... omitting for brevity
+        // # # # # # # # # #
+        a!(9 => 4);
+        // # # # # # # # # # # #
+        // # . _ . _ . _ . _ . #
+        // ... omitting for brevity
+        // # # # # # # # # # # #
+        a!(11 => 5);
     }
 }
 
@@ -1093,11 +1144,13 @@ mod random {
             y: (xs::range(rng, u32::from(min.y)..u32::from(one_past_max.y)) as XYInner)
         };
 
-        let min_corner_index = xy_to_i(width.get(), min)?;
-        let max_corner_index = xy_to_i(width.get(), one_past_max)?;
-
-        if max_corner_index < min_corner_index {
-            return Err(NonEdgeError::TilesTooShort);
+        {
+            let min_corner_index = xy_to_i(width.get(), min)?;
+            let max_corner_index = xy_to_i(width.get(), one_past_max)?;
+    
+            if max_corner_index < min_corner_index {
+                return Err(NonEdgeError::TilesTooShort);
+            }
         }
 
         Ok(xy_to_i(width.get(), selected_xy)?)

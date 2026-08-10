@@ -169,7 +169,7 @@ mod face {
 
     impl Faces {
         pub fn new(rng: &mut Xs) -> Self {
-            let width: Width = 12;
+            let width: Width = 7; // looks bad if this isn't an odd number, and it should be >= 7
             let length = width as usize * width as usize;
 
             let mut faces = [
