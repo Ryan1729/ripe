@@ -1102,7 +1102,7 @@ pub struct State {
 impl State {
     pub fn new(rng: &mut Xs, specs: &sprite::Specs) -> Self {
         let seed = xs::new_seed(rng);
-        dbg!(seed);
+
         Self::init(seed, &specs.wall)
     }
 
@@ -1232,7 +1232,7 @@ impl State {
                 &mut rng,
                 (max_tile_w as _, max_tile_h as _),
                 maze::EXIT_STAIRS
-            );
+            ).unwrap_or_else(|_| maze::generate_fallback((max_tile_w as _, max_tile_h as _)));
 
             let mut tiles: Tiles = Grid1 { 
                 cells: vec1![<_>::default(); generated.tiles.len()],

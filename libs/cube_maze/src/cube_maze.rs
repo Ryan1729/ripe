@@ -201,7 +201,7 @@ mod face {
                 rng,
                 dimensions,
                 maze_flags,
-            );
+            ).unwrap_or_else(|e| maze::generate_fallback(dimensions));
 
             faces[0].goal.xy = i_to_xy(width, base_generated.exit_index.try_into().expect("exit index invalid"));
             faces[0].tiles = to_tiles(&base_generated.tiles);
@@ -252,7 +252,7 @@ mod face {
                     rng,
                     dimensions,
                     maze_flags,
-                ).tiles
+                ).unwrap_or_else(|_| maze::generate_fallback(dimensions)).tiles
             );
 
             faces[2].tiles = to_tiles(
@@ -260,7 +260,7 @@ mod face {
                     rng,
                     dimensions,
                     maze_flags,
-                ).tiles
+                ).unwrap_or_else(|_| maze::generate_fallback(dimensions)).tiles
             );
 
             faces[1].player = random_floor_xy(rng, &faces[1].tiles, width).expect("No floor tile found in face 1 maze");

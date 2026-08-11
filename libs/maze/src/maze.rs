@@ -43,6 +43,18 @@ impl From<ProtoTilesWidth> for usize {
 
 pub type ProtoTileFlags = u8;
 
+pub const ALL_DIRS: ProtoTileFlags = {
+    let mut flags: ProtoTileFlags = 0;
+
+    let mut i = 0;
+    while i < Dir::ALL.len() {
+        flags |= Dir::ALL[i].flag();
+        i += 1;
+    }
+
+    flags
+};
+
 /// A flag that is outside the range of the Dir flags, which is meant to indicate that the given cell
 /// should not be filled at all.
 pub const SKIP: ProtoTileFlags = 1 << (Dir::ALL.len());
@@ -111,7 +123,7 @@ impl XY {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 enum XYToIError {
     XPastWidth
 }
@@ -363,96 +375,6 @@ mod via_backtracking_allows_blocking_out_areas_on {
     }
 }
 
-fn generate_maze(
-    rng: &mut Xs,
-    proto_tiles: &mut [ProtoTileFlags],
-    proto_width: ProtoTilesWidth,
-    flags: Flags,
-) -> (ProtoTilesIndex, Dir) {
-    let ProtoTilesWidth(width) = proto_width;
-    let width_usize = usize::from(width.get());
-
-    //
-    // Place the exit first
-    //
-
-    // Multiple things in the generation function rely on the starting exit_index being an non-edge tile!
-    let exit_index_result = random::non_edge_index(
-        Grid1Spec { width, len: proto_tiles.len() },
-        rng
-    );
-    debug_assert!(exit_index_result.is_ok(), "got {exit_index_result:?}");
-    // Default to the first non-edge tile
-    let exit_index = exit_index_result.unwrap_or(width_usize + 2);
-
-    assert!(
-        random::is_non_edge_index(
-            Grid1Spec::<TilesWidth> { width: proto_width.into(), len: proto_tiles.len() },
-            exit_index
-        ),
-        "{:?} is an edge index! ({:?})",
-        exit_index,
-        Grid1Spec::<TilesWidth> { width: proto_width.into(), len: proto_tiles.len() },
-    );
-
-    let exit_xy = i_to_xy(proto_width, exit_index);
-
-    let height = calc_height(proto_width.into(), proto_tiles);
-
-    let exit_facing = 'exit_facing: {
-        let mut available_dirs = [
-            if exit_xy.y >= (2) { Some(Dir::Up) } else { None },
-            if exit_xy.y < (height.saturating_sub(2).into()) { Some(Dir::Down) } else { None },
-            if exit_xy.x >= (2) { Some(Dir::Left) } else { None },
-            if exit_xy.x < (proto_width.get().saturating_sub(2).into()) { Some(Dir::Right) } else { None },
-        ];
-
-        xs::shuffle(rng, &mut available_dirs);
-
-        for dir_opt in available_dirs {
-            if let Some(dir) = dir_opt {
-                break 'exit_facing dir;
-            }
-        }
-
-        // FIXME we hit this, after hitting the above assert. Let's make all the assertions/panics here into errors
-        //       and actually give them clear errors and/or make the prerequisites on the params baked into the types.
-        unreachable!()
-    };
-
-    if flags & EXIT_STAIRS != 0 {
-        let (exit_hallway_index, fix_flags) = set_flags_for_exit_stairs(
-            proto_tiles,
-            proto_width,
-            exit_index,
-            exit_facing
-        );
-    
-        //
-        // Generate the maze in the area we didn't block out
-        //
-    
-        via_backtracking(rng, proto_tiles, proto_width);
-    
-        //
-        // Hook up the maze to the blocked out exit
-        //
-    
-        proto_tiles[exit_hallway_index] |= fix_flags;
-    } else {
-        set_flags_for_simple_exit(
-            proto_tiles,
-            proto_width,
-            exit_index,
-            exit_facing
-        );
-
-        via_backtracking(rng, proto_tiles, proto_width);
-    }
-
-    (ProtoTilesIndex(exit_index), exit_facing)
-}
-
 //#[cfg(test)]
 #[cfg(false)] // We inlined this function
 mod generate_with_exit_at_index_generates_reachable_rooms_on {
@@ -648,31 +570,141 @@ pub type Flags = u8;
 
 pub const EXIT_STAIRS: Flags = 1;
 
-pub fn generate(
-    rng: &mut Xs,
-    (w, h): (u16, u16),
-    flags: Flags,
-) -> Generated {
-    // TODO? assert/return error for (w, h) where there are no non-edge proto tiles?
+// TODO? tighten these types to those that allow always correct generation, or at least good fallbacks.
+type MazeWidth = u16;
+type MazeHeight = u16;
+
+pub fn generate_fallback(
+    (w, h): (MazeWidth, MazeHeight),
+) -> Generated {    
     let sizes = Sizes::new(w, h);
 
-    let width_usize = w as usize;
-
-    let mut proto_tiles = vec1![0; sizes.proto_length];
-
-    let (proto_exit_index, exit_facing) = generate_maze(rng, &mut proto_tiles, sizes.proto_width, flags);
-
-    let exit_index = proto_i_to_tile_i(&sizes, proto_exit_index)
-        // Default to the first non-edge tile
-        .unwrap_or(width_usize + 2);
+    let mut proto_tiles = vec1![ALL_DIRS; sizes.proto_length];
 
     let tiles = to_one_thick(&proto_tiles, &sizes);
 
     Generated {
         tiles,
+        // Default to the first non-edge tile
+        exit_index: w as usize + 2,
+        exit_facing: <_>::default(),
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum GenerationError {
+    NonEdge(NonEdgeError),
+    NoExitFacing,
+    NoExitIndex,
+}
+
+impl From<NonEdgeError> for GenerationError {
+    fn from(e: NonEdgeError) -> Self {
+        Self::NonEdge(e)
+    }
+}
+
+pub fn generate(
+    rng: &mut Xs,
+    (w, h): (MazeWidth, MazeHeight),
+    flags: Flags,
+) -> Result<Generated, GenerationError> {
+    // TODO? assert/return error for (w, h) where there are no non-edge proto tiles?
+    let sizes = Sizes::new(w, h);
+
+    let tiles_width_usize = w as usize;
+
+    let mut proto_tiles = vec1![0; sizes.proto_length];
+
+    let proto_width = sizes.proto_width;
+
+    let proto_width_usize = usize::from(proto_width.0.get());
+
+    //
+    // Place the exit first
+    //
+
+    // Multiple things in the generation function rely on the starting exit_index being an non-edge tile!
+    let exit_index = random::non_edge_index(
+        Grid1Spec { width: sizes.proto_width.0, len: proto_tiles.len() },
+        rng
+    )?;
+
+    if !random::is_non_edge_index(
+        Grid1Spec::<TilesWidth> { width: proto_width.into(), len: proto_tiles.len() },
+        exit_index
+    ) {
+        return Err(GenerationError::NonEdge(NonEdgeError::BedGeneration))
+    }
+
+    let exit_xy = i_to_xy(proto_width, exit_index);
+
+    let exit_facing;
+
+    if flags & EXIT_STAIRS != 0 {
+        exit_facing = 'exit_facing: {
+            let height = calc_height(proto_width.into(), proto_tiles.slice_mut());
+
+            let mut available_dirs = [
+                if exit_xy.y >= (2) { Some(Dir::Up) } else { None },
+                if exit_xy.y < (height.saturating_sub(2).into()) { Some(Dir::Down) } else { None },
+                if exit_xy.x >= (2) { Some(Dir::Left) } else { None },
+                if exit_xy.x < (proto_width.get().saturating_sub(2).into()) { Some(Dir::Right) } else { None },
+            ];
+    
+            xs::shuffle(rng, &mut available_dirs);
+    
+            for dir_opt in available_dirs {
+                if let Some(dir) = dir_opt {
+                    break 'exit_facing dir;
+                }
+            }
+    
+            return Err(GenerationError::NoExitFacing)
+        };
+
+
+        let (exit_hallway_index, fix_flags) = set_flags_for_exit_stairs(
+            proto_tiles.slice_mut(),
+            proto_width,
+            exit_index,
+            exit_facing
+        );
+    
+        //
+        // Generate the maze in the area we didn't block out
+        //
+    
+        via_backtracking(rng, proto_tiles.slice_mut(), proto_width);
+    
+        //
+        // Hook up the maze to the blocked out exit
+        //
+    
+        proto_tiles[exit_hallway_index] |= fix_flags;
+    } else {
+        exit_facing = Dir::ALL[0];
+
+        set_flags_for_simple_exit(
+            proto_tiles.slice_mut(),
+            proto_width,
+            exit_index,
+            exit_facing
+        );
+
+        via_backtracking(rng, proto_tiles.slice_mut(), proto_width);
+    }
+
+    let exit_index = proto_i_to_tile_i(&sizes, ProtoTilesIndex(exit_index))
+        .ok_or_else(|| GenerationError::NoExitIndex)?;
+
+    let tiles = to_one_thick(&proto_tiles, &sizes);
+
+    Ok(Generated {
+        tiles,
         exit_index,
         exit_facing,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -1073,12 +1105,13 @@ mod random {
     use super::*;
     use std::num::TryFromIntError;
 
-    #[derive(Debug)]
+    #[derive(Clone, Copy, Debug)]
     pub enum NonEdgeError {
         WidthTooSmall,
         TilesTooShort,
         XYToI(XYToIError),
-        TryFromInt(TryFromIntError)
+        TryFromInt(TryFromIntError),
+        BedGeneration,
     }
 
     impl From<XYToIError> for NonEdgeError {
@@ -1156,6 +1189,7 @@ mod random {
         Ok(xy_to_i(width.get(), selected_xy)?)
     }
 }
+use random::NonEdgeError;
 
 fn calc_height<A>(
     width: TilesWidth,
