@@ -1794,7 +1794,7 @@ impl State {
 
                     macro_rules! move_selectrum {
                         () => ({
-                            // We use this macro in palces where we don't happen to read
+                            // We use this macro in places where we don't happen to read
                             // player_moved, but we want to keep sharing the code with
                             // places that do read it.
                             #![allow(unused_assignments)]

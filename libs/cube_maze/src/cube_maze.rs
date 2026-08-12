@@ -66,7 +66,7 @@ mod face {
     pub type X = unscaled::Inner;
     pub type Y = unscaled::Inner;
 
-    #[derive(Clone, Copy, Debug, Default)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct XY {
         pub x: X,
         pub y: Y,
@@ -112,6 +112,19 @@ mod face {
         pub player: XY,
         pub goal: Goal,
         pub tiles: Vec<Tile>,
+    }
+
+    impl Face {
+        pub fn is_blank(&self, width: Width, xy: XY) -> bool {
+            if let Ok(i) = face::xy_to_i(width, xy) {
+                if let Some(TileKind::Blank) = self.tiles.get(i as usize).map(|t| t.kind) {
+                    return true
+                }
+            }
+
+            false
+        }
+        
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -169,7 +182,7 @@ mod face {
 
     impl Faces {
         pub fn new(rng: &mut Xs) -> Self {
-            let width: Width = 7; // looks bad if this isn't an odd number, and it should be >= 7
+            let width: Width = 11; // looks bad if this isn't an odd number, and it should be >= 7
             let length = width as usize * width as usize;
 
             let mut faces = [
@@ -219,6 +232,9 @@ mod face {
             let mut start_index = face::xy_to_i(width, faces[0].player).expect("Start xy is invalid") as usize;
 
             // Pick a few random points and pathfind paths across them
+            // TODO increase difficulty
+            //      Seems like making the solution longer, in the sense that more distinct states are passed over,
+            //      would make things harder
             for i in 0..3 {
                 temp_paths.clear();
         
@@ -294,18 +310,14 @@ mod face {
                 }
 
                 if let Some(new_xy) = faces[1].goal.xy.checked_push(dir) {
-                    if let Ok(new_i) = face::xy_to_i(width, new_xy) {
-                        if let Some(TileKind::Blank) = faces[1].tiles.get(new_i as usize).map(|t| t.kind) {
-                            faces[1].goal.xy = new_xy;
-                        }
+                    if faces[1].is_blank(width, new_xy) {
+                        faces[1].goal.xy = new_xy;
                     }
                 }
 
                 if let Some(new_xy) = faces[2].goal.xy.checked_push(dir) {
-                    if let Ok(new_i) = face::xy_to_i(width, new_xy) {
-                        if let Some(TileKind::Blank) = faces[2].tiles.get(new_i as usize).map(|t| t.kind) {
-                            faces[2].goal.xy = new_xy;
-                        }
+                    if faces[2].is_blank(width, new_xy) {
+                        faces[2].goal.xy = new_xy;
                     }
                 }
             }
@@ -362,7 +374,8 @@ impl State {
     }
 
     pub fn all_offsets_settled(&self) -> bool {
-        false
+        // TODO actual animations
+        true
     }
 
     pub fn is_complete(&self) -> bool {
@@ -371,7 +384,22 @@ impl State {
             return false
         }
 
-        false
+        let mut all_complete = true;
+
+        for face_kind in face::Kind::ALL {
+            let face = match face_kind {
+                face::Kind::Top => &self.faces.top,
+                face::Kind::Left => &self.faces.left,
+                face::Kind::Right => &self.faces.right,
+            };
+
+            if face.player != face.goal.xy {
+                all_complete = false;
+                break
+            }
+        }
+
+        all_complete
     }
 
     fn tick(&mut self) {
@@ -396,6 +424,24 @@ impl State {
         self.tick_count = self.tick_count.wrapping_add(1);
     }
 
+    fn move_players(&mut self, dir: Dir) {
+        for face_kind in face::Kind::ALL {
+            let face = match face_kind {
+                face::Kind::Top => &mut self.faces.top,
+                face::Kind::Left => &mut self.faces.left,
+                face::Kind::Right => &mut self.faces.right,
+            };
+
+            if let Some(new_xy) = face.player.checked_push(dir) {
+                if face.is_blank(self.faces.width, new_xy) {
+                    face.player = new_xy;
+                } else {
+                    // TODO? Good place for bump SFX
+                }
+            }
+        }
+    }
+
     pub fn update_and_render(
         &mut self,
         commands: &mut Commands,
@@ -406,6 +452,14 @@ impl State {
         //
         // Update
         //
+
+        if let Some(dir) = input.dir_pressed_this_frame() {
+            self.move_players(dir);
+        }
+
+        if input.pressed_this_frame(Button::START) {
+            self.restart(specs);
+        }
 
         self.tick();
 
