@@ -390,6 +390,35 @@ pub use world::hallway::State as HallwayState;
 // Idea:
 // Clone this, perhaps with some kind of twist: https://www.pc98.org/oskcube.html
 
+// Idea:
+// You need to get through one of N gates, cut into a wall.
+// Each gate requires three keys to get through. That is, you need those exact three keys.
+// The keyholes indicate that the keys are of specific colours, and shapes.
+//    So say, one door requires one red key, one green key, and one blue key. Another requires two blue keys and a purple key
+//    You are meant to be able to tell what color a key is from far away, but not exacty which door it is for, until you have it
+// The keys are scattered around a world that is colour coded to the keys that may be found there.
+//    Maybe like a bunch of coloured boxes
+//    Some places are blends of multple colours, but keys are always on colour or another, not both
+// To get some keys, you can just grab them. But there are other locks, which use the same kinds of keys out there. Some keys are locked behind those locks.
+// So, you have partial information about what keys you want in the end, but things may not be quite whee you expect.
+//    Will this feel like you have enough info to be fun, or will it feel like a chore?
+//        What if we combined this with the "gradually learn a language" idea? Then we can put signs in the world saying exactly where things are
+//            Might make sense to just put signs in the world first, then implment the letters stuff after playtesting
+
+// Idea: Turn-based Frogger
+//    Probably have shifting walls push you around, instead of making you reset
+//    Maybe walls that shift in multiple directions, not just left to right.
+//    Make things move in a repeating pattern, so the overall effect is observing the pattern then moving deftly through it
+//        To produce a solvable puzzle:
+//                generate a maze, with a start and an exit
+//                delete some random walls, to allow multiple paths
+//                find a (possibly convoluted) path from the start to the end
+//                define the shift patterns and delete any that lie on the path
+//            This is an attempt to avoid needing to simulate the shift patterns while pathfinding, which seems complicated.
+//                If that algorithm turns out to produce bad results, say ones where the path is obvious, then we can fall 
+//                back to simulating the shift patterns as we generate, but still use the trick of just ripping out things 
+//                that get in the way
+
 fn warp_player_to(world: &mut World, target: &DoorTarget) {
     world.segment_id = target.segment_id;
     world.player.xy = target.xy;

@@ -95,13 +95,13 @@ mod face {
          XPastWidth
     }
 
-    pub fn xy_to_i(width: Width, xy: XY) -> Result<Index, XYToIError> {    
+    pub fn xy_to_i(width: Width, xy: XY) -> Result<Index, XYToIError> {
         let width = width as unscaled::Inner;
 
         if xy.x >= width {
             return Err(XYToIError::XPastWidth);
         }
-    
+
         let i = xy.y * width + xy.x;
 
         Ok(i)
@@ -124,7 +124,7 @@ mod face {
 
             false
         }
-        
+
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -183,7 +183,8 @@ mod face {
     impl Faces {
         pub fn new(rng: &mut Xs) -> Self {
             let width: Width = 11; // looks bad if this isn't an odd number, and it should be >= 7
-            let length = width as usize * width as usize;
+            let width_usize = width as usize;
+            let length = width_usize * width_usize;
 
             let mut faces = [
                 Face {
@@ -231,13 +232,15 @@ mod face {
             faces[0].player = random_floor_xy(rng, &faces[0].tiles, width).expect("No starting floor tile found in face 0 maze");
             let mut start_index = face::xy_to_i(width, faces[0].player).expect("Start xy is invalid") as usize;
 
-            // Pick a few random points and pathfind paths across them
-            // TODO increase difficulty
-            //      Seems like making the solution longer, in the sense that more distinct states are passed over,
-            //      would make things harder
-            for i in 0..3 {
+            let mut tries_left = 16;
+
+            loop {
+
+                // Pick a few random points and pathfind paths across them
+                selected_path.clear();
+
                 temp_paths.clear();
-        
+
                 let next_xy = random_floor_xy(rng, &faces[0].tiles, width).expect("No floor tile found in face 0 maze");
 
                 let next_index = face::xy_to_i(width, next_xy).expect("Next xy is invalid") as usize;
@@ -258,68 +261,99 @@ mod face {
                 if let Some(previous_end) = selected_path.pop() {
                     start_index = previous_end;
                 }
-                
+
                 selected_path.extend(&path);
-            }
 
-            // for the other faces, generate mazes selecting start area, without selecting exit.
-            faces[1].tiles = to_tiles(
-                &maze::generate(
-                    rng,
-                    dimensions,
-                    maze_flags,
-                ).unwrap_or_else(|_| maze::generate_fallback(dimensions)).tiles
-            );
+                // for the other faces, generate mazes selecting start area, without selecting exit.
+                faces[1].tiles = to_tiles(
+                    &maze::generate(
+                        rng,
+                        dimensions,
+                        maze_flags,
+                    ).unwrap_or_else(|_| maze::generate_fallback(dimensions)).tiles
+                );
 
-            faces[2].tiles = to_tiles(
-                &maze::generate(
-                    rng,
-                    dimensions,
-                    maze_flags,
-                ).unwrap_or_else(|_| maze::generate_fallback(dimensions)).tiles
-            );
+                faces[2].tiles = to_tiles(
+                    &maze::generate(
+                        rng,
+                        dimensions,
+                        maze_flags,
+                    ).unwrap_or_else(|_| maze::generate_fallback(dimensions)).tiles
+                );
 
-            faces[1].player = random_floor_xy(rng, &faces[1].tiles, width).expect("No floor tile found in face 1 maze");
-            faces[1].goal.xy = faces[1].player;
+                faces[1].player = random_floor_xy(rng, &faces[1].tiles, width).expect("No floor tile found in face 1 maze");
+                faces[1].goal.xy = faces[1].player;
 
-            faces[2].player = random_floor_xy(rng, &faces[2].tiles, width).expect("No floor tile found in face 2 maze");
-            faces[2].goal.xy = faces[2].player;
+                faces[2].player = random_floor_xy(rng, &faces[2].tiles, width).expect("No floor tile found in face 2 maze");
+                faces[2].goal.xy = faces[2].player;
 
-            let width_isize = width as isize;
+                let width_isize = width as isize;
 
-            // play the non-optimal solution across the other two faces and mark wherever we end up as the exits
-            for window in selected_path.windows(2) {
-                let from = window[0] as isize;
-                let to = window[1] as isize;
+                // play the non-optimal solution across the other two faces and mark wherever we end up as the exits
+                for window in selected_path.windows(2) {
+                    let from = window[0] as isize;
+                    let to = window[1] as isize;
 
-                let delta = from - to;
+                    let delta = from - to;
 
-                let dir;
+                    let dir;
 
-                if delta == -1 {
-                    dir = Dir::Right;
-                } else if delta == 1 {
-                    dir = Dir::Left;
-                } else if delta == width_isize {
-                    dir = Dir::Up;
-                } else if delta == -width_isize {
-                    dir = Dir::Down;
-                } else {
-                    debug_assert!(false, "Disconnected path");
-                    continue
-                }
+                    if delta == -1 {
+                        dir = Dir::Right;
+                    } else if delta == 1 {
+                        dir = Dir::Left;
+                    } else if delta == width_isize {
+                        dir = Dir::Up;
+                    } else if delta == -width_isize {
+                        dir = Dir::Down;
+                    } else {
+                        debug_assert!(false, "Disconnected path");
+                        continue
+                    }
 
-                if let Some(new_xy) = faces[1].goal.xy.checked_push(dir) {
-                    if faces[1].is_blank(width, new_xy) {
-                        faces[1].goal.xy = new_xy;
+                    if let Some(new_xy) = faces[1].goal.xy.checked_push(dir) {
+                        if faces[1].is_blank(width, new_xy) {
+                            faces[1].goal.xy = new_xy;
+                        }
+                    }
+
+                    if let Some(new_xy) = faces[2].goal.xy.checked_push(dir) {
+                        if faces[2].is_blank(width, new_xy) {
+                            faces[2].goal.xy = new_xy;
+                        }
                     }
                 }
 
-                if let Some(new_xy) = faces[2].goal.xy.checked_push(dir) {
-                    if faces[2].is_blank(width, new_xy) {
-                        faces[2].goal.xy = new_xy;
+                // To make the puzzle likely to be harder, we count how many empty
+                // spaces there are around the exits. More empty spaces means less
+                // ability to avoid moving a given player, which seems like it means
+                // harder.
+
+                let mut spaces_count = 0;
+
+                for face in &faces {
+                    for dir in Dir::ALL {
+                        if face.goal.xy
+                            .checked_push(dir)
+                            .and_then(|xy| face::xy_to_i(width, xy).ok())
+                            .and_then(|i| face.tiles.get(i as usize))
+                            .map(|t| t.kind == TileKind::Blank)
+                            .unwrap_or(false)
+                        {
+                            spaces_count += 1;
+                        }
                     }
+
                 }
+
+                // faces.len() is the absoulte minimum about of spaces the maze can physically have
+                // since at least one side must be open on each exit. So we require something larger
+                // than that.
+                if spaces_count > faces.len() + 1 || tries_left == 0 {
+                    break
+                }
+
+                tries_left -= 1;
             }
 
             xs::shuffle(rng, &mut faces);
@@ -410,7 +444,7 @@ impl State {
                     face::Kind::Left => &mut self.faces.left,
                     face::Kind::Right => &mut self.faces.right,
                 };
-    
+
                 face.goal.frame = match face.goal.frame {
                     GoalFrame::Zero => GoalFrame::One,
                     GoalFrame::One => GoalFrame::Two,
