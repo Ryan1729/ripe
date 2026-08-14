@@ -107,9 +107,82 @@ mod face {
         Ok(i)
     }
 
+    pub fn xy_to_offset(tile_wh: unscaled::WH, width_inner: unscaled::Inner, xy: XY, kind: Kind) -> unscaled::XYD {
+        // These constants were found for the original art by measurement/trial and error.
+        // Then we attemtped to convert them to be based on the tile dimensions, without
+        // bothering to check if changing them behaved at all reasonably. Probably the way
+        // to address this at such time that we really need to support different graphics
+        // sizes is to allow configuring these values as well.
+        // TODO? Cache these within a frame?
+
+        let top_x_face_x_factor: i16 = tile_wh.h.get() - 2;
+        let top_x_face_y_factor: i16 = top_x_face_x_factor;
+
+        let top_y_face_x_factor: i16 = -top_x_face_x_factor/2;
+        let top_y_face_y_factor: i16 = top_x_face_x_factor/2;
+
+        let left_x_face_x_factor: i16 = top_x_face_x_factor;
+        let left_x_face_y_factor: i16 = 0;
+
+        let left_y_face_x_factor: i16 = top_x_face_x_factor/2;
+        let left_y_face_y_factor: i16 = left_y_face_x_factor + (left_y_face_x_factor/2);
+
+        let right_x_face_x_factor: i16 = top_x_face_x_factor;
+        let right_x_face_y_factor: i16 = 0;
+
+        let right_y_face_x_factor: i16 = -top_x_face_x_factor/2;
+        let right_y_face_y_factor: i16 = left_y_face_x_factor + (left_y_face_x_factor/2);
+
+        match kind {
+            face::Kind::Top => {
+                // "- width_inner" to shift up by the width amount,
+                // making the bottom row's location fixed as the
+                // width changes.
+                unscaled::XYD {
+                    xd: unscaled::XD(
+                        xy.x * top_x_face_x_factor + (xy.y - width_inner) * top_x_face_y_factor
+                    ),
+                    yd: unscaled::YD(
+                        xy.x * top_y_face_x_factor + (xy.y - width_inner) * top_y_face_y_factor
+                    ),
+                }
+            }
+            face::Kind::Left => {
+                // "- width_inner" to shift left by the width amount,
+                // making the bottom row's location fixed as the
+                // width changes.
+                unscaled::XYD {
+                    xd: unscaled::XD(
+                        (xy.x - width_inner) * left_x_face_x_factor + xy.y * left_x_face_y_factor
+                    ),
+                    yd: unscaled::YD(
+                        (xy.x - width_inner) * left_y_face_x_factor + xy.y * left_y_face_y_factor
+                    ),
+                }
+            }
+            face::Kind::Right => {
+                unscaled::XYD {
+                    xd: unscaled::XD(
+                        xy.x * right_x_face_x_factor + xy.y * right_x_face_y_factor
+                    ),
+                    yd: unscaled::YD(
+                        xy.x * right_y_face_x_factor + xy.y * right_y_face_y_factor
+                    ),
+                }
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Targeting { 
+        pub source: XY,
+        pub target: XY
+    }
+
     #[derive(Clone, Debug, Default)]
     pub struct Face {
         pub player: XY,
+        pub player_offset: Offset,
         pub goal: Goal,
         pub tiles: Vec<Tile>,
     }
@@ -189,16 +262,19 @@ mod face {
             let mut faces = [
                 Face {
                     player: <_>::default(),
+                    player_offset: <_>::default(),
                     goal: <_>::default(),
                     tiles: Vec::with_capacity(length),
                 },
                 Face {
                     player: <_>::default(),
+                    player_offset: <_>::default(),
                     goal: <_>::default(),
                     tiles: Vec::with_capacity(length),
                 },
                 Face {
                     player: <_>::default(),
+                    player_offset: <_>::default(),
                     goal: <_>::default(),
                     tiles: Vec::with_capacity(length),
                 },
@@ -370,8 +446,88 @@ mod face {
             }
         }
     }
+
+    pub mod offset {
+        use platform_types::unscaled;
+    
+        use super::*;
+    
+        #[derive(Clone, Copy, Default, PartialEq, Eq)]
+        pub struct Offset {
+            xyd: unscaled::XYD,
+        }
+    
+        impl core::fmt::Debug for Offset {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                if self == &Offset::default() {
+                    write!(f, "Offset::default()")
+                } else {
+                    f.debug_struct("Offset")
+                     .field("xyd", &self.xyd)
+                     .finish()
+                }
+            }
+        }
+    
+        pub fn from_targeting(tile_wh: unscaled::WH, width_inner: unscaled::Inner, targeting: Targeting, kind: Kind) -> Offset {
+            let source = xy_to_offset(tile_wh, width_inner, targeting.source, kind);
+            let target = xy_to_offset(tile_wh, width_inner, targeting.target, kind);
+    
+            Offset {
+                xyd: source - target
+            }
+        }
+    
+        const DECAY_RATE: unscaled::XYD = unscaled::XYD {
+            xd: unscaled::XD(1),
+            yd: unscaled::YD(1),
+        };
+    
+        impl Offset {
+            pub fn xyd(&self) -> unscaled::XYD {
+                self.xyd
+            }
+    
+            pub fn is_settled(&self) -> bool {
+                self.xyd == unscaled::XYD::default()
+            }
+    
+            pub fn advance(&mut self) {
+                use unscaled::{XD, YD};
+    
+                if self.is_settled() { return }
+    
+                let x_started_positive = self.xyd.xd > XD(0);
+                let y_started_positive = self.xyd.yd > YD(0);
+    
+                if x_started_positive {
+                    self.xyd.xd -= DECAY_RATE.xd;
+                    if self.xyd.xd < XD(0) {
+                        self.xyd.xd = XD(0);
+                    }
+                } else {
+                    self.xyd.xd += DECAY_RATE.xd;
+                    if self.xyd.xd > XD(0) {
+                        self.xyd.xd = XD(0);
+                    }
+                }
+    
+                if y_started_positive {
+                    self.xyd.yd -= DECAY_RATE.yd;
+                    if self.xyd.yd < YD(0) {
+                        self.xyd.yd = YD(0);
+                    }
+                } else {
+                    self.xyd.yd += DECAY_RATE.yd;
+                    if self.xyd.yd > YD(0) {
+                        self.xyd.yd = YD(0);
+                    }
+                }
+            }
+        }
+    }
 }
-use face::Faces;
+use face::{Faces, offset::Offset};
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
@@ -408,7 +564,18 @@ impl State {
     }
 
     pub fn all_offsets_settled(&self) -> bool {
-        // TODO actual animations
+        for face_kind in face::Kind::ALL {
+            let face = match face_kind {
+                face::Kind::Top => &self.faces.top,
+                face::Kind::Left => &self.faces.left,
+                face::Kind::Right => &self.faces.right,
+            };
+
+            if !face.player_offset.is_settled() {
+                return false
+            }
+        }
+
         true
     }
 
@@ -437,6 +604,18 @@ impl State {
     }
 
     fn tick(&mut self) {
+        for face_kind in face::Kind::ALL {
+            let face = match face_kind {
+                face::Kind::Top => &mut self.faces.top,
+                face::Kind::Left => &mut self.faces.left,
+                face::Kind::Right => &mut self.faces.right,
+            };
+
+            if !face.player_offset.is_settled() {
+                face.player_offset.advance();
+            }
+        }
+
         if self.tick_count & 15 == 0 {
             for face_kind in face::Kind::ALL {
                 let face = match face_kind {
@@ -458,7 +637,7 @@ impl State {
         self.tick_count = self.tick_count.wrapping_add(1);
     }
 
-    fn move_players(&mut self, dir: Dir) {
+    fn move_players(&mut self, tile_wh: unscaled::WH, dir: Dir) {
         for face_kind in face::Kind::ALL {
             let face = match face_kind {
                 face::Kind::Top => &mut self.faces.top,
@@ -468,6 +647,12 @@ impl State {
 
             if let Some(new_xy) = face.player.checked_push(dir) {
                 if face.is_blank(self.faces.width, new_xy) {
+                    face.player_offset = face::offset::from_targeting(
+                        tile_wh,
+                        self.faces.width as unscaled::Inner,
+                        face::Targeting { source: face.player, target: new_xy },
+                        face_kind,
+                    );
                     face.player = new_xy;
                 } else {
                     // TODO? Good place for bump SFX
@@ -483,12 +668,14 @@ impl State {
         input: Input,
         _speaker: &mut Speaker,
     ) {
+        let tile_wh = specs.cube_maze_sides.tile();
+
         //
         // Update
         //
 
         if let Some(dir) = input.dir_pressed_this_frame() {
-            self.move_players(dir);
+            self.move_players(tile_wh, dir);
         }
 
         if input.pressed_this_frame(Button::START) {
@@ -501,7 +688,6 @@ impl State {
         // Render
         //
 
-        let tile_wh = specs.cube_maze_sides.tile();
         let tiles_per_row = specs.cube_maze_sides.tiles_per_row();
 
         const PALETTE: [ARGB; 8] = [
@@ -534,30 +720,6 @@ impl State {
             }
         }
 
-        // These constants were found for the original art by measurement/trial and error.
-        // Then we attemtped to convert them to be based on the tile dimensions, without
-        // bothering to check if changing them behaved at all reasonably. Probably the way
-        // to address this at such time that we really need to support different graphics
-        // sizes is to allow configuring these values as well.
-
-        let top_x_face_x_factor: i16 = tile_wh.h.get() - 2;
-        let top_x_face_y_factor: i16 = top_x_face_x_factor;
-
-        let top_y_face_x_factor: i16 = -top_x_face_x_factor/2;
-        let top_y_face_y_factor: i16 = top_x_face_x_factor/2;
-
-        let left_x_face_x_factor: i16 = top_x_face_x_factor;
-        let left_x_face_y_factor: i16 = 0;
-
-        let left_y_face_x_factor: i16 = top_x_face_x_factor/2;
-        let left_y_face_y_factor: i16 = left_y_face_x_factor + (left_y_face_x_factor/2);
-
-        let right_x_face_x_factor: i16 = top_x_face_x_factor;
-        let right_x_face_y_factor: i16 = 0;
-
-        let right_y_face_x_factor: i16 = -top_x_face_x_factor/2;
-        let right_y_face_y_factor: i16 = left_y_face_x_factor + (left_y_face_x_factor/2);
-
         // This part makes evident that either some ergonomic additions, or the removal of
         // the W, H, and WH types in favour of the XD, YD, and XYD types, would be an
         // improvement on te status quo. Doesn't currently seem to come up that often though.
@@ -566,52 +728,6 @@ impl State {
         let right_base_offset: unscaled::XYD = unscaled::XYD::default() - unscaled::XYD::from(unscaled::WH::default() + (tile_wh.w / 4) - unscaled::H::new(2));
 
         let width_inner = self.faces.width as unscaled::Inner;
-
-        macro_rules! face_xy_to_offset {
-            ($xy: expr, $face_kind: expr) => ({
-                // (xy: face::XY, kind: face::Kind) -> unscaled::XYD
-                let xy: face::XY = $xy;
-
-                match $face_kind {
-                    face::Kind::Top => {
-                        // "- width_inner" to shift up by the width amount,
-                        // making the bottom row's location fixed as the
-                        // width changes.
-                        unscaled::XYD {
-                            xd: unscaled::XD(
-                                xy.x * top_x_face_x_factor + (xy.y - width_inner) * top_x_face_y_factor
-                            ),
-                            yd: unscaled::YD(
-                                xy.x * top_y_face_x_factor + (xy.y - width_inner) * top_y_face_y_factor
-                            ),
-                        }
-                    }
-                    face::Kind::Left => {
-                        // "- width_inner" to shift left by the width amount,
-                        // making the bottom row's location fixed as the
-                        // width changes.
-                        unscaled::XYD {
-                            xd: unscaled::XD(
-                                (xy.x - width_inner) * left_x_face_x_factor + xy.y * left_x_face_y_factor
-                            ),
-                            yd: unscaled::YD(
-                                (xy.x - width_inner) * left_y_face_x_factor + xy.y * left_y_face_y_factor
-                            ),
-                        }
-                    }
-                    face::Kind::Right => {
-                        unscaled::XYD {
-                            xd: unscaled::XD(
-                                xy.x * right_x_face_x_factor + xy.y * right_x_face_y_factor
-                            ),
-                            yd: unscaled::YD(
-                                xy.x * right_y_face_x_factor + xy.y * right_y_face_y_factor
-                            ),
-                        }
-                    }
-                }
-            })
-        }
 
         for face_kind in face::Kind::ALL {
             let (face, base_tile_sprite, base_offset, wall_colour) = match face_kind {
@@ -631,7 +747,7 @@ impl State {
                         TileKind::Wall => base_tile_sprite,
                         TileKind::Blank => continue,
                     },
-                    base + face_xy_to_offset!(face::i_to_xy(self.faces.width, i), face_kind),
+                    base + face::xy_to_offset(tile_wh, width_inner, face::i_to_xy(self.faces.width, i), face_kind),
                     wall_colour,
                 );
             }
@@ -641,7 +757,7 @@ impl State {
                 frame => {
                     draw_side!(
                         base_tile_sprite + frame.index(),
-                        base + face_xy_to_offset!(face.goal.xy, face_kind),
+                        base + face::xy_to_offset(tile_wh, width_inner, face.goal.xy, face_kind),
                         PALETTE[2],
                     );
                 }
@@ -649,7 +765,7 @@ impl State {
 
             draw_side!(
                 base_tile_sprite,
-                base + face_xy_to_offset!(face.player, face_kind),
+                base + face::xy_to_offset(tile_wh, width_inner, face.player, face_kind) + face.player_offset.xyd(),
                 PALETTE[2],
             );
         }

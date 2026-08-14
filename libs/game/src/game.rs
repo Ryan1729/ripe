@@ -404,6 +404,11 @@ pub use world::hallway::State as HallwayState;
 //    Will this feel like you have enough info to be fun, or will it feel like a chore?
 //        What if we combined this with the "gradually learn a language" idea? Then we can put signs in the world saying exactly where things are
 //            Might make sense to just put signs in the world first, then implment the letters stuff after playtesting
+// Graphically, keycards are easier to draw, and making them distinct with letters etc is easier than comoing up with that many distinct shapes
+//    I think we'd want a black stripe to indicate the keycard-ness
+//    Make them different colours, but also label the colours with a single letter
+//    Can indicate differences within a colour with dots or numerals.
+//        Say grouping all ones for a given door with the same symbols
 
 // Idea: Turn-based Frogger
 //    Probably have shifting walls push you around, instead of making you reset
