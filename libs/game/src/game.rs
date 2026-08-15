@@ -409,9 +409,16 @@ pub use world::hallway::State as HallwayState;
 //    Make them different colours, but also label the colours with a single letter
 //    Can indicate differences within a colour with dots or numerals.
 //        Say grouping all ones for a given door with the same symbols
+// We used the word "world" above. We already have several quite spatial hallways, and the mechanics of thins one don't 
+// necessarily need a grid you can walk around on. What if, for a change of pace, we could make this just a series of 
+// screens you switch between.
+//     We could add spaces that you walk through between things later if needed. If we end up doing that, we'll have a 
+//     greater understanding of why we need that
 
 // Idea: Turn-based Frogger
 //    Probably have shifting walls push you around, instead of making you reset
+//        Upon reflection, does that make it always trivial? Maybe like you need a two wide gap to pass by, and most
+//            walls push you into a vortex that puts you back at the start?
 //    Maybe walls that shift in multiple directions, not just left to right.
 //    Make things move in a repeating pattern, so the overall effect is observing the pattern then moving deftly through it
 //        To produce a solvable puzzle:
@@ -423,6 +430,9 @@ pub use world::hallway::State as HallwayState;
 //                If that algorithm turns out to produce bad results, say ones where the path is obvious, then we can fall 
 //                back to simulating the shift patterns as we generate, but still use the trick of just ripping out things 
 //                that get in the way
+
+// Meta-idea:
+// How many of these can we meaningfully blend? For example, a cube_maze, with ice_puzzles-like icy patches?
 
 fn warp_player_to(world: &mut World, target: &DoorTarget) {
     world.segment_id = target.segment_id;
