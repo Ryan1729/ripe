@@ -1,0 +1,18 @@
+[package]
+name = "keycard_shuffle"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/keycard_shuffle.rs"
+
+[dependencies]
+
+[dependencies.gfx]
+path = "../gfx"
+
+[dependencies.platform_types]
+path = "../platform_types"
+
+[dependencies.xs]
+path = "../xs"

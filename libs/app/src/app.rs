@@ -219,12 +219,13 @@ fn game_update(commands: &mut Commands, specs: &Specs, state: &mut game::State, 
                 })
             }
             match state.hallway_states.get_mut(*source, *target) {
-                Some(HallwayState::IcePuzzle(ice_puzzle)) => u_and_r_call!(ice_puzzle),
-                Some(HallwayState::SWORD(sword)) => u_and_r_call!(sword),
-                Some(HallwayState::BOLD(bold)) => u_and_r_call!(bold),
-                Some(HallwayState::HexHop(hex_hop)) => u_and_r_call!(hex_hop),
-                Some(HallwayState::HexTwiddle(hex_twiddle)) => u_and_r_call!(hex_twiddle),
-                Some(HallwayState::CubeMaze(cube_maze)) => u_and_r_call!(cube_maze),
+                Some(HallwayState::IcePuzzle(s)) => u_and_r_call!(s),
+                Some(HallwayState::SWORD(s)) => u_and_r_call!(s),
+                Some(HallwayState::BOLD(s)) => u_and_r_call!(s),
+                Some(HallwayState::HexHop(s)) => u_and_r_call!(s),
+                Some(HallwayState::HexTwiddle(s)) => u_and_r_call!(s),
+                Some(HallwayState::CubeMaze(s)) => u_and_r_call!(s),
+                Some(HallwayState::KeycardShuffle(s)) => u_and_r_call!(s),
                 None => {
                     invariant_assert!(false, "Hallway was not found while in Hallway mode!");
                     state.mode = Mode::Walking;

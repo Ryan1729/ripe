@@ -26,6 +26,9 @@ path = "../hex_twiddle"
 [dependencies.ice_puzzle]
 path = "../ice_puzzle"
 
+[dependencies.keycard_shuffle]
+path = "../keycard_shuffle"
+
 [dependencies.models]
 path = "../models"
 

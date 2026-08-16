@@ -1117,7 +1117,13 @@ pub mod sprite {
 
     macro_rules! specs_and_markers_def {
         (
-            $( pub $field: ident : Spec< $marker: ident >),+ $(,)?
+            $(
+                pub $field: ident : Spec< $marker: ident > {
+                    offset: ($offset_w: expr, $offset_h: expr),
+                    tile: ($tile_w: expr, $tile_h: expr),
+                    tiles_per_row: $tiles_per_row: expr $(,)?
+                }
+            ),+ $(,)?
         ) => {
             $(
                 /// Marker
@@ -1131,110 +1137,119 @@ pub mod sprite {
                     pub $field: Spec<$marker>,
                 )+
             }
+
+            impl Default for Specs {
+                fn default() -> Self {
+                    Self {
+                        $(
+                            $field: spec::<$marker> (SpecPieces{
+                                offset: WH{ w: W::new($offset_w), h: H::new($offset_h) },
+                                tile: WH{ w: W::new($tile_w), h: H::new($tile_h) },
+                                tiles_per_row: $tiles_per_row,
+                            }),
+                        )+
+                    }
+                }
+            }
         }
     }
 
     specs_and_markers_def!{
-        pub base_font: Spec<BaseFont>,
-        pub base_tiles: Spec<BaseTiles>,
-        pub base_ui: Spec<BaseUI>,
-        pub ice_puzzles: Spec<IcePuzzles>,
-        pub sword: Spec<SWORD>,
-        pub wall: Spec<Wall>,
-        pub floor: Spec<Floor>,
-        pub toggle_wall: Spec<ToggleWall>,
-        pub bold: Spec<BOLD>,
-        pub hex_pieces: Spec<HexPieces>,
-        pub hex_hop_mobs: Spec<HexHopMobs>,
-        pub hex_twiddle_tiles: Spec<HexTwiddleTiles>,
-        pub hex_twiddle_pieces: Spec<HexTwiddlePieces>,
-        pub hex_twiddle_sidebar: Spec<HexTwiddleSidebar>,
-        pub cube_maze_sides: Spec<CubeMazeSides>,
-    }
-
-    impl Default for Specs {
-        fn default() -> Self {
-            Self {
-                base_font: spec::<BaseFont>(SpecPieces{
-                    offset: WH{ w: W::new(0), h: H::new(0) },
-                    tile: WH{ w: W::new(8), h: H::new(8) },
-                    tiles_per_row: 16,
-                }),
-                base_tiles: spec::<BaseTiles>(SpecPieces{
-                    offset: WH{ w: W::new(32), h: H::new(128) },
-                    tile: WH{ w: W::new(16), h: H::new(16) },
-                    tiles_per_row: 6,
-                }),
-                base_ui: spec::<BaseUI>(SpecPieces{
-                    offset: WH{ w: W::new(0), h: H::new(128) },
-                    tile: WH{ w: W::new(8), h: H::new(8) },
-                    tiles_per_row: 3,
-                }),
-                ice_puzzles: spec::<IcePuzzles>(SpecPieces{
-                    offset: WH{ w: W::new(128), h: H::new(0) },
-                    tile: WH{ w: W::new(20), h: H::new(20) },
-                    tiles_per_row: 2,
-                }),
-                // TODO? Bundle all these S.W.O.R.D. related ones into
-                // a substruct? {
-                sword: spec::<SWORD>(SpecPieces{
-                    offset: WH{ w: W::new(176), h: H::new(0) },
-                    tile: WH{ w: W::new(16), h: H::new(16) },
-                    tiles_per_row: 5,
-                }),
-                wall: spec::<Wall>(SpecPieces{
-                    offset: WH{ w: W::new(176 + 5 * 16), h: H::new(0) },
-                    tile: WH{ w: W::new(16), h: H::new(16) },
-                    tiles_per_row: 16,
-                }),
-                floor: spec::<Floor>(SpecPieces{
-                    offset: WH{ w: W::new(176 + (5 - 1) * 16), h: H::new(15 * 16) },
-                    tile: WH{ w: W::new(16), h: H::new(16) },
-                    tiles_per_row: 16,
-                }),
-                toggle_wall: spec::<ToggleWall>(SpecPieces{
-                    offset: WH{ w: W::new(176 + 5 * 16 + 16 * 16), h: H::new(0) },
-                    tile: WH{ w: W::new(16), h: H::new(16) },
-                    tiles_per_row: 16,
-                }),
-                // }
-                bold: spec::<BOLD>(SpecPieces{
-                    offset: WH{ w: W::new(256), h: H::new(256) },
-                    tile: WH{ w: W::new(16), h: H::new(16) },
-                    tiles_per_row: 8,
-                }),
-                hex_pieces: spec::<HexPieces>(SpecPieces{
-                    offset: WH{ w: W::new(384), h: H::new(256) },
-                    tile: WH{ w: W::new(40), h: H::new(11) },
-                    tiles_per_row: 1,
-                }),
-                hex_hop_mobs: spec::<HexHopMobs>(SpecPieces{
-                    offset: WH{ w: W::new(384 + 40), h: H::new(256) },
-                    tile: WH{ w: W::new(20), h: H::new(20) },
-                    tiles_per_row: 5,
-                }),
-                hex_twiddle_tiles: spec::<HexTwiddleTiles>(SpecPieces{
-                    offset: WH{ w: W::new(256), h: H::new(256 + 80) },
-                    tile: WH{ w: W::new(56), h: H::new(48) },
-                    tiles_per_row: 6,
-                }),
-                hex_twiddle_pieces: spec::<HexTwiddlePieces>(SpecPieces{
-                    offset: WH{ w: W::new(256), h: H::new(256 + 80 + 48 * 3) },
-                    tile: WH{ w: W::new(20), h: H::new(20) },
-                    tiles_per_row: 25,
-                }),
-                hex_twiddle_sidebar: spec::<HexTwiddleSidebar>(SpecPieces{
-                    offset: WH{ w: W::new(448), h: H::new(256) },
-                    tile: WH{ w: W::new(40), h: H::new(40) },
-                    tiles_per_row: 8,
-                }),
-                cube_maze_sides: spec::<CubeMazeSides>(SpecPieces{
-                    offset: WH{ w: W::new(592), h: H::new(336) },
-                    tile: WH{ w: W::new(28), h: H::new(16) },
-                    tiles_per_row: 5,
-                }),
-            }
-        }
+        pub base_font: Spec<BaseFont> {
+            offset: (0, 0),
+            tile: (8, 8),
+            tiles_per_row: 16,
+        },
+        pub base_tiles: Spec<BaseTiles> {
+            offset: (32, 128),
+            tile: (16, 16),
+            tiles_per_row: 6,
+        },
+        pub base_ui: Spec<BaseUI> {
+            offset: (0, 128),
+            tile: (8, 8),
+            tiles_per_row: 3,
+        },
+        pub ice_puzzles: Spec<IcePuzzles> {
+            offset: (128, 0),
+            tile: (20, 20),
+            tiles_per_row: 2,
+        },
+        pub sword: Spec<SWORD> {
+            offset: (176, 0),
+            tile: (16, 16),
+            tiles_per_row: 5,
+        },
+        pub wall: Spec<Wall> {
+            offset: (176 + 5 * 16, 0),
+            tile: (16, 16),
+            tiles_per_row: 16,
+        },
+        pub floor: Spec<Floor> {
+            offset: (176 + (5 - 1) * 16, 15 * 16),
+            tile: (16, 16),
+            tiles_per_row: 16,
+        },
+        pub toggle_wall: Spec<ToggleWall> {
+            offset: (176 + 5 * 16 + 16 * 16, 0),
+            tile: (16, 16),
+            tiles_per_row: 16,
+        },
+        pub bold: Spec<BOLD> {
+            offset: (256, 256),
+            tile: (16, 16),
+            tiles_per_row: 8,
+        },
+        pub hex_pieces: Spec<HexPieces> {
+            offset: (384, 256),
+            tile: (40, 11),
+            tiles_per_row: 1,
+        },
+        pub hex_hop_mobs: Spec<HexHopMobs> {
+            offset: (384 + 40, 256),
+            tile: (20, 20),
+            tiles_per_row: 5,
+        },
+        pub hex_twiddle_tiles: Spec<HexTwiddleTiles> {
+            offset: (256, 256 + 80),
+            tile: (56, 48),
+            tiles_per_row: 6,
+        },
+        pub hex_twiddle_pieces: Spec<HexTwiddlePieces> {
+            offset: (256, 256 + 80 + 48 * 3),
+            tile: (20, 20),
+            tiles_per_row: 25,
+        },
+        pub hex_twiddle_sidebar: Spec<HexTwiddleSidebar> {
+            offset: (448, 256),
+            tile: (40, 40),
+            tiles_per_row: 8,
+        },
+        pub cube_maze_sides: Spec<CubeMazeSides> {
+            offset: (592, 336),
+            tile: (28, 16),
+            tiles_per_row: 5,
+        },
+        pub keycard_shuffle_cards: Spec<KeycardShuffleCards> {
+            offset: (0, 256),
+            tile: (84, 56),
+            tiles_per_row: 1,
+        },
+        pub keycard_shuffle_letters: Spec<KeycardShuffleLetters> {
+            offset: (0, 364),
+            tile: (24, 34),
+            tiles_per_row: 3,
+        },
+        pub keycard_shuffle_slot: Spec<KeycardShuffleSlot> {
+            offset: (72, 364),
+            tile: (8, 62),
+            tiles_per_row: 1,
+        },
+        pub keycard_shuffle_lights: Spec<KeycardShuffleLights> {
+            offset: (80, 364),
+            tile: (6, 6),
+            tiles_per_row: 1,
+        },
     }
 }
 pub use sprite::Specs;
@@ -1309,7 +1324,7 @@ mod hallway_spec {
         (
             $($enum_name: ident $const_name: ident = $value: expr),+ $(,)?
         ) => {
-            #[derive(Clone, Debug, Default)]
+            #[derive(Clone, Copy, Debug, Default)]
             pub enum HallwaySpec {
                 #[default]
                 None,
@@ -1349,6 +1364,7 @@ mod hallway_spec {
         HexHop HEX_HOP = 4,
         HexTwiddle HEX_TWIDDLE = 5,
         CubeMaze CUBE_MAZE = 6,
+        KeycardShuffle KEYCARD_SHUFFLE = 7,
     }
 }
 pub use hallway_spec::const_to_hallway_spec;

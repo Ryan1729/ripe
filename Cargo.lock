@@ -987,6 +987,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "keycard_shuffle"
+version = "0.1.0"
+dependencies = [
+ "gfx",
+ "platform_types",
+ "xs",
+]
+
+[[package]]
 name = "kqueue"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2973,6 +2982,7 @@ dependencies = [
  "hex_hop",
  "hex_twiddle",
  "ice_puzzle",
+ "keycard_shuffle",
  "models",
  "sword",
  "vec1",

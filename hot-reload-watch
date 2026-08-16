@@ -1,23 +1,3 @@
 cargo watch \
-    -w libs/app/ \
-    -w libs/game \
-    -w libs/gfx \
-    -w libs/config \
-    -w libs/ice_puzzle \
-    -w libs/models \
-    -w libs/platform_types \
-    -w libs/vec1 \
-    -w libs/world \
-    -w libs/sword \
-    -w libs/pak \
-    -w libs/pak_types \
-    -w libs/offset \
-    -w libs/pathfinding \
-    -w libs/bold \
-    -w libs/hex_hop \
-    -w libs/colour \
-    -w libs/hex_twiddle \
-    -w libs/qrs \
-    -w libs/cube_maze \
-    -w libs/maze \
+    -w libs/ \
     -x 'build --release --package app --features "invariant-checking,reload,refresh"'

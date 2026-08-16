@@ -128,11 +128,41 @@ pub type EntityKey = entities::Key;
 pub mod hallway {
     use features::{invariant_assert};
     use crate::entities::Key as EntityKey;
+    use models::{config::HallwaySpec, sprite::Specs};
+    use xs::Xs;
 
     use std::collections::BTreeMap;
 
-    #[derive(Clone, Debug)]
-    pub enum State {
+    macro_rules! state_def {
+        (
+            $( $variant: ident ($type: ty) ),+ $(,)?
+        ) => {
+            #[derive(Clone, Debug)]
+            pub enum State {
+                $( $variant($type), )+
+            }
+
+            impl State {
+                pub fn from_spec(hallway: HallwaySpec, rng: &mut Xs, specs: &Specs) -> Option<Self> {
+                    // Historical note: We used to pass just the needed specs, but we needed multiple in some cases,
+                    // so we decided if just pass the whole specs into each of them. Seems like no reason to care
+                    // if other games can use each other's sprites.
+                    match hallway {
+                        HallwaySpec::None => None,
+                        $( HallwaySpec::$variant => Some(Self::$variant(<$type>::new(rng, &specs))), )+
+                    }
+                }
+        
+                pub fn is_complete(&self) -> bool {
+                    match self {
+                        $( Self::$variant(inner) => inner.is_complete(), )+
+                    }
+                }
+            }
+        }
+    }
+
+    state_def! {
         IcePuzzle(ice_puzzle::State),
         // Staff Whacking Ordeal Required, Duh
         SWORD(sword::State),
@@ -143,20 +173,7 @@ pub mod hallway {
         HexHop(hex_hop::State),
         HexTwiddle(hex_twiddle::State),
         CubeMaze(cube_maze::State),
-    }
-
-    impl State {
-        pub fn is_complete(&self) -> bool {
-            use State::*;
-            match self {
-                IcePuzzle(inner) => inner.is_complete(),
-                SWORD(inner) => inner.is_complete(),
-                BOLD(inner) => inner.is_complete(),
-                HexHop(inner) => inner.is_complete(),
-                HexTwiddle(inner) => inner.is_complete(),
-                CubeMaze(inner) => inner.is_complete(),
-            }
-        }
+        KeycardShuffle(keycard_shuffle::State),
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -959,22 +976,9 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
 
 
                 'insert: {
-                    hallway_states.insert(
-                        key_i,
-                        key_j,
-                        // Historical note: We used to pass just the needed specs, but we needed multiple in some cases,
-                        // so we decided if just pass the whole specs into each of them. Seems like no reason to care
-                        // if other games can use each other's sprites.
-                        match hallway {
-                            HallwaySpec::None => { break 'insert },
-                            HallwaySpec::IcePuzzle => hallway::State::IcePuzzle(ice_puzzle::State::new(rng, &specs)),
-                            HallwaySpec::SWORD => hallway::State::SWORD(sword::State::new(rng, &specs)),
-                            HallwaySpec::BOLD => hallway::State::BOLD(bold::State::new(rng, &specs)),
-                            HallwaySpec::HexHop => hallway::State::HexHop(hex_hop::State::new(rng, &specs)),
-                            HallwaySpec::HexTwiddle => hallway::State::HexTwiddle(hex_twiddle::State::new(rng, &specs)),
-                            HallwaySpec::CubeMaze => hallway::State::CubeMaze(cube_maze::State::new(rng, &specs)),
-                        }
-                    );
+                    if let Some(s) = hallway::State::from_spec(*hallway, rng, specs) {
+                        hallway_states.insert(key_i, key_j, s);
+                    }
                 }
 
                 assert_door_targets_seem_right!();
