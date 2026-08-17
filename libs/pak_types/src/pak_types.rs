@@ -1232,7 +1232,7 @@ pub mod sprite {
         },
         pub keycard_shuffle_cards: Spec<KeycardShuffleCards> {
             offset: (0, 256),
-            tile: (84, 56),
+            tile: (86, 54),
             tiles_per_row: 1,
         },
         pub keycard_shuffle_letters: Spec<KeycardShuffleLetters> {

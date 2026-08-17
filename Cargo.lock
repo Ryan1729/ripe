@@ -991,6 +991,7 @@ name = "keycard_shuffle"
 version = "0.1.0"
 dependencies = [
  "gfx",
+ "gfx_sizes",
  "platform_types",
  "xs",
 ]

@@ -144,10 +144,14 @@ pub fn main() /* -> Result<Object, String> */ {
                 kind: HW::HEX_TWIDDLE,
                 // TODO configuration of Hex Twiddle.
             },
-            */
             #{
                 kind: HW::CUBE_MAZE,
-                // TODO configuration of Cube Maz.
+                // TODO configuration of Cube Maze.
+            },
+            */
+            #{
+                kind: HW::KEYCARD_SHUFFLE,
+                // TODO configuration of Keycard Shuffle.
             },
         ],
         entities: entities,
