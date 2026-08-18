@@ -558,6 +558,29 @@ pub mod unscaled {
             && xy.x <= self.x + self.w
             && xy.y <= self.y + self.h
         }
+
+        pub fn clip(&self, clip_to: Self) -> Self {
+            let mut output = self.clone();
+
+            if clip_to.x >= self.x {
+                output.x = clip_to.x;
+            }
+            if clip_to.y >= self.y {
+                output.y = clip_to.y;
+            }
+
+            let max_x = clip_to.x + clip_to.w;
+            if max_x < self.x + self.w {
+                output.w = max_x - self.x;
+            }
+
+            let max_y = clip_to.y + clip_to.h;
+            if max_y < self.y + self.h {
+                output.h = max_y - self.y;
+            }
+
+            output
+        }
     }
 
     macro_rules! shared_delta_impl {
