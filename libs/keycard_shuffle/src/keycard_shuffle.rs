@@ -4,10 +4,53 @@ use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Spe
 //use vec1::{Grid1, Grid1Spec};
 use xs::{Seed, Xs};
 
+#[derive(Clone, Copy, Debug)]
+enum CardColour {
+    Blue,
+    Green,
+    Red,
+    Yellow,
+    Purple,
+    Cyan,
+}
+
+impl CardColour {
+    const ALL: [Self; 6] = [
+        Self::Blue,
+        Self::Green,
+        Self::Red,
+        Self::Yellow,
+        Self::Purple,
+        Self::Cyan,
+    ];
+}
+
+#[derive(Clone, Copy, Debug)]
+enum CardSymbol {
+    None,
+    OnePip,
+}
+
+impl CardSymbol {
+    const ALL: [Self; 2] = [
+        Self::None,
+        Self::OnePip,
+    ];
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CardKind {
+    colour: CardColour,
+    symbol: CardSymbol,
+}
+
+type Inventory = Vec<CardKind>;
+
 #[derive(Clone, Debug, Default)]
 pub struct State {
     pub seed: Seed, // For restarting
     pub rng: Xs,
+    pub inventory: Inventory,
 }
 
 impl State {
@@ -21,9 +64,20 @@ impl State {
         let mut rng_ = xs::from_seed(seed);
         let rng = &mut rng_;
 
+        let mut inventory = Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len());
+
+        for colour in CardColour::ALL {
+            for symbol in CardSymbol::ALL {
+                inventory.push(
+                    CardKind { colour, symbol },
+                );
+            }
+        }
+
         Self {
             seed,
             rng: rng_,
+            inventory,
             .. <_>::default()
         }
     }
@@ -72,6 +126,8 @@ impl State {
         // Render
         //
 
+        use gfx::nine_slice;
+
         const PALETTE: [ARGB; 8] = [
             0xFF3352E1, // Blue
             0xFF30B06E, // Green
@@ -82,20 +138,6 @@ impl State {
             0xFFEEEEEE, // White
             0xFF222222, // Black
         ];
-
-        enum CardColour {
-            Red,
-        }
-
-        enum CardSymbol {
-            None,
-            OnePip,
-        }
-
-        struct CardKind {
-            colour: CardColour,
-            symbol: CardSymbol,
-        }
 
         let card_wh = specs.keycard_shuffle_cards.tile();
         let letters_wh = specs.keycard_shuffle_letters.tile();
@@ -116,7 +158,12 @@ impl State {
                 };
 
                 let colour_index: u16 = match kind.colour {
+                    CardColour::Blue => 0,
+                    CardColour::Green => 1,
                     CardColour::Red => 2,
+                    CardColour::Yellow => 3,
+                    CardColour::Purple => 4,
+                    CardColour::Cyan => 5,
                 };
 
                 // Card Back
@@ -161,13 +208,13 @@ impl State {
 
         let xy = unscaled::XY {
             x: unscaled::X(0) + unscaled::W::new((command::WIDTH_SIGNED / 2) + 50),
-            y: unscaled::Y(0) + unscaled::H::new(command::HEIGHT_SIGNED / 3),
+            y: unscaled::Y(0) + unscaled::H::new(command::HEIGHT_SIGNED / 6),
         };
 
         // Render card slot back
         let slot_xy = unscaled::XY {
             x: unscaled::X(0) + unscaled::W::new((command::WIDTH_SIGNED / 8) * 5),
-            y: unscaled::Y(102),
+            y: xy.y - unscaled::H::new(4),
         };
 
         let slot_sprite_xy = specs.keycard_shuffle_slot.xy_from_tile_sprite(0u16);
@@ -186,10 +233,66 @@ impl State {
         slot_overlay_rect.w -= slot_overlay_x_shift;
 
         draw_card!(xy, CardKind { colour: CardColour::Red, symbol: CardSymbol::OnePip }, slot_overlay_rect.x);
-        draw_card!(xy + card_wh.h + card_wh.h / 2, CardKind { colour: CardColour::Red, symbol: CardSymbol::OnePip });
-
 
         // Render card slot overlay
         commands.sspr(slot_overlay_sprite_xy, slot_overlay_rect);
+
+        // Render inventory
+
+        let inventory_outer_rect = unscaled::Rect {
+            x: unscaled::X(0),
+            y: unscaled::Y(command::HEIGHT_SIGNED / 2),
+            w: unscaled::W::new(command::WIDTH_SIGNED),
+            h: unscaled::H::new(command::HEIGHT_SIGNED / 2),
+        };
+
+        commands.nine_slice(nine_slice::INVENTORY, inventory_outer_rect);
+
+        let edge_wh = commands.ui_edge_wh();
+
+        let inventory_inner_rect = nine_slice::inner_rect(edge_wh, inventory_outer_rect);
+
+        let cell_wh = edge_wh + specs.keycard_shuffle_cards.tile() + edge_wh;
+
+        let inventory_x_max = inventory_inner_rect.x + inventory_inner_rect.w;
+        let inventory_y_max = inventory_inner_rect.y + inventory_inner_rect.h;
+
+        // TODO store on the state
+        let current_index = 0;
+
+        let mut inventory_index = 0;
+
+        let mut at = inventory_inner_rect.xy();
+
+        // TODO clip the inventory to the inner rect => add clipping feature to gfx::Commands
+        //    I think maybe return a new thing with the same interface that clips to the given rect
+        //    Use it for the card as well
+        // TODO implement scrolling for the inventory
+        while at.x < inventory_x_max && at.y < inventory_y_max {
+            // draw selectrum
+            if inventory_index == current_index {
+                commands.nine_slice(
+                    nine_slice::SELECTRUM,
+                    unscaled::Rect {
+                        x: at.x,
+                        y: at.y,
+                        w: cell_wh.w,
+                        h: cell_wh.h,
+                    },
+                );
+            }
+
+            if let Some(card_kind) = self.inventory.get(inventory_index) {
+                draw_card!(at + edge_wh, card_kind);
+            };
+
+            at.x += cell_wh.w;
+            if at.x + cell_wh.w >= inventory_x_max {
+                at.y += cell_wh.h;
+                at.x = inventory_inner_rect.x;
+            }
+            inventory_index += 1;
+        }
+
     }
 }

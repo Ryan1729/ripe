@@ -623,7 +623,7 @@ fn game_render(commands: &mut Commands, specs: &Specs, state: &game::State) {
                 };
 
                 at.x += cell_wh.w;
-                if at.x >= inv_x_max {
+                if at.x + cell_wh.w >= inv_x_max {
                     at.y += cell_wh.h;
                     at.x = inv_inner_rect.x;
                 }
