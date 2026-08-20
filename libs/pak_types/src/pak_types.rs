@@ -559,7 +559,7 @@ pub mod unscaled {
             && xy.y <= self.y + self.h
         }
 
-        pub fn clip(&self, clip_to: Self) -> Self {
+        pub fn clipped(&self, clip_to: Self) -> Self {
             let mut output = self.clone();
 
             if clip_to.x >= self.x {

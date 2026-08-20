@@ -47,6 +47,7 @@ pub struct Commands {
 
 // TODO Probably worth backporting the new clipping into the template once we have it working well.
 
+
 impl Commands {
     pub fn new(
         seed: xs::Seed,
@@ -130,7 +131,90 @@ impl Commands {
         }
     }
 
-    pub fn sspr_override(
+    pub fn ui_edge_wh(&self) -> unscaled::WH {
+        self.ui_spec.tile().halve()
+    }
+}
+
+pub trait AddDrawCommands {
+    fn sspr_override(
+        &mut self,
+        sprite_xy: sprite::XY<Renderable>,
+        unscaled_rect: unscaled::Rect,
+        colour_override: ARGB,
+    );
+
+    fn sspr(
+        &mut self,
+        sprite_xy: sprite::XY<Renderable>,
+        unscaled_rect: unscaled::Rect,
+    ) {
+        self.sspr_override(
+            sprite_xy,
+            unscaled_rect,
+            0,
+        );
+    }
+
+    fn print_char(
+        &mut self,
+        character: u8,
+        x: unscaled::X,
+        y: unscaled::Y,
+        colour: PaletteIndex
+    );
+
+    fn print_line(
+        &mut self,
+        bytes: &[u8],
+        xy: unscaled::XY,
+        colour: PaletteIndex,
+    );
+
+    fn print_lines(
+        &mut self,
+        base_xy: unscaled::XY,
+        top_index_with_offset: usize,
+        to_print: &[u8],
+        colour: PaletteIndex,
+    );
+
+    fn nine_slice(
+        &mut self,
+        nine_slice_sprite: nine_slice::Sprite,
+        outer_rect: unscaled::Rect
+    );
+
+    fn next_arrow_in_corner_of(
+        &mut self,
+        next_arrow_sprite: next_arrow::Sprite,
+        timer: ArrowTimer,
+        rect: unscaled::Rect
+    );
+
+    fn next_arrow(
+        &mut self,
+        next_arrow_sprite: next_arrow::Sprite,
+        x: unscaled::X,
+        y: unscaled::Y
+    );
+
+    fn speech(&mut self, speech: &Speech);
+
+    fn push_fade_message(&mut self, message: Vec<u8>, xy: unscaled::XY);
+
+    fn clipped<'commands>(&'commands mut self, rect: unscaled::Rect) -> ClippedCommands<'commands, Self> where Self: Sized {
+        ClippedCommands {
+            commands: self,
+            rect,
+        }
+    }
+
+    fn raw(&mut self) -> &mut Commands;
+}
+
+impl AddDrawCommands for Commands {
+    fn sspr_override(
         &mut self,
         sprite_xy: sprite::XY<Renderable>,
         unscaled_rect: unscaled::Rect,
@@ -146,19 +230,9 @@ impl Commands {
         );
     }
 
-    pub fn sspr(
-        &mut self,
-        sprite_xy: sprite::XY<Renderable>,
-        unscaled_rect: unscaled::Rect,
-    ) {
-        self.sspr_override(
-            sprite_xy,
-            unscaled_rect,
-            0,
-        );
-    }
+    // sspr uses the default impl that forwards to sspr_override, with a 0 override.
 
-    pub fn print_char(
+    fn print_char(
         &mut self,
         character: u8,
         x: unscaled::X,
@@ -177,7 +251,7 @@ impl Commands {
         )
     }
 
-    pub fn print_line(
+    fn print_line(
         &mut self,
         bytes: &[u8],
         xy: unscaled::XY,
@@ -194,7 +268,7 @@ impl Commands {
         )
     }
 
-    pub fn print_lines(
+    fn print_lines(
         &mut self,
         base_xy: unscaled::XY,
         top_index_with_offset: usize,
@@ -213,23 +287,23 @@ impl Commands {
         )
     }
 
-    pub fn nine_slice(&mut self, nine_slice_sprite: nine_slice::Sprite, outer_rect: unscaled::Rect) {
+    fn nine_slice(&mut self, nine_slice_sprite: nine_slice::Sprite, outer_rect: unscaled::Rect) {
         nine_slice::render(self, nine_slice_sprite, outer_rect);
     }
 
-    pub fn next_arrow_in_corner_of(&mut self, next_arrow_sprite: next_arrow::Sprite, timer: ArrowTimer, rect: unscaled::Rect) {
+    fn next_arrow_in_corner_of(&mut self, next_arrow_sprite: next_arrow::Sprite, timer: ArrowTimer, rect: unscaled::Rect) {
         next_arrow::next_arrow_in_corner_of(self, next_arrow_sprite, timer, rect);
     }
 
-    pub fn next_arrow(&mut self, next_arrow_sprite: next_arrow::Sprite, x: unscaled::X, y: unscaled::Y) {
+    fn next_arrow(&mut self, next_arrow_sprite: next_arrow::Sprite, x: unscaled::X, y: unscaled::Y) {
         next_arrow::render(self, next_arrow_sprite, x, y);
     }
 
-    pub fn speech(&mut self, speech: &Speech) {
+    fn speech(&mut self, speech: &Speech) {
         speech::render(self, speech);
     }
 
-    pub fn push_fade_message(&mut self, message: Vec<u8>, xy: unscaled::XY) {
+    fn push_fade_message(&mut self, message: Vec<u8>, xy: unscaled::XY) {
         self.fade_messages.push(FadeMessage {
             message,
             // TODO? Scale this based on text length?
@@ -240,8 +314,163 @@ impl Commands {
         });
     }
 
-    pub fn ui_edge_wh(&self) -> unscaled::WH {
-        self.ui_spec.tile().halve()
+    fn raw(&mut self) -> &mut Commands {
+        self
+    }
+}
+
+pub struct ClippedCommands<'commands, C: AddDrawCommands + Sized> {
+    commands: &'commands mut C,
+    rect: unscaled::Rect,
+}
+
+macro_rules! clip_new_commands {
+    ($clipped: ident, $code: block) => ({        
+        let old_count = {
+            let clipped: &mut ClippedCommands<'commands, C> = $clipped;
+            let raw: &mut Commands = clipped.raw();
+            raw.commands.len()
+        };
+
+        {
+            $code;
+        }
+
+        let clipped: &mut ClippedCommands<'commands, C> = $clipped;
+        let rect = clipped.rect.clone();
+        let raw: &mut Commands = clipped.raw();
+
+        // Reverse so we have a chance to hit the fast path of removing
+        // the last element of the vector, multiple times.
+        // TODO? Benchmark with a version that uses Vec::retain_mut, and 
+        // an index variable?
+        for i in (old_count..raw.commands.len()).rev() {
+            if let Some(new_cmd) = raw.commands[i].clipped_to(rect) {
+                raw.commands[i] = new_cmd;
+            } else {
+                raw.commands.remove(i);
+            }
+        }
+
+    })
+}
+
+impl <'commands, C: AddDrawCommands + Sized> AddDrawCommands for ClippedCommands<'commands, C> {
+    fn sspr_override(
+        &mut self,
+        sprite_xy: sprite::XY<Renderable>,
+        unscaled_rect: unscaled::Rect,
+        colour_override: ARGB,
+    ) {
+        clip_new_commands! {
+            self,
+            {
+                self.commands.sspr_override(
+                    sprite_xy,
+                    unscaled_rect,
+                    colour_override,
+                );
+            }
+        }
+    }
+
+    // sspr uses the default impl that forwards to sspr_override, with a 0 override.
+
+    fn print_char(
+        &mut self,
+        character: u8,
+        x: unscaled::X,
+        y: unscaled::Y,
+        colour: PaletteIndex
+    ) {
+        clip_new_commands! {
+            self,
+            {
+                self.commands.print_char(
+                    character,
+                    x,
+                    y,
+                    colour,
+                );
+            }
+        }
+    }
+
+    fn print_line(
+        &mut self,
+        bytes: &[u8],
+        xy: unscaled::XY,
+        colour: PaletteIndex,
+    ) {
+        clip_new_commands! {
+            self,
+            {
+                self.commands.print_line(
+                    bytes,
+                    xy,
+                    colour,
+                );
+            }
+        }
+    }
+
+    fn print_lines(
+        &mut self,
+        base_xy: unscaled::XY,
+        top_index_with_offset: usize,
+        to_print: &[u8],
+        colour: PaletteIndex,
+    ) {
+        clip_new_commands! {
+            self,
+            {
+                self.commands.print_lines(
+                    base_xy,
+                    top_index_with_offset,
+                    to_print,
+                    colour,
+                );
+            }
+        }
+    }
+
+    fn nine_slice(&mut self, nine_slice_sprite: nine_slice::Sprite, outer_rect: unscaled::Rect) {
+        clip_new_commands! {
+            self,
+            { self.commands.nine_slice(nine_slice_sprite, outer_rect); }
+        }
+    }
+
+    fn next_arrow_in_corner_of(&mut self, next_arrow_sprite: next_arrow::Sprite, timer: ArrowTimer, rect: unscaled::Rect) {
+        clip_new_commands! {
+            self,
+            { self.commands.next_arrow_in_corner_of(next_arrow_sprite, timer, rect); }
+        }
+    }
+
+    fn next_arrow(&mut self, next_arrow_sprite: next_arrow::Sprite, x: unscaled::X, y: unscaled::Y) {
+        clip_new_commands! {
+            self,
+            { self.commands.next_arrow(next_arrow_sprite, x, y); }
+        }
+    }
+
+    fn speech(&mut self, speech: &Speech) {
+        clip_new_commands! {
+            self,
+            { self.commands.speech(speech); }
+        }
+    }
+
+    fn push_fade_message(&mut self, message: Vec<u8>, xy: unscaled::XY) {
+        clip_new_commands! {
+            self,
+            { self.commands.push_fade_message(message, xy); }
+        }
+    }
+
+    fn raw(&mut self) -> &mut Commands {
+        self.commands.raw()
     }
 }
 

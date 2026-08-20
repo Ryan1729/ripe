@@ -31,6 +31,11 @@ pub mod command {
         pub const fn u16(self) -> u16 {
             self.0
         }
+
+        pub const fn to_unscaled(self) -> unscaled::X {
+            // We know that this is less than WIDTH, and that WIDTH < SignedInner::MAX
+            unscaled::X(self.0 as SignedInner)
+        }
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -41,6 +46,11 @@ pub mod command {
 
         pub const fn u16(self) -> u16 {
             self.0
+        }
+
+        pub const fn to_unscaled(self) -> unscaled::Y {
+            // We know that this is less than HEIGHT, and that HEIGHT < SignedInner::MAX
+            unscaled::Y(self.0 as SignedInner)
         }
     }
 
@@ -90,12 +100,39 @@ pub mod command {
         }
     }
 
+    impl core::ops::Sub<X> for X {
+        type Output = unscaled::W;
+
+        fn sub(self, other: X) -> Self::Output {
+            self.to_unscaled() - other.to_unscaled()
+        }
+    }
+
+    impl core::ops::Sub<Y> for Y {
+        type Output = unscaled::H;
+
+        fn sub(self, other: Y) -> Self::Output {
+            self.to_unscaled() - other.to_unscaled()
+        }
+    }
+
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct Rect {
         pub x_min: X,
         pub y_min: Y,
         pub x_max: X,
         pub y_max: Y,
+    }
+
+    impl Rect {
+        fn to_unscaled(self) -> unscaled::Rect {
+            unscaled::Rect {
+                x: self.x_min.to_unscaled(),
+                y: self.y_min.to_unscaled(),
+                w: self.x_max - self.x_min,
+                h: self.y_max - self.y_min,
+            }
+        }
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -177,6 +214,14 @@ pub mod command {
         pub fn rect(&self) -> Rect { self.rect }
         pub fn sprite_xy(&self) -> sprite::XY<sprite::Renderable> { self.sprite_xy }
         pub fn colour_override(&self) -> ARGB { self.colour_override }
+
+        pub fn clipped_to(&self, clip_rect: unscaled::Rect) -> Option<Self> {
+            Self::new(
+                self.sprite_xy,
+                self.rect.to_unscaled().clipped(clip_rect),
+                self.colour_override,
+            )
+        }
     }
 }
 pub use command::Command;

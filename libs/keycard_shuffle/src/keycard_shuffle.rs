@@ -1,4 +1,4 @@
-use gfx::{Commands};
+use gfx::{Commands, AddDrawCommands};
 use gfx_sizes::{ARGB};
 use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
 //use vec1::{Grid1, Grid1Spec};
@@ -107,7 +107,7 @@ impl State {
 
     pub fn update_and_render(
         &mut self,
-        commands: &mut Commands,
+        mut commands: &mut Commands,
         specs: &sprite::Specs,
         input: Input,
         _speaker: &mut Speaker,
@@ -148,6 +148,12 @@ impl State {
                 draw_card!($xy, $kind, unscaled::X(command::WIDTH_SIGNED))
             });
             ($xy: expr, $kind: expr, $cutoff_x: expr) => ({
+                draw_card!(@commands: &mut commands, $xy, $kind, $cutoff_x)
+            });
+            (@commands: $commands: expr, $xy: expr, $kind: expr) => ({
+                draw_card!(@commands: $commands, $xy, $kind, unscaled::X(command::WIDTH_SIGNED))
+            });
+            (@commands: $commands: expr, $xy: expr, $kind: expr, $cutoff_x: expr) => ({
                 let xy = $xy;
                 let kind = $kind;
                 let clip_rect = unscaled::Rect {
@@ -166,25 +172,27 @@ impl State {
                     CardColour::Cyan => 5,
                 };
 
+                let mut cmds = $commands.clipped(clip_rect);
+
                 // Card Back
-                commands.sspr_override(
+                cmds.sspr_override(
                     specs.keycard_shuffle_cards.xy_from_tile_sprite(0u16),
-                    specs.keycard_shuffle_cards.rect(xy).clip(clip_rect),
+                    specs.keycard_shuffle_cards.rect(xy),
                     PALETTE[usize::from(colour_index)],
                 );
 
                 // Card Stripe
-                commands.sspr(
+                cmds.sspr(
                     specs.keycard_shuffle_cards.xy_from_tile_sprite(1u16),
-                    specs.keycard_shuffle_cards.rect(xy).clip(clip_rect),
+                    specs.keycard_shuffle_cards.rect(xy),
                 );
 
                 // Colour Label
                 let label_base_xy = xy + unscaled::H::new(20);
 
-                commands.sspr_override(
+                cmds.sspr_override(
                     specs.keycard_shuffle_letters.xy_from_tile_sprite(colour_index),
-                    specs.keycard_shuffle_letters.rect(label_base_xy).clip(clip_rect),
+                    specs.keycard_shuffle_letters.rect(label_base_xy),
                     PALETTE[6]
                 );
 
@@ -192,18 +200,18 @@ impl State {
                 match kind.symbol {
                     CardSymbol::None => {},
                     CardSymbol::OnePip => {
-                        commands.sspr_override(
+                        cmds.sspr_override(
                             specs.keycard_shuffle_lights.xy_from_tile_sprite(2u16),
                             specs.keycard_shuffle_lights.rect(
                                 label_base_xy
                                 + letters_wh.w + lights_wh.w.halve()
                                 + letters_wh.h.halve() - lights_wh.h.halve()
-                            ).clip(clip_rect),
+                            ),
                             PALETTE[6]
                         );
                     },
                 };
-            })
+            });
         }
 
         let xy = unscaled::XY {
@@ -264,6 +272,8 @@ impl State {
 
         let mut at = inventory_inner_rect.xy();
 
+        let mut clipped_commands = commands.clipped(inventory_inner_rect);
+
         // TODO clip the inventory to the inner rect => add clipping feature to gfx::Commands
         //    I think maybe return a new thing with the same interface that clips to the given rect
         //    Use it for the card as well
@@ -271,7 +281,7 @@ impl State {
         while at.x < inventory_x_max && at.y < inventory_y_max {
             // draw selectrum
             if inventory_index == current_index {
-                commands.nine_slice(
+                clipped_commands.nine_slice(
                     nine_slice::SELECTRUM,
                     unscaled::Rect {
                         x: at.x,
@@ -283,7 +293,7 @@ impl State {
             }
 
             if let Some(card_kind) = self.inventory.get(inventory_index) {
-                draw_card!(at + edge_wh, card_kind);
+                draw_card!(@commands: &mut clipped_commands, at + edge_wh, card_kind);
             };
 
             at.x += cell_wh.w;

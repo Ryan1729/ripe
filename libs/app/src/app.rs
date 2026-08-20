@@ -1,5 +1,5 @@
 use features::invariant_assert;
-use gfx::{Commands, nine_slice, next_arrow, speech, to_tile};
+use gfx::{Commands, AddDrawCommands, nine_slice, next_arrow, speech, to_tile};
 use gfx_sizes::{ARGB, GFX_WIDTH};
 use pak_types::{Specs};
 use platform_types::{unscaled, Button, Dir, Input, PakReader, Speaker, SFX};

@@ -1,4 +1,4 @@
-use gfx::{Commands};
+use gfx::{Commands, AddDrawCommands};
 use gfx_sizes::ARGB;
 use platform_types::{sprite, unscaled, Button, Input, Speaker};
 use qrs::{QRS, QRSD, Q, R};

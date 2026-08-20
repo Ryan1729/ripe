@@ -3,7 +3,7 @@
 
 ///! S.W.O.R.D.: Staff Whacking Ordeal Required, Duh
 
-use gfx::{Commands};
+use gfx::{Commands, AddDrawCommands};
 use platform_types::{sprite, unscaled, Button, Dir, Input, Speaker};
 use vec1::{Grid1, Grid1Spec, Vec1, vec1};
 use xs::{Seed, Xs};
