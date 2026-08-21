@@ -564,22 +564,107 @@ pub mod unscaled {
 
             if clip_to.x >= self.x {
                 output.x = clip_to.x;
+                output.w = (self.x + self.w) - output.x;
             }
             if clip_to.y >= self.y {
                 output.y = clip_to.y;
+                output.h = (self.y + self.h) - output.y;
             }
 
             let max_x = clip_to.x + clip_to.w;
             if max_x < self.x + self.w {
-                output.w = max_x - self.x;
+                output.w = max_x - output.x;
             }
 
             let max_y = clip_to.y + clip_to.h;
             if max_y < self.y + self.h {
-                output.h = max_y - self.y;
+                output.h = max_y - output.y;
             }
 
             output
+        }
+    }
+
+    #[cfg(test)]
+    mod clipped_works_on {
+        use super::*;
+
+        #[test]
+        fn this_basic_example() {
+            let to_clip = Rect {
+                x: X(0),
+                y: Y(0),
+                w: W(40),
+                h: H(20),
+            };
+
+            let clip = Rect {
+                x: X(10),
+                y: Y(5),
+                w: W(20),
+                h: H(10),
+            };
+
+            assert_eq!(
+                to_clip.clipped(clip),
+                clip,
+            );
+        }
+
+        #[test]
+        fn this_example_that_should_be_identity() {
+            let clip = Rect {
+                x: X(0),
+                y: Y(0),
+                w: W(40),
+                h: H(20),
+            };
+
+            let to_clip = Rect {
+                x: X(10),
+                y: Y(5),
+                w: W(20),
+                h: H(10),
+            };
+
+            assert_eq!(
+                to_clip.clipped(clip),
+                to_clip,
+            );
+        }
+
+        #[test]
+        fn this_partial_overlap_example() {
+            let a = Rect {
+                x: X(0),
+                y: Y(0),
+                w: W(20),
+                h: H(10),
+            };
+
+            let b = Rect {
+                x: X(10),
+                y: Y(5),
+                w: W(40),
+                h: H(20),
+            };
+
+            let expected = Rect {
+                x: X(10),
+                y: Y(5),
+                w: W(10),
+                h: H(5),
+            };
+
+            assert_eq!(
+                a.clipped(b),
+                expected,
+            );
+
+            assert_eq!(
+                b.clipped(a),
+                expected,
+            );
         }
     }
 
