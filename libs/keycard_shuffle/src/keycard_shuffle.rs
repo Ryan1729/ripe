@@ -274,46 +274,11 @@ impl State {
 
         let mut clipped_commands = commands.clipped(inventory_inner_rect);
 
-        // TODO clip the inventory to the inner rect => add clipping feature to gfx::Commands
-        //    I think maybe return a new thing with the same interface that clips to the given rect
-        //    Use it for the card as well
         // TODO implement scrolling for the inventory
         while at.x < inventory_x_max && at.y < inventory_y_max {
             // draw selectrum
-            //if inventory_index == current_index {
-                //clipped_commands.nine_slice(
-                    //nine_slice::SELECTRUM,
-                    //unscaled::Rect {
-                        //x: at.x,
-                        //y: at.y,
-                        //w: cell_wh.w,
-                        //h: cell_wh.h,
-                    //},
-                //);
-            //}
-
-            if let Some(card_kind) = self.inventory.get(inventory_index) {
-                draw_card!(@commands: &mut clipped_commands, at + edge_wh, card_kind);
-            };
-
-            at.x += cell_wh.w;
-            if at.x + cell_wh.w >= inventory_x_max {
-                at.y += cell_wh.h;
-                at.x = inventory_inner_rect.x;
-            }
-            inventory_index += 1;
-        }
-
-        let mut inventory_index = 0;
-
-        let mut at = inventory_inner_rect.xy();
-
-        // TEMP to test nine slice bug
-        // OH! Everything in clipped_commands is getting clipped too much by one pixel on each side
-        while at.x < inventory_x_max && at.y < inventory_y_max {
-            // draw selectrum
             if inventory_index == current_index {
-                commands.nine_slice(
+                clipped_commands.nine_slice(
                     nine_slice::SELECTRUM,
                     unscaled::Rect {
                         x: at.x,
@@ -323,6 +288,10 @@ impl State {
                     },
                 );
             }
+
+            if let Some(card_kind) = self.inventory.get(inventory_index) {
+                draw_card!(@commands: &mut clipped_commands, at + edge_wh, card_kind);
+            };
 
             at.x += cell_wh.w;
             if at.x + cell_wh.w >= inventory_x_max {

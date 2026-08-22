@@ -129,8 +129,8 @@ pub mod command {
             unscaled::Rect {
                 x: self.x_min.to_unscaled(),
                 y: self.y_min.to_unscaled(),
-                w: self.x_max - self.x_min,
-                h: self.y_max - self.y_min,
+                w: (self.x_max - self.x_min) + unscaled::W::new(1),
+                h: (self.y_max - self.y_min) + unscaled::H::new(1),
             }
         }
     }
@@ -168,8 +168,14 @@ pub mod command {
                 (rect.y.0 as u16, 0)
             };
 
-            let x_max_raw = x as unscaled::NextUp + (rect.w.get() as unscaled::NextUp - x_min_clip_amount as unscaled::NextUp) - 1;
-            let y_max_raw = y as unscaled::NextUp + (rect.h.get() as unscaled::NextUp - y_min_clip_amount as unscaled::NextUp) - 1;
+            let x_max_raw =
+                x as unscaled::NextUp
+                + (rect.w.get() as unscaled::NextUp - x_min_clip_amount as unscaled::NextUp)
+                - 1;
+            let y_max_raw =
+                y as unscaled::NextUp
+                + (rect.h.get() as unscaled::NextUp - y_min_clip_amount as unscaled::NextUp)
+                - 1;
 
             let x_max = if x_max_raw > X_MAX_SIGNED as unscaled::NextUp {
                 X::MAX
@@ -194,10 +200,13 @@ pub mod command {
                 y_max,
             };
 
-            if clipped.x_max.0 <= clipped.x_min.0 {
+            // We need to do <, not <= here, because
+            // a) we do a - 1 on each dimension above
+            // b) we want to be able to represent 1x1 sprites.
+            if clipped.x_max.0 < clipped.x_min.0 {
                 return None
             }
-            if clipped.y_max.0 <= clipped.y_min.0 {
+            if clipped.y_max.0 < clipped.y_min.0 {
                 return None
             }
 
@@ -221,6 +230,87 @@ pub mod command {
                 self.rect.to_unscaled().clipped(clip_rect),
                 self.colour_override,
             )
+        }
+    }
+
+    #[cfg(test)]
+    mod command_new_then_to_unscaled_works_on {
+        use super::*;
+
+        #[test]
+        fn these_zero_dim_rects() {
+            assert_eq!(
+                Command::new(
+                    <_>::default(),
+                    unscaled::Rect {
+                        x: unscaled::X(0),
+                        y: unscaled::Y(0),
+                        w: unscaled::W::new(0),
+                        h: unscaled::H::new(0),
+                    },
+                    <_>::default()
+                ),
+                None
+            );
+            assert_eq!(
+                Command::new(
+                    <_>::default(),
+                    unscaled::Rect {
+                        x: unscaled::X(0),
+                        y: unscaled::Y(0),
+                        w: unscaled::W::new(1),
+                        h: unscaled::H::new(0),
+                    },
+                    <_>::default()
+                ),
+                None
+            );
+            assert_eq!(
+                Command::new(
+                    <_>::default(),
+                    unscaled::Rect {
+                        x: unscaled::X(0),
+                        y: unscaled::Y(0),
+                        w: unscaled::W::new(0),
+                        h: unscaled::H::new(1),
+                    },
+                    <_>::default()
+                ),
+                None
+            );
+        }
+
+        #[test]
+        fn these_identity_examples() {
+            macro_rules! a {
+                ($rect: expr) => ({
+                    let rect = $rect;
+                    let f = |r| {
+                        Command::new(<_>::default(), r, <_>::default()).unwrap().rect().to_unscaled()
+                    };
+
+                    assert_eq!(f(rect), rect);
+                })
+            }
+
+            a!(unscaled::Rect {
+                x: unscaled::X(0),
+                y: unscaled::Y(0),
+                w: unscaled::W::new(1),
+                h: unscaled::H::new(1),
+            });
+            a!(unscaled::Rect {
+                x: unscaled::X(10),
+                y: unscaled::Y(20),
+                w: unscaled::W::new(30),
+                h: unscaled::H::new(40),
+            });
+            a!(unscaled::Rect {
+                x: unscaled::X(80),
+                y: unscaled::Y(70),
+                w: unscaled::W::new(60),
+                h: unscaled::H::new(50),
+            });
         }
     }
 }
@@ -408,7 +498,7 @@ pub use button::Button;
 pub type Logger = Option<fn(&str) -> ()>;
 
 pub trait PakReader
-where 
+where
     Self: std::io::Read + std::io::Seek
 {}
 
@@ -421,9 +511,9 @@ pub type PakLoader = Option<fn() -> Option<Box<dyn PakReader>>>;
 
 #[derive(Clone, Copy)]
 pub struct StateParams {
-    pub seed: [u8; 16], 
+    pub seed: [u8; 16],
     pub logger: Logger,
-    pub error_logger: Logger, 
+    pub error_logger: Logger,
     pub pak_loader: PakLoader,
 }
 
@@ -463,9 +553,9 @@ pub mod arrow_timer {
 
     /// 64k arrow frames ought to be enough for anybody!
     pub type ArrowTimer = u16;
-    
+
     const MAX: ArrowTimer = 128;
-    
+
     pub fn tick(timer: &mut ArrowTimer) {
         if *timer == 0 {
             *timer = MAX;
