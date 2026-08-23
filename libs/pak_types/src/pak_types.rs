@@ -416,6 +416,24 @@ pub mod unscaled {
         YD, YDInner
     }
 
+    impl core::ops::Neg for XD {
+        type Output = Self;
+
+        fn neg(mut self) -> Self::Output {
+            self.0 = -self.0;
+            self
+        }
+    }
+
+    impl core::ops::Neg for YD {
+        type Output = Self;
+
+        fn neg(mut self) -> Self::Output {
+            self.0 = -self.0;
+            self
+        }
+    }
+
     macro_rules! shared_impl {
         ($($name: ident, $inner_name: ident)+) => {
             $(

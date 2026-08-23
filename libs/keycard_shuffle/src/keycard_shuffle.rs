@@ -4,6 +4,8 @@ use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Spe
 //use vec1::{Grid1, Grid1Spec};
 use xs::{Seed, Xs};
 
+type Index = usize;
+
 #[derive(Clone, Copy, Debug)]
 enum CardColour {
     Blue,
@@ -29,12 +31,14 @@ impl CardColour {
 enum CardSymbol {
     None,
     OnePip,
+    TwoPips,
 }
 
 impl CardSymbol {
-    const ALL: [Self; 2] = [
+    const ALL: [Self; 3] = [
         Self::None,
         Self::OnePip,
+        Self::TwoPips,
     ];
 }
 
@@ -44,13 +48,18 @@ struct CardKind {
     symbol: CardSymbol,
 }
 
-type Inventory = Vec<CardKind>;
+#[derive(Clone, Debug, Default)]
+struct Inventory {
+    cells: Vec<CardKind>,
+    index: Index,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
     pub seed: Seed, // For restarting
     pub rng: Xs,
     pub inventory: Inventory,
+    pub inventory_scroll: unscaled::XYD,
 }
 
 impl State {
@@ -64,11 +73,14 @@ impl State {
         let mut rng_ = xs::from_seed(seed);
         let rng = &mut rng_;
 
-        let mut inventory = Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len());
+        let mut inventory = Inventory {
+            cells: Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len()),
+            index: 0,
+        };
 
         for colour in CardColour::ALL {
             for symbol in CardSymbol::ALL {
-                inventory.push(
+                inventory.cells.push(
                     CardKind { colour, symbol },
                 );
             }
@@ -116,6 +128,89 @@ impl State {
         // Update
         //
 
+        let inventory_outer_rect = unscaled::Rect {
+            x: unscaled::X(0),
+            y: unscaled::Y(command::HEIGHT_SIGNED / 2),
+            w: unscaled::W::new(command::WIDTH_SIGNED),
+            h: unscaled::H::new(command::HEIGHT_SIGNED / 2),
+        };
+
+        let edge_wh = commands.ui_edge_wh();
+
+        let inventory_cell_wh = edge_wh + specs.keycard_shuffle_cards.tile() + edge_wh;
+
+        let inventory_inner_rect = nine_slice::inner_rect(edge_wh, inventory_outer_rect);
+
+        let inventory_x_max = inventory_inner_rect.x + inventory_inner_rect.w;
+        let inventory_y_max = inventory_inner_rect.y + inventory_inner_rect.h;
+
+        if let Some(dir) = input.dir_pressed_this_frame() {
+            let inventory_cells_wide_count = usize::from(inventory_inner_rect.w / inventory_cell_wh.w.get());
+
+            match dir {
+                Dir::Up => {
+                    if self.inventory.index >= inventory_cells_wide_count {
+                        self.inventory.index -= inventory_cells_wide_count;
+                    }
+                }
+                Dir::Down => {
+                    if self.inventory.index + inventory_cells_wide_count < self.inventory.cells.len() {
+                        self.inventory.index += inventory_cells_wide_count;
+                    }
+                }
+                Dir::Left => {
+                    if self.inventory.index > 0 {
+                        self.inventory.index -= 1;
+                    }
+                }
+                Dir::Right => {
+                    if self.inventory.index < self.inventory.cells.len() - 1 {
+                        self.inventory.index += 1;
+                    }
+                }
+            }
+
+            // This is a version of the render loop, done here to find
+            // If we ever have a third place we do this, then combine them
+
+            let mut inventory_render_index = 0;
+
+            let mut at = inventory_inner_rect.xy();
+
+            while inventory_render_index < self.inventory.cells.len() {
+                // draw selectrum
+                if inventory_render_index == self.inventory.index {
+                    let selected_at = unscaled::Rect {
+                        x: at.x,
+                        y: at.y,
+                        w: inventory_cell_wh.w,
+                        h: inventory_cell_wh.h,
+                    } + self.inventory_scroll;
+                    dbg!("loop", selected_at.y, inventory_inner_rect.y, inventory_y_max);
+                    // If the top of the card is above the clip rect, adjust scroll so that it is in view, at the top
+                    if selected_at.y < inventory_inner_rect.y {
+                        dbg!("up fix");
+                        self.inventory_scroll.yd = unscaled::YD::from(inventory_inner_rect.y - selected_at.y);
+                    }
+
+                    // If the bottom of the card is below the clip rect, adjust scroll so that it is in view, at the bottom
+                    if selected_at.y > inventory_y_max {
+                        dbg!("down fix");
+                        self.inventory_scroll.yd = unscaled::YD::from((inventory_y_max - inventory_cell_wh.h) - selected_at.y);
+                    }
+
+                    break
+                }
+
+                at.x += inventory_cell_wh.w;
+                if at.x + inventory_cell_wh.w >= inventory_x_max {
+                    at.y += inventory_cell_wh.h;
+                    at.x = inventory_inner_rect.x;
+                }
+                inventory_render_index += 1;
+            }
+        }
+
         if input.pressed_this_frame(Button::START) {
             self.restart(specs);
         }
@@ -142,6 +237,19 @@ impl State {
         let card_wh = specs.keycard_shuffle_cards.tile();
         let letters_wh = specs.keycard_shuffle_letters.tile();
         let lights_wh = specs.keycard_shuffle_lights.tile();
+
+        macro_rules! draw_pip_at {
+            ($xy: expr) => {
+                draw_pip_at!(@commands: &mut commands, $xy);
+            };
+            (@commands: $commands: expr, $xy: expr) => {
+                $commands.sspr_override(
+                    specs.keycard_shuffle_lights.xy_from_tile_sprite(2u16),
+                    specs.keycard_shuffle_lights.rect($xy),
+                    PALETTE[6]
+                );
+            }
+        }
 
         macro_rules! draw_card {
             ($xy: expr, $kind: expr) => ({
@@ -200,14 +308,23 @@ impl State {
                 match kind.symbol {
                     CardSymbol::None => {},
                     CardSymbol::OnePip => {
-                        cmds.sspr_override(
-                            specs.keycard_shuffle_lights.xy_from_tile_sprite(2u16),
-                            specs.keycard_shuffle_lights.rect(
-                                label_base_xy
+                        draw_pip_at!(
+                            @commands: cmds,
+                            label_base_xy
                                 + letters_wh.w + lights_wh.w.halve()
                                 + letters_wh.h.halve() - lights_wh.h.halve()
-                            ),
-                            PALETTE[6]
+                        );
+                    },
+                    CardSymbol::TwoPips => {
+                        let one_pip_xy = label_base_xy
+                            + letters_wh.w + lights_wh.w.halve()
+                            + letters_wh.h.halve() - lights_wh.h.halve();
+
+                        draw_pip_at!(@commands: cmds, one_pip_xy);
+
+                        draw_pip_at!(
+                            @commands: cmds,
+                            one_pip_xy + lights_wh.w + lights_wh.w.halve()
                         );
                     },
                 };
@@ -247,58 +364,38 @@ impl State {
 
         // Render inventory
 
-        let inventory_outer_rect = unscaled::Rect {
-            x: unscaled::X(0),
-            y: unscaled::Y(command::HEIGHT_SIGNED / 2),
-            w: unscaled::W::new(command::WIDTH_SIGNED),
-            h: unscaled::H::new(command::HEIGHT_SIGNED / 2),
-        };
-
         commands.nine_slice(nine_slice::INVENTORY, inventory_outer_rect);
 
-        let edge_wh = commands.ui_edge_wh();
-
-        let inventory_inner_rect = nine_slice::inner_rect(edge_wh, inventory_outer_rect);
-
-        let cell_wh = edge_wh + specs.keycard_shuffle_cards.tile() + edge_wh;
-
-        let inventory_x_max = inventory_inner_rect.x + inventory_inner_rect.w;
-        let inventory_y_max = inventory_inner_rect.y + inventory_inner_rect.h;
-
-        // TODO store on the state
-        let current_index = 0;
-
-        let mut inventory_index = 0;
+        let mut inventory_render_index = 0;
 
         let mut at = inventory_inner_rect.xy();
 
         let mut clipped_commands = commands.clipped(inventory_inner_rect);
 
-        // TODO implement scrolling for the inventory
         while at.x < inventory_x_max && at.y < inventory_y_max {
             // draw selectrum
-            if inventory_index == current_index {
+            if inventory_render_index == self.inventory.index {
                 clipped_commands.nine_slice(
                     nine_slice::SELECTRUM,
                     unscaled::Rect {
                         x: at.x,
                         y: at.y,
-                        w: cell_wh.w,
-                        h: cell_wh.h,
-                    },
+                        w: inventory_cell_wh.w,
+                        h: inventory_cell_wh.h,
+                    } + self.inventory_scroll,
                 );
             }
 
-            if let Some(card_kind) = self.inventory.get(inventory_index) {
-                draw_card!(@commands: &mut clipped_commands, at + edge_wh, card_kind);
+            if let Some(card_kind) = self.inventory.cells.get(inventory_render_index) {
+                draw_card!(@commands: &mut clipped_commands, at + edge_wh + self.inventory_scroll, card_kind);
             };
 
-            at.x += cell_wh.w;
-            if at.x + cell_wh.w >= inventory_x_max {
-                at.y += cell_wh.h;
+            at.x += inventory_cell_wh.w;
+            if at.x + inventory_cell_wh.w >= inventory_x_max {
+                at.y += inventory_cell_wh.h;
                 at.x = inventory_inner_rect.x;
             }
-            inventory_index += 1;
+            inventory_render_index += 1;
         }
     }
 }
