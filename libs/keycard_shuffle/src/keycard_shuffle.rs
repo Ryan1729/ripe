@@ -144,7 +144,24 @@ impl State {
         let inventory_x_max = inventory_inner_rect.x + inventory_inner_rect.w;
         let inventory_y_max = inventory_inner_rect.y + inventory_inner_rect.h;
 
-        if let Some(dir) = input.dir_pressed_this_frame() {
+        if input.gamepad.contains(Button::A) {
+            if let Some(dir) = input.dir_pressed_this_frame() {
+                match dir {
+                    Dir::Up => {
+                        self.inventory_scroll.yd -= unscaled::YD(1);
+                    }
+                    Dir::Down => {
+                        self.inventory_scroll.yd += unscaled::YD(1);
+                    }
+                    Dir::Left => {
+                        
+                    }
+                    Dir::Right => {
+                        
+                    }
+                }
+            }
+        } else if let Some(dir) = input.dir_pressed_this_frame() {
             let inventory_cells_wide_count = usize::from(inventory_inner_rect.w / inventory_cell_wh.w.get());
 
             match dir {
@@ -186,17 +203,15 @@ impl State {
                         w: inventory_cell_wh.w,
                         h: inventory_cell_wh.h,
                     } + self.inventory_scroll;
-                    dbg!("loop", selected_at.y, inventory_inner_rect.y, inventory_y_max);
+
                     // If the top of the card is above the clip rect, adjust scroll so that it is in view, at the top
                     if selected_at.y < inventory_inner_rect.y {
-                        dbg!("up fix");
-                        self.inventory_scroll.yd = unscaled::YD::from(inventory_inner_rect.y - selected_at.y);
+                        self.inventory_scroll.yd += inventory_cell_wh.h.into();
                     }
 
                     // If the bottom of the card is below the clip rect, adjust scroll so that it is in view, at the bottom
-                    if selected_at.y > inventory_y_max {
-                        dbg!("down fix");
-                        self.inventory_scroll.yd = unscaled::YD::from((inventory_y_max - inventory_cell_wh.h) - selected_at.y);
+                    if selected_at.y + selected_at.h > inventory_y_max {
+                        self.inventory_scroll.yd -= inventory_cell_wh.h.into();
                     }
 
                     break
@@ -372,7 +387,7 @@ impl State {
 
         let mut clipped_commands = commands.clipped(inventory_inner_rect);
 
-        while at.x < inventory_x_max && at.y < inventory_y_max {
+        while inventory_render_index < self.inventory.cells.len() {
             // draw selectrum
             if inventory_render_index == self.inventory.index {
                 clipped_commands.nine_slice(

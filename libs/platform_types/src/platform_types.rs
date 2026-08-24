@@ -225,6 +225,8 @@ pub mod command {
         pub fn colour_override(&self) -> ARGB { self.colour_override }
 
         pub fn clipped_to(&self, clip_rect: unscaled::Rect) -> Option<Self> {
+            // TODO? This seems to act weird in some cases that show up when scrolling a rect insde another one
+            // Fix that or stick with workarounds?
             Self::new(
                 self.sprite_xy,
                 self.rect.to_unscaled().clipped(clip_rect),
