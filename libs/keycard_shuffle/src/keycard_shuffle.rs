@@ -55,11 +55,53 @@ struct Inventory {
 }
 
 #[derive(Clone, Debug, Default)]
+struct Lock {
+    // TODO state for lights and whether is unlocked
+}
+
+#[derive(Clone, Debug, Default)]
+struct Locks {
+    locks: Vec<Lock>,
+    index: Index,
+}
+
+type FrameCount = u16;
+
+const MAX_INSERT_FRAME: FrameCount = 60;
+const MAX_INSIDE_FRAME: FrameCount = 20;
+const MAX_REMOVE_FRAME: FrameCount = 60;
+
+#[derive(Clone, Debug)]
+enum LockAnimationState {
+    Insert(FrameCount),
+    Inside(FrameCount),
+    Remove(FrameCount),
+}
+
+impl Default for LockAnimationState {
+    fn default() -> Self { LockAnimationState::Insert(0) }
+}
+
+#[derive(Clone, Debug, Default)]
+struct LockAnimation {
+    state: LockAnimationState,
+    inventory_index: Index,
+    lock_index: Index,
+}
+
+#[derive(Clone, Debug, Default)]
+struct Animations {
+    lock: Option<LockAnimation>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct State {
     pub seed: Seed, // For restarting
     pub rng: Xs,
     pub inventory: Inventory,
     pub inventory_scroll: unscaled::XYD,
+    pub locks: Locks,
+    pub animations: Animations,
 }
 
 impl State {
@@ -86,10 +128,14 @@ impl State {
             }
         }
 
+        let mut locks = Locks::default();
+        locks.locks.push(Lock {});
+
         Self {
             seed,
             rng: rng_,
             inventory,
+            locks,
             .. <_>::default()
         }
     }
@@ -114,7 +160,32 @@ impl State {
     }
 
     fn tick(&mut self) {
-
+        // Advance animations
+        // We can make an iterator if we actually need at least 3 distinct animations that are handled the same.
+        if let Some(animation) = &mut self.animations.lock {
+            match &mut animation.state {
+                LockAnimationState::Insert(at_frame) => {
+                    *at_frame += 1;
+                    if *at_frame > MAX_INSERT_FRAME {
+                        // TODO Good place for click sound effect
+                        animation.state = LockAnimationState::Inside(0);
+                    }
+                },
+                LockAnimationState::Inside(at_frame) => {
+                    *at_frame += 1;
+                    if *at_frame > MAX_INSIDE_FRAME {
+                        // TODO Good place for click sound effect
+                        animation.state = LockAnimationState::Remove(0);
+                    }
+                },
+                LockAnimationState::Remove(at_frame) => {
+                    *at_frame += 1;
+                    if *at_frame > MAX_REMOVE_FRAME {
+                        self.animations.lock = None;
+                    }
+                },
+            };
+        }
     }
 
     pub fn update_and_render(
@@ -144,7 +215,8 @@ impl State {
         let inventory_x_max = inventory_inner_rect.x + inventory_inner_rect.w;
         let inventory_y_max = inventory_inner_rect.y + inventory_inner_rect.h;
 
-        if input.gamepad.contains(Button::A) {
+        // debug scrolling
+        if cfg!(debug_asserttions) && input.gamepad.contains(Button::B) {
             if let Some(dir) = input.dir_pressed_this_frame() {
                 match dir {
                     Dir::Up => {
@@ -224,6 +296,21 @@ impl State {
                 }
                 inventory_render_index += 1;
             }
+        } else if input.pressed_this_frame(Button::A) {
+            if self.animations.lock.is_none() {
+                if let (Some(_), Some(_)) = (
+                    self.inventory.cells.get(self.inventory.index),
+                    self.locks.locks.get(self.locks.index),
+                ) {
+                    self.animations.lock = Some(
+                        LockAnimation{
+                            state: <_>::default(),
+                            inventory_index: self.inventory.index,
+                            lock_index: self.locks.index,
+                        }
+                    );
+                }
+            }
         }
 
         if input.pressed_this_frame(Button::START) {
@@ -252,6 +339,20 @@ impl State {
         let card_wh = specs.keycard_shuffle_cards.tile();
         let letters_wh = specs.keycard_shuffle_letters.tile();
         let lights_wh = specs.keycard_shuffle_lights.tile();
+
+        let slot_sprite_xy = specs.keycard_shuffle_slot.xy_from_tile_sprite(0u16);
+
+        let card_y = unscaled::Y(0) + unscaled::H::new(command::HEIGHT_SIGNED / 6);
+
+        let slot_xy = unscaled::XY {
+            x: unscaled::X(0) + unscaled::W::new((command::WIDTH_SIGNED / 8) * 7),
+            y: card_y - unscaled::H::new(4),
+        };
+
+        let slot_rect = specs.keycard_shuffle_slot.rect(slot_xy);
+
+        let card_x_min = unscaled::X(0) + unscaled::W::new(((command::WIDTH_SIGNED / 4) * 3) - 40);
+        let card_x_max = slot_rect.x + unscaled::W::new(2);
 
         macro_rules! draw_pip_at {
             ($xy: expr) => {
@@ -346,20 +447,22 @@ impl State {
             });
         }
 
-        let xy = unscaled::XY {
-            x: unscaled::X(0) + unscaled::W::new((command::WIDTH_SIGNED / 2) + 50),
-            y: unscaled::Y(0) + unscaled::H::new(command::HEIGHT_SIGNED / 6),
+        // Render lock scene
+
+        const SPACING: unscaled::Inner = 4;
+
+        let lock_scene_rect = unscaled::Rect {
+            x: unscaled::X(0),
+            y: unscaled::Y(0),
+            w: (card_x_min - unscaled::X(0)) - unscaled::W::new(SPACING),
+            h: (inventory_outer_rect.y - unscaled::Y(0)) - unscaled::H::new(SPACING),
         };
+
+        commands.nine_slice(nine_slice::CONTEXT_MENU, lock_scene_rect);
 
         // Render card slot back
-        let slot_xy = unscaled::XY {
-            x: unscaled::X(0) + unscaled::W::new((command::WIDTH_SIGNED / 8) * 5),
-            y: xy.y - unscaled::H::new(4),
-        };
 
-        let slot_sprite_xy = specs.keycard_shuffle_slot.xy_from_tile_sprite(0u16);
-
-        let slot_rect = specs.keycard_shuffle_slot.rect(slot_xy);
+        // TODO Render lock lights
 
         commands.sspr(slot_sprite_xy, slot_rect);
 
@@ -372,7 +475,31 @@ impl State {
         slot_overlay_rect.x += slot_overlay_x_shift;
         slot_overlay_rect.w -= slot_overlay_x_shift;
 
-        draw_card!(xy, CardKind { colour: CardColour::Red, symbol: CardSymbol::OnePip }, slot_overlay_rect.x);
+        match self.animations.lock {
+            Some(LockAnimation{ ref state, inventory_index, .. }) => {
+                if let Some(item) = self.inventory.cells.get(inventory_index) {
+                    let x = match state {
+                        LockAnimationState::Insert(frame_count) => {
+                            let fraction = (*frame_count) as f32 / MAX_INSERT_FRAME as f32;
+                            unscaled::X(unscaled::lerp(card_x_min.0, fraction, card_x_max.0))
+                        },
+                        LockAnimationState::Inside(_) => card_x_max,
+                        LockAnimationState::Remove(frame_count) => {
+                            let fraction = (MAX_REMOVE_FRAME - (*frame_count)) as f32 / MAX_REMOVE_FRAME as f32;
+                            unscaled::X(unscaled::lerp(card_x_min.0, fraction, card_x_max.0))
+                        },
+                    };
+
+                    let xy = unscaled::XY {
+                        x,
+                        y: card_y,
+                    };
+    
+                    draw_card!(xy, item, slot_overlay_rect.x);
+                }
+            }
+            None => {}
+        }
 
         // Render card slot overlay
         commands.sspr(slot_overlay_sprite_xy, slot_overlay_rect);

@@ -22,6 +22,10 @@ pub mod unscaled {
         inner.into()
     }
 
+    pub fn lerp(a: Inner, t: f32, b: Inner) -> Inner {
+        inner_from_f32(f32_from_inner(a) * (1. - t) + f32_from_inner(b) * t)
+    }
+
     macro_rules! def {
         ($($name: ident, $inner_name: ident = $inner_type: ident)+) => {
             $(
@@ -308,12 +312,8 @@ pub mod unscaled {
     impl XY {
         pub fn lerp(a: XY, t: f32, b: XY) -> XY {
             XY {
-                x: X(
-                    inner_from_f32(f32_from_inner(a.x.0) * (1. - t) + f32_from_inner(b.x.0) * t)
-                ),
-                y: Y(
-                    inner_from_f32(f32_from_inner(a.y.0) * (1. - t) + f32_from_inner(b.y.0) * t)
-                ),
+                x: X(lerp(a.x.0, t, b.x.0)),
+                y: Y(lerp(a.y.0, t, b.y.0)),
             }
         }
     }
