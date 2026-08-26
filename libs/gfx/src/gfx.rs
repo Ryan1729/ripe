@@ -980,7 +980,7 @@ pub mod nine_slice {
         );
     }
 
-    pub fn inner_rect(edge_wh: unscaled::WH, outer_rect: unscaled::Rect) -> unscaled::Rect {
+    pub const fn inner_rect(edge_wh: unscaled::WH, outer_rect: unscaled::Rect) -> unscaled::Rect {
         unscaled::Rect {
             x: unscaled::x_const_add_w(outer_rect.x, edge_wh.w),
             y: unscaled::y_const_add_h(outer_rect.y, edge_wh.h),

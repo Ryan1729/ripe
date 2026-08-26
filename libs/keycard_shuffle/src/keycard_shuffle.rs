@@ -54,8 +54,26 @@ struct Inventory {
     index: Index,
 }
 
+mod world {
+    use platform_types::{unscaled};
+
+    pub type Inner = i16;
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct X(pub Inner);
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct Y(pub Inner);
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct XY {
+        pub x: X,
+        pub y: Y,
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 struct Lock {
+    xy: world::XY,
     // TODO state for lights and whether is unlocked
 }
 
@@ -94,6 +112,22 @@ struct Animations {
     lock: Option<LockAnimation>,
 }
 
+const FLAG_ZERO_FRAMES: FrameCount = 45;
+
+#[derive(Clone, Debug)]
+enum FlagState {
+    Zero(FrameCount),
+    One(FrameCount),
+    Two(FrameCount),
+    Three(FrameCount),
+}
+
+impl Default for FlagState {
+    fn default() -> Self {
+        Self::Zero(FLAG_ZERO_FRAMES)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct State {
     pub seed: Seed, // For restarting
@@ -102,7 +136,26 @@ pub struct State {
     pub inventory_scroll: unscaled::XYD,
     pub locks: Locks,
     pub animations: Animations,
+    pub flag_state: FlagState,
 }
+
+const CARD_X_MIN: unscaled::X = unscaled::X(((command::WIDTH_SIGNED / 4) * 3) - 40);
+
+const INVENTORY_OUTER_RECT: unscaled::Rect = unscaled::Rect {
+    x: unscaled::X(0),
+    y: unscaled::Y(command::HEIGHT_SIGNED / 2),
+    w: unscaled::W::new(command::WIDTH_SIGNED),
+    h: unscaled::H::new(command::HEIGHT_SIGNED / 2),
+};
+
+const SPACING: unscaled::Inner = 4;
+
+const LOCK_SCENE_OUTER_RECT: unscaled::Rect = unscaled::Rect {
+    x: unscaled::X(0),
+    y: unscaled::Y(0),
+    w: unscaled::W::new(CARD_X_MIN.get() - SPACING),
+    h: unscaled::H::new(INVENTORY_OUTER_RECT.y.get() - SPACING),
+};
 
 impl State {
     pub fn new(rng: &mut Xs, specs: &sprite::Specs) -> Self {
@@ -128,8 +181,25 @@ impl State {
             }
         }
 
+        // FIXME This rect's size is hardcoded in, to match the value but should be a distinct value.
+        // Maybe even a randomized value 
+        // Probably implies a scrolling and zooming map
+        let lock_scene_inner_rect: unscaled::Rect = gfx::nine_slice::inner_rect(
+            unscaled::WH { w: unscaled::W::new(4), h: unscaled::H::new(4) },
+            LOCK_SCENE_OUTER_RECT
+        );
+
         let mut locks = Locks::default();
-        locks.locks.push(Lock {});
+        for i in 0..5 {
+            let xy = world::XY {
+                x: world::X(xs::range(rng, 0..lock_scene_inner_rect.w.get() as u32) as unscaled::Inner),
+                y: world::Y(xs::range(rng, 0..lock_scene_inner_rect.h.get() as u32) as unscaled::Inner),
+            };
+
+            locks.locks.push(Lock {
+                xy,
+            });
+        }
 
         Self {
             seed,
@@ -186,6 +256,17 @@ impl State {
                 },
             };
         }
+
+        self.flag_state = match self.flag_state {
+            FlagState::Zero(0) => FlagState::One(FLAG_ZERO_FRAMES),
+            FlagState::Zero(frames) => FlagState::Zero(frames - 1),
+            FlagState::One(0) => FlagState::Two(FLAG_ZERO_FRAMES),
+            FlagState::One(frames) => FlagState::One(frames - 1),
+            FlagState::Two(0) => FlagState::Three(FLAG_ZERO_FRAMES),
+            FlagState::Two(frames) => FlagState::Two(frames - 1),
+            FlagState::Three(0) => FlagState::Zero(FLAG_ZERO_FRAMES),
+            FlagState::Three(frames) => FlagState::Three(frames - 1),
+        };
     }
 
     pub fn update_and_render(
@@ -199,18 +280,13 @@ impl State {
         // Update
         //
 
-        let inventory_outer_rect = unscaled::Rect {
-            x: unscaled::X(0),
-            y: unscaled::Y(command::HEIGHT_SIGNED / 2),
-            w: unscaled::W::new(command::WIDTH_SIGNED),
-            h: unscaled::H::new(command::HEIGHT_SIGNED / 2),
-        };
-
         let edge_wh = commands.ui_edge_wh();
+
+        let lock_scene_inner_rect: unscaled::Rect = gfx::nine_slice::inner_rect(edge_wh, LOCK_SCENE_OUTER_RECT);
 
         let inventory_cell_wh = edge_wh + specs.keycard_shuffle_cards.tile() + edge_wh;
 
-        let inventory_inner_rect = nine_slice::inner_rect(edge_wh, inventory_outer_rect);
+        let inventory_inner_rect = nine_slice::inner_rect(edge_wh, INVENTORY_OUTER_RECT);
 
         let inventory_x_max = inventory_inner_rect.x + inventory_inner_rect.w;
         let inventory_y_max = inventory_inner_rect.y + inventory_inner_rect.h;
@@ -351,7 +427,6 @@ impl State {
 
         let slot_rect = specs.keycard_shuffle_slot.rect(slot_xy);
 
-        let card_x_min = unscaled::X(0) + unscaled::W::new(((command::WIDTH_SIGNED / 4) * 3) - 40);
         let card_x_max = slot_rect.x + unscaled::W::new(2);
 
         macro_rules! draw_pip_at {
@@ -449,16 +524,31 @@ impl State {
 
         // Render lock scene
 
-        const SPACING: unscaled::Inner = 4;
+        commands.nine_slice(nine_slice::CONTEXT_MENU, lock_scene_inner_rect);
 
-        let lock_scene_rect = unscaled::Rect {
-            x: unscaled::X(0),
-            y: unscaled::Y(0),
-            w: (card_x_min - unscaled::X(0)) - unscaled::W::new(SPACING),
-            h: (inventory_outer_rect.y - unscaled::Y(0)) - unscaled::H::new(SPACING),
+        let world_to_unscaled = |xy: world::XY| -> unscaled::XY {
+            unscaled::XY {
+                x: unscaled::X(xy.x.0) + (lock_scene_inner_rect.x - unscaled::X(0)),
+                y: unscaled::Y(xy.y.0) + (lock_scene_inner_rect.y - unscaled::Y(0)),
+            }
         };
 
-        commands.nine_slice(nine_slice::CONTEXT_MENU, lock_scene_rect);
+        for lock in &self.locks.locks {
+            let xy = world_to_unscaled(lock.xy);
+            
+            // Render flags
+            let sprite_offset = match self.flag_state {
+                FlagState::Zero(_) => 0,
+                FlagState::One(_) | FlagState::Three(_) => 1,
+                FlagState::Two(_) => 2,
+            };
+
+            commands.sspr_override(
+                specs.keycard_shuffle_lights.xy_from_tile_sprite(3u16 + sprite_offset),
+                specs.keycard_shuffle_lights.rect(xy),
+                PALETTE[2]
+            );
+        }
 
         // Render card slot back
 
@@ -481,12 +571,12 @@ impl State {
                     let x = match state {
                         LockAnimationState::Insert(frame_count) => {
                             let fraction = (*frame_count) as f32 / MAX_INSERT_FRAME as f32;
-                            unscaled::X(unscaled::lerp(card_x_min.0, fraction, card_x_max.0))
+                            unscaled::X(unscaled::lerp(CARD_X_MIN.0, fraction, card_x_max.0))
                         },
                         LockAnimationState::Inside(_) => card_x_max,
                         LockAnimationState::Remove(frame_count) => {
                             let fraction = (MAX_REMOVE_FRAME - (*frame_count)) as f32 / MAX_REMOVE_FRAME as f32;
-                            unscaled::X(unscaled::lerp(card_x_min.0, fraction, card_x_max.0))
+                            unscaled::X(unscaled::lerp(CARD_X_MIN.0, fraction, card_x_max.0))
                         },
                     };
 
@@ -506,7 +596,7 @@ impl State {
 
         // Render inventory
 
-        commands.nine_slice(nine_slice::INVENTORY, inventory_outer_rect);
+        commands.nine_slice(nine_slice::INVENTORY, INVENTORY_OUTER_RECT);
 
         let mut inventory_render_index = 0;
 
