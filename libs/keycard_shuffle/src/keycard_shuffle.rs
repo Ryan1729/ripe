@@ -128,17 +128,6 @@ impl Default for FlagState {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct State {
-    pub seed: Seed, // For restarting
-    pub rng: Xs,
-    pub inventory: Inventory,
-    pub inventory_scroll: unscaled::XYD,
-    pub locks: Locks,
-    pub animations: Animations,
-    pub flag_state: FlagState,
-}
-
 const CARD_X_MIN: unscaled::X = unscaled::X(((command::WIDTH_SIGNED / 4) * 3) - 40);
 
 const INVENTORY_OUTER_RECT: unscaled::Rect = unscaled::Rect {
@@ -156,6 +145,27 @@ const LOCK_SCENE_OUTER_RECT: unscaled::Rect = unscaled::Rect {
     w: unscaled::W::new(CARD_X_MIN.get() - SPACING),
     h: unscaled::H::new(INVENTORY_OUTER_RECT.y.get() - SPACING),
 };
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+enum UiSection {
+    #[default]
+    Map,
+    Inventory,
+    AboveMap,
+    AboveInventory,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct State {
+    pub seed: Seed, // For restarting
+    pub rng: Xs,
+    pub inventory: Inventory,
+    pub inventory_scroll: unscaled::XYD,
+    pub locks: Locks,
+    pub animations: Animations,
+    pub flag_state: FlagState,
+    pub ui_section: UiSection,
+}
 
 impl State {
     pub fn new(rng: &mut Xs, specs: &sprite::Specs) -> Self {
@@ -291,101 +301,122 @@ impl State {
         let inventory_x_max = inventory_inner_rect.x + inventory_inner_rect.w;
         let inventory_y_max = inventory_inner_rect.y + inventory_inner_rect.h;
 
-        // debug scrolling
-        if cfg!(debug_asserttions) && input.gamepad.contains(Button::B) {
-            if let Some(dir) = input.dir_pressed_this_frame() {
-                match dir {
-                    Dir::Up => {
-                        self.inventory_scroll.yd -= unscaled::YD(1);
+        if let Some(dir) = input.dir_pressed_this_frame() {
+            match self.ui_section {
+                UiSection::Map => {
+                    match dir {
+                        Dir::Up => {
+                            
+                        }
+                        Dir::Down => {
+                            
+                        }
+                        Dir::Left => {
+                            if self.locks.index > 0 {
+                                self.locks.index -= 1;
+                            }
+                        }
+                        Dir::Right => {
+                            if self.locks.index < self.locks.locks.len() - 1 {
+                                self.locks.index += 1;
+                            }
+                        }
                     }
-                    Dir::Down => {
-                        self.inventory_scroll.yd += unscaled::YD(1);
+                },
+                UiSection::Inventory => {
+                    let inventory_cells_wide_count = usize::from(inventory_inner_rect.w / inventory_cell_wh.w.get());
+        
+                    match dir {
+                        Dir::Up => {
+                            if self.inventory.index >= inventory_cells_wide_count {
+                                self.inventory.index -= inventory_cells_wide_count;
+                            }
+                        }
+                        Dir::Down => {
+                            if self.inventory.index + inventory_cells_wide_count < self.inventory.cells.len() {
+                                self.inventory.index += inventory_cells_wide_count;
+                            }
+                        }
+                        Dir::Left => {
+                            if self.inventory.index > 0 {
+                                self.inventory.index -= 1;
+                            }
+                        }
+                        Dir::Right => {
+                            if self.inventory.index < self.inventory.cells.len() - 1 {
+                                self.inventory.index += 1;
+                            }
+                        }
                     }
-                    Dir::Left => {
-                        
+        
+                    // This is a version of the render loop, done here to find
+                    // If we ever have a third place we do this, then combine them
+        
+                    let mut inventory_render_index = 0;
+        
+                    let mut at = inventory_inner_rect.xy();
+        
+                    while inventory_render_index < self.inventory.cells.len() {
+                        // draw selectrum
+                        if inventory_render_index == self.inventory.index {
+                            let selected_at = unscaled::Rect {
+                                x: at.x,
+                                y: at.y,
+                                w: inventory_cell_wh.w,
+                                h: inventory_cell_wh.h,
+                            } + self.inventory_scroll;
+        
+                            // If the top of the card is above the clip rect, adjust scroll so that it is in view, at the top
+                            if selected_at.y < inventory_inner_rect.y {
+                                self.inventory_scroll.yd += inventory_cell_wh.h.into();
+                            }
+        
+                            // If the bottom of the card is below the clip rect, adjust scroll so that it is in view, at the bottom
+                            if selected_at.y + selected_at.h > inventory_y_max {
+                                self.inventory_scroll.yd -= inventory_cell_wh.h.into();
+                            }
+        
+                            break
+                        }
+        
+                        at.x += inventory_cell_wh.w;
+                        if at.x + inventory_cell_wh.w >= inventory_x_max {
+                            at.y += inventory_cell_wh.h;
+                            at.x = inventory_inner_rect.x;
+                        }
+                        inventory_render_index += 1;
                     }
-                    Dir::Right => {
-                        
-                    }
-                }
-            }
-        } else if let Some(dir) = input.dir_pressed_this_frame() {
-            let inventory_cells_wide_count = usize::from(inventory_inner_rect.w / inventory_cell_wh.w.get());
-
-            match dir {
-                Dir::Up => {
-                    if self.inventory.index >= inventory_cells_wide_count {
-                        self.inventory.index -= inventory_cells_wide_count;
-                    }
-                }
-                Dir::Down => {
-                    if self.inventory.index + inventory_cells_wide_count < self.inventory.cells.len() {
-                        self.inventory.index += inventory_cells_wide_count;
-                    }
-                }
-                Dir::Left => {
-                    if self.inventory.index > 0 {
-                        self.inventory.index -= 1;
-                    }
-                }
-                Dir::Right => {
-                    if self.inventory.index < self.inventory.cells.len() - 1 {
-                        self.inventory.index += 1;
-                    }
-                }
-            }
-
-            // This is a version of the render loop, done here to find
-            // If we ever have a third place we do this, then combine them
-
-            let mut inventory_render_index = 0;
-
-            let mut at = inventory_inner_rect.xy();
-
-            while inventory_render_index < self.inventory.cells.len() {
-                // draw selectrum
-                if inventory_render_index == self.inventory.index {
-                    let selected_at = unscaled::Rect {
-                        x: at.x,
-                        y: at.y,
-                        w: inventory_cell_wh.w,
-                        h: inventory_cell_wh.h,
-                    } + self.inventory_scroll;
-
-                    // If the top of the card is above the clip rect, adjust scroll so that it is in view, at the top
-                    if selected_at.y < inventory_inner_rect.y {
-                        self.inventory_scroll.yd += inventory_cell_wh.h.into();
-                    }
-
-                    // If the bottom of the card is below the clip rect, adjust scroll so that it is in view, at the bottom
-                    if selected_at.y + selected_at.h > inventory_y_max {
-                        self.inventory_scroll.yd -= inventory_cell_wh.h.into();
-                    }
-
-                    break
-                }
-
-                at.x += inventory_cell_wh.w;
-                if at.x + inventory_cell_wh.w >= inventory_x_max {
-                    at.y += inventory_cell_wh.h;
-                    at.x = inventory_inner_rect.x;
-                }
-                inventory_render_index += 1;
+                },
+                UiSection::AboveMap => { self.ui_section = UiSection::AboveInventory },
+                UiSection::AboveInventory => { self.ui_section = UiSection::AboveMap },
             }
         } else if input.pressed_this_frame(Button::A) {
-            if self.animations.lock.is_none() {
-                if let (Some(_), Some(_)) = (
-                    self.inventory.cells.get(self.inventory.index),
-                    self.locks.locks.get(self.locks.index),
-                ) {
-                    self.animations.lock = Some(
-                        LockAnimation{
-                            state: <_>::default(),
-                            inventory_index: self.inventory.index,
-                            lock_index: self.locks.index,
+            match self.ui_section {
+                UiSection::Map => {},
+                UiSection::Inventory => {
+                    if self.animations.lock.is_none() {
+                        if let (Some(_), Some(_)) = (
+                            self.inventory.cells.get(self.inventory.index),
+                            self.locks.locks.get(self.locks.index),
+                        ) {
+                            self.animations.lock = Some(
+                                LockAnimation{
+                                    state: <_>::default(),
+                                    inventory_index: self.inventory.index,
+                                    lock_index: self.locks.index,
+                                }
+                            );
                         }
-                    );
-                }
+                    }
+                },
+                UiSection::AboveMap => { self.ui_section = UiSection::Map },
+                UiSection::AboveInventory => { self.ui_section = UiSection::Inventory },
+            }
+        } else if input.pressed_this_frame(Button::B) {
+            match self.ui_section {
+                UiSection::AboveMap | UiSection::AboveInventory => {},
+                UiSection::Map => { self.ui_section = UiSection::AboveMap },
+                UiSection::Inventory => { self.ui_section = UiSection::AboveInventory },
             }
         }
 
@@ -411,6 +442,9 @@ impl State {
             0xFFEEEEEE, // White
             0xFF222222, // Black
         ];
+
+        const SELECTRUM_COLOUR: ARGB = PALETTE[3];
+        const INDICATOR_COLOUR: ARGB = PALETTE[0];
 
         let card_wh = specs.keycard_shuffle_cards.tile();
         let letters_wh = specs.keycard_shuffle_letters.tile();
@@ -524,7 +558,14 @@ impl State {
 
         // Render lock scene
 
-        commands.nine_slice(nine_slice::CONTEXT_MENU, lock_scene_inner_rect);
+        commands.nine_slice_overridable(
+            if self.ui_section == UiSection::AboveMap {
+                nine_slice::Kind::CustomOutline(SELECTRUM_COLOUR)
+            } else {
+                nine_slice::Kind::CustomOutline(INDICATOR_COLOUR)
+            },
+            lock_scene_inner_rect
+        );
 
         let world_to_unscaled = |xy: world::XY| -> unscaled::XY {
             unscaled::XY {
@@ -533,10 +574,12 @@ impl State {
             }
         };
 
-        for lock in &self.locks.locks {
+        for i in 0..self.locks.locks.len() {
+            let lock = &self.locks.locks[i];
+
             let xy = world_to_unscaled(lock.xy);
             
-            // Render flags
+            // Render flag
             let sprite_offset = match self.flag_state {
                 FlagState::Zero(_) => 0,
                 FlagState::One(_) | FlagState::Three(_) => 1,
@@ -544,10 +587,19 @@ impl State {
             };
 
             commands.sspr_override(
-                specs.keycard_shuffle_lights.xy_from_tile_sprite(3u16 + sprite_offset),
+                specs.keycard_shuffle_lights.xy_from_tile_sprite(4u16 + sprite_offset),
                 specs.keycard_shuffle_lights.rect(xy),
                 PALETTE[2]
             );
+
+            // Render either selectrum or selection indicator
+            if i == self.locks.index {
+                commands.sspr_override(
+                    specs.keycard_shuffle_lights.xy_from_tile_sprite(3u16),
+                    specs.keycard_shuffle_lights.rect(xy),
+                    if self.ui_section == UiSection::Map { SELECTRUM_COLOUR } else { INDICATOR_COLOUR }
+                );
+            }
         }
 
         // Render card slot back
@@ -596,7 +648,14 @@ impl State {
 
         // Render inventory
 
-        commands.nine_slice(nine_slice::INVENTORY, INVENTORY_OUTER_RECT);
+        commands.nine_slice_overridable(
+            if self.ui_section == UiSection::AboveInventory {
+                nine_slice::Kind::CustomOutline(SELECTRUM_COLOUR)
+            } else {
+                nine_slice::Kind::Inventory
+            },
+            INVENTORY_OUTER_RECT
+        );
 
         let mut inventory_render_index = 0;
 
@@ -605,10 +664,14 @@ impl State {
         let mut clipped_commands = commands.clipped(inventory_inner_rect);
 
         while inventory_render_index < self.inventory.cells.len() {
-            // draw selectrum
+            // Render either selectrum or selection indicator
             if inventory_render_index == self.inventory.index {
-                clipped_commands.nine_slice(
-                    nine_slice::SELECTRUM,
+                clipped_commands.nine_slice_overridable(
+                    if self.ui_section == UiSection::Inventory {
+                        nine_slice::Kind::CustomOutline(SELECTRUM_COLOUR)
+                    } else {
+                        nine_slice::Kind::CustomOutline(INDICATOR_COLOUR)
+                    },
                     unscaled::Rect {
                         x: at.x,
                         y: at.y,

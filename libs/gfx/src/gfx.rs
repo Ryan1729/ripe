@@ -136,7 +136,29 @@ impl Commands {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum OverrideColour {
+    None,
+    Colour(ARGB),
+}
+
 pub trait AddDrawCommands {
+    fn sspr_overridable(
+        &mut self,
+        sprite_xy: sprite::XY<Renderable>,
+        unscaled_rect: unscaled::Rect,
+        colour_override: OverrideColour,
+    ) {
+        self.sspr_override(
+            sprite_xy,
+            unscaled_rect,
+            match colour_override {
+                OverrideColour::None => 0,
+                OverrideColour::Colour(c) => c,
+            },
+        );
+    }
+
     fn sspr_override(
         &mut self,
         sprite_xy: sprite::XY<Renderable>,
@@ -182,6 +204,12 @@ pub trait AddDrawCommands {
     fn nine_slice(
         &mut self,
         nine_slice_sprite: nine_slice::Sprite,
+        outer_rect: unscaled::Rect
+    );
+
+    fn nine_slice_overridable(
+        &mut self,
+        kind: nine_slice::Kind,
         outer_rect: unscaled::Rect
     );
 
@@ -288,7 +316,11 @@ impl AddDrawCommands for Commands {
     }
 
     fn nine_slice(&mut self, nine_slice_sprite: nine_slice::Sprite, outer_rect: unscaled::Rect) {
-        nine_slice::render(self, nine_slice_sprite, outer_rect);
+        nine_slice::render(self, nine_slice::sprite_to_kind(nine_slice_sprite), outer_rect);
+    }
+
+    fn nine_slice_overridable(&mut self, kind: nine_slice::Kind, outer_rect: unscaled::Rect) {
+        nine_slice::render(self, kind, outer_rect);
     }
 
     fn next_arrow_in_corner_of(&mut self, next_arrow_sprite: next_arrow::Sprite, timer: ArrowTimer, rect: unscaled::Rect) {
@@ -438,6 +470,13 @@ impl <'commands, C: AddDrawCommands + Sized> AddDrawCommands for ClippedCommands
         clip_new_commands! {
             self,
             { self.commands.nine_slice(nine_slice_sprite, outer_rect); }
+        }
+    }
+
+    fn nine_slice_overridable(&mut self, kind: nine_slice::Kind, outer_rect: unscaled::Rect) {
+        clip_new_commands! {
+            self,
+            { self.commands.nine_slice_overridable(kind, outer_rect); }
         }
     }
 
@@ -722,11 +761,31 @@ mod nine_slice_works {
 pub mod nine_slice {
     use super::*;
 
+    pub enum Kind {
+        Talking,
+        Inventory,
+        Selectrum,
+        ContextMenu,
+        CustomOutline(ARGB),
+    }
+
+    // Historically, I think the idea here was that we could have sprites be added later, maybe at runtime or 
+    // something, or just like using new things games with old versions of the library, so we wanted to not
+    // put this into a closed enum. Looking back, that didn't buy us anything.
     pub type Sprite = u8;
     pub const TALKING: Sprite = 0;
     pub const INVENTORY: Sprite = 1;
     pub const SELECTRUM: Sprite = 2;
     pub const CONTEXT_MENU: Sprite = 3;
+
+    pub fn sprite_to_kind(sprite: Sprite) -> Kind {
+        match sprite {
+            INVENTORY => Kind::Inventory,
+            SELECTRUM => Kind::Selectrum,
+            CONTEXT_MENU => Kind::ContextMenu,
+            _ => Kind::Talking,
+        }
+    }
 
     struct Slices {
         // Top left point on the rect that makes up the top left corner of the sprite.
@@ -751,7 +810,7 @@ pub mod nine_slice {
 
     pub(crate) fn render(
         commands: &mut Commands,
-        nine_slice_sprite: Sprite,
+        kind: Kind,
         unscaled::Rect{ x, y, w, h }: unscaled::Rect
     ) {
         let spec = &commands.ui_spec;
@@ -836,26 +895,54 @@ pub mod nine_slice {
             },
         );
 
-        let slices = match nine_slice_sprite & 0b11 {
-            INVENTORY => slices_from_corners!(
-                talking_slices.top_left + supertile_wh.h,
-                talking_slices.top_right + supertile_wh.h,
-                talking_slices.bottom_left + supertile_wh.h,
-                talking_slices.bottom_right + supertile_wh.h,
+        let (slices, override_colour) = match kind {
+            Kind::Talking => (
+                slices_from_corners!(
+                    talking_slices.top_left,
+                    talking_slices.top_right,
+                    talking_slices.bottom_left,
+                    talking_slices.bottom_right,
+                ),
+                OverrideColour::None
             ),
-            SELECTRUM => slices_from_corners!(
-                talking_slices.top_left + supertile_wh.h * 2,
-                talking_slices.top_right + supertile_wh.h * 2,
-                talking_slices.bottom_left + supertile_wh.h * 2,
-                talking_slices.bottom_right + supertile_wh.h * 2,
+            Kind::Inventory => (
+                slices_from_corners!(
+                    talking_slices.top_left + supertile_wh.h,
+                    talking_slices.top_right + supertile_wh.h,
+                    talking_slices.bottom_left + supertile_wh.h,
+                    talking_slices.bottom_right + supertile_wh.h,
+                ),
+                OverrideColour::None
             ),
-            CONTEXT_MENU => slices_from_corners!(
-                talking_slices.top_left + supertile_wh.h * 3,
-                talking_slices.top_right + supertile_wh.h * 3,
-                talking_slices.bottom_left + supertile_wh.h * 3,
-                talking_slices.bottom_right + supertile_wh.h * 3,
+            Kind::Selectrum => (
+                slices_from_corners!(                    
+                    talking_slices.top_left + supertile_wh.h * 2,
+                    talking_slices.top_right + supertile_wh.h * 2,
+                    talking_slices.bottom_left + supertile_wh.h * 2,
+                    talking_slices.bottom_right + supertile_wh.h * 2,
+                ),
+                OverrideColour::None
             ),
-            _ => talking_slices,
+            Kind::ContextMenu => (
+                slices_from_corners!(                    
+                    talking_slices.top_left + supertile_wh.h * 3,
+                    talking_slices.top_right + supertile_wh.h * 3,
+                    talking_slices.bottom_left + supertile_wh.h * 3,
+                    talking_slices.bottom_right + supertile_wh.h * 3,
+                ),
+                OverrideColour::None
+            ),
+            Kind::CustomOutline(colour) => {
+                (
+                    slices_from_corners!(
+                        talking_slices.top_left + supertile_wh.h * 4,
+                        talking_slices.top_right + supertile_wh.h * 4,
+                        talking_slices.bottom_left + supertile_wh.h * 4,
+                        talking_slices.bottom_right + supertile_wh.h * 4,
+                    ),
+                    OverrideColour::Colour(colour)
+                )
+            }
         };
 
         let after_left_corner = x.saturating_add_w(edge_wh.w);
@@ -872,7 +959,7 @@ pub mod nine_slice {
         // Draw E
         for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(center_wh.h.get() as _).map(unscaled::Y) {
             for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(center_wh.w.get() as _).map(unscaled::X) {
-                commands.sspr(
+                commands.sspr_overridable(
                     slices.middle.apply(&commands.ui_spec),
                     unscaled::Rect {
                         x: fill_x,
@@ -880,14 +967,15 @@ pub mod nine_slice {
                         // Clamp these values so we don't draw past the edge.
                         w: core::cmp::min(center_wh.w, before_right_corner - fill_x),
                         h: core::cmp::min(center_wh.h, above_bottom_corner - fill_y),
-                    }
+                    },
+                    override_colour
                 );
             }
         }
 
         // Draw B and H
         for fill_x in (after_left_corner.get()..before_right_corner.get()).step_by(center_wh.w.get() as _).map(unscaled::X) {
-            commands.sspr(
+            commands.sspr_overridable(
                 slices.top.apply(&commands.ui_spec),
                 unscaled::Rect {
                     x: fill_x,
@@ -895,10 +983,11 @@ pub mod nine_slice {
                     // Clamp this value so we don't draw past the edge.
                     w: core::cmp::min(center_wh.w, before_right_corner - fill_x),
                     h: edge_wh.h,
-                }
+                },
+                override_colour
             );
 
-            commands.sspr(
+            commands.sspr_overridable(
                 slices.bottom.apply(&commands.ui_spec),
                 unscaled::Rect {
                     x: fill_x,
@@ -906,13 +995,14 @@ pub mod nine_slice {
                     // Clamp this value so we don't draw past the edge.
                     w: core::cmp::min(center_wh.w, before_right_corner - fill_x),
                     h: edge_wh.h,
-                }
+                },
+                override_colour
             );
         }
 
         // Draw D and F
         for fill_y in (below_top_corner.get()..above_bottom_corner.get()).step_by(center_wh.h.get() as _).map(unscaled::Y) {
-            commands.sspr(
+            commands.sspr_overridable(
                 slices.left.apply(&commands.ui_spec),
                 unscaled::Rect {
                     x,
@@ -920,10 +1010,11 @@ pub mod nine_slice {
                     // Clamp this value so we don't draw past the edge.
                     w: edge_wh.w,
                     h: core::cmp::min(center_wh.h, above_bottom_corner - fill_y),
-                }
+                },
+                override_colour
             );
 
-            commands.sspr(
+            commands.sspr_overridable(
                 slices.right.apply(&commands.ui_spec),
                 unscaled::Rect {
                     x: before_right_corner,
@@ -931,52 +1022,57 @@ pub mod nine_slice {
                     // Clamp this value so we don't draw past the edge.
                     w: edge_wh.w,
                     h: core::cmp::min(center_wh.h, above_bottom_corner - fill_y),
-                }
+                },
+                override_colour
             );
         }
 
         // Draw A
-        commands.sspr(
+        commands.sspr_overridable(
             slices.top_left.apply(&commands.ui_spec),
             unscaled::Rect {
                 x,
                 y,
                 w: edge_wh.w,
                 h: edge_wh.h,
-            }
+            },
+            override_colour
         );
 
         // Draw C
-        commands.sspr(
+        commands.sspr_overridable(
             slices.top_right.apply(&commands.ui_spec),
             unscaled::Rect {
                 x: before_right_corner,
                 y,
                 w: edge_wh.w,
                 h: edge_wh.h,
-            }
+            },
+            override_colour
         );
 
         // Draw G
-        commands.sspr(
+        commands.sspr_overridable(
             slices.bottom_left.apply(&commands.ui_spec),
             unscaled::Rect {
                 x,
                 y: above_bottom_corner,
                 w: edge_wh.w,
                 h: edge_wh.h,
-            }
+            },
+            override_colour
         );
 
         // Draw I
-        commands.sspr(
+        commands.sspr_overridable(
             slices.bottom_right.apply(&commands.ui_spec),
             unscaled::Rect {
                 x: before_right_corner,
                 y: above_bottom_corner,
                 w: edge_wh.w,
                 h: edge_wh.h,
-            }
+            },
+            override_colour
         );
     }
 
