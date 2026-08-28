@@ -59,12 +59,12 @@ mod world {
 
     pub type Inner = i16;
 
-    #[derive(Clone, Copy, Debug, Default)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct X(pub Inner);
-    #[derive(Clone, Copy, Debug, Default)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct Y(pub Inner);
 
-    #[derive(Clone, Copy, Debug, Default)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct XY {
         pub x: X,
         pub y: Y,
@@ -162,6 +162,7 @@ pub struct State {
     pub inventory: Inventory,
     pub inventory_scroll: unscaled::XYD,
     pub locks: Locks,
+    pub world_scroll: unscaled::XYD,
     pub animations: Animations,
     pub flag_state: FlagState,
     pub ui_section: UiSection,
@@ -191,25 +192,19 @@ impl State {
             }
         }
 
-        // FIXME This rect's size is hardcoded in, to match the value but should be a distinct value.
-        // Maybe even a randomized value 
-        // Probably implies a scrolling and zooming map
-        let lock_scene_inner_rect: unscaled::Rect = gfx::nine_slice::inner_rect(
-            unscaled::WH { w: unscaled::W::new(4), h: unscaled::H::new(4) },
-            LOCK_SCENE_OUTER_RECT
-        );
-
         let mut locks = Locks::default();
-        for i in 0..5 {
+        for i in 0..20 {
             let xy = world::XY {
-                x: world::X(xs::range(rng, 0..lock_scene_inner_rect.w.get() as u32) as unscaled::Inner),
-                y: world::Y(xs::range(rng, 0..lock_scene_inner_rect.h.get() as u32) as unscaled::Inner),
+                x: world::X(xs::range(rng, 0..LOCK_SCENE_OUTER_RECT.w.get() as u32 * 4) as unscaled::Inner),
+                y: world::Y(xs::range(rng, 0..LOCK_SCENE_OUTER_RECT.h.get() as u32 * 4) as unscaled::Inner),
             };
 
             locks.locks.push(Lock {
                 xy,
             });
         }
+
+        locks.locks.sort_by_key(|l| l.xy);
 
         Self {
             seed,
@@ -286,13 +281,20 @@ impl State {
         input: Input,
         _speaker: &mut Speaker,
     ) {
-        //
-        // Update
-        //
-
         let edge_wh = commands.ui_edge_wh();
 
         let lock_scene_inner_rect: unscaled::Rect = gfx::nine_slice::inner_rect(edge_wh, LOCK_SCENE_OUTER_RECT);
+
+        let world_to_unscaled = |xy: world::XY| -> unscaled::XY {
+            unscaled::XY {
+                x: unscaled::X(xy.x.0) + (lock_scene_inner_rect.x - unscaled::X(0)),
+                y: unscaled::Y(xy.y.0) + (lock_scene_inner_rect.y - unscaled::Y(0)),
+            }
+        };
+
+        //
+        // Update
+        //
 
         let inventory_cell_wh = edge_wh + specs.keycard_shuffle_cards.tile() + edge_wh;
 
@@ -322,6 +324,37 @@ impl State {
                             }
                         }
                     }
+
+
+                    let lock = &self.locks.locks[self.locks.index];
+        
+                    let mut xy = world_to_unscaled(lock.xy) + self.world_scroll;
+
+                    let lock_tile = specs.keycard_shuffle_lights.tile();
+                    
+                    while !lock_scene_inner_rect.contains(xy) {
+                        // If the top of the card is above the clip rect, adjust scroll so that it is in view, at the top
+                        if xy.y < lock_scene_inner_rect.y {
+                            self.world_scroll.yd += lock_scene_inner_rect.h.into();
+                        }
+    
+                        // If the bottom of the card is below the clip rect, adjust scroll so that it is in view, at the bottom
+                        if xy.y + lock_tile.h > lock_scene_inner_rect.y + lock_scene_inner_rect.h {
+                            self.world_scroll.yd -= lock_scene_inner_rect.h.into();
+                        }
+    
+                        // If the left of the card is above the clip rect, adjust scroll so that it is in view, at the top
+                        if xy.x < lock_scene_inner_rect.x {
+                            self.world_scroll.xd += lock_scene_inner_rect.w.into();
+                        }
+    
+                        // If the right of the card is below the clip rect, adjust scroll so that it is in view, at the bottom
+                        if xy.x + lock_tile.w > lock_scene_inner_rect.x + lock_scene_inner_rect.w {
+                            self.world_scroll.xd -= lock_scene_inner_rect.w.into();
+                        }
+
+                        xy = world_to_unscaled(lock.xy) + self.world_scroll;
+                    }
                 },
                 UiSection::Inventory => {
                     let inventory_cells_wide_count = usize::from(inventory_inner_rect.w / inventory_cell_wh.w.get());
@@ -349,7 +382,8 @@ impl State {
                         }
                     }
         
-                    // This is a version of the render loop, done here to find
+                    // This is a version of the render loop, done here to find the 
+                    // amount to scroll.
                     // If we ever have a third place we do this, then combine them
         
                     let mut inventory_render_index = 0;
@@ -557,6 +591,7 @@ impl State {
         }
 
         // Render lock scene
+        // TODO render coloured splotches so we can confirm whether the scrolling is correct
 
         commands.nine_slice_overridable(
             if self.ui_section == UiSection::AboveMap {
@@ -567,17 +602,12 @@ impl State {
             lock_scene_inner_rect
         );
 
-        let world_to_unscaled = |xy: world::XY| -> unscaled::XY {
-            unscaled::XY {
-                x: unscaled::X(xy.x.0) + (lock_scene_inner_rect.x - unscaled::X(0)),
-                y: unscaled::Y(xy.y.0) + (lock_scene_inner_rect.y - unscaled::Y(0)),
-            }
-        };
+        let mut clipped_commands = commands.clipped(lock_scene_inner_rect);
 
         for i in 0..self.locks.locks.len() {
             let lock = &self.locks.locks[i];
 
-            let xy = world_to_unscaled(lock.xy);
+            let xy = world_to_unscaled(lock.xy) + self.world_scroll;
             
             // Render flag
             let sprite_offset = match self.flag_state {
@@ -586,7 +616,7 @@ impl State {
                 FlagState::Two(_) => 2,
             };
 
-            commands.sspr_override(
+            clipped_commands.sspr_override(
                 specs.keycard_shuffle_lights.xy_from_tile_sprite(4u16 + sprite_offset),
                 specs.keycard_shuffle_lights.rect(xy),
                 PALETTE[2]
@@ -594,7 +624,7 @@ impl State {
 
             // Render either selectrum or selection indicator
             if i == self.locks.index {
-                commands.sspr_override(
+                clipped_commands.sspr_override(
                     specs.keycard_shuffle_lights.xy_from_tile_sprite(3u16),
                     specs.keycard_shuffle_lights.rect(xy),
                     if self.ui_section == UiSection::Map { SELECTRUM_COLOUR } else { INDICATOR_COLOUR }
