@@ -993,6 +993,7 @@ dependencies = [
  "gfx",
  "gfx_sizes",
  "platform_types",
+ "qrs",
  "xs",
 ]
 

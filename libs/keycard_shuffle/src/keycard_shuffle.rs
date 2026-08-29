@@ -55,7 +55,10 @@ struct Inventory {
 }
 
 mod world {
+    use super::MAP_WH;
     use platform_types::{unscaled};
+    pub use platform_types::{unscaled::{XD, YD, XYD}};
+    use qrs::QRS;
 
     pub type Inner = i16;
 
@@ -68,6 +71,224 @@ mod world {
     pub struct XY {
         pub x: X,
         pub y: Y,
+    }
+
+    macro_rules! signed_paired_impls {
+        ($($a_name: ident, $b_name: ident, $a_inner: ident)+) => {$(
+            impl core::ops::AddAssign<$b_name> for $a_name {
+                fn add_assign(&mut self, other: $b_name) {
+                    if other.0 < 0 {
+                        // Adding a negative by subtracting the absolute value
+                        self.0 -= (other.0.abs()) as $a_inner;
+                    } else if other.0 > 0 {
+                        self.0 += other.0 as $a_inner;
+                    } else {
+                        // Nothing to do
+                    }
+                }
+            }
+
+            impl core::ops::Add<$b_name> for $a_name {
+                type Output = Self;
+
+                fn add(mut self, other: $b_name) -> Self::Output {
+                    self += other;
+                    self
+                }
+            }
+
+            impl core::ops::SubAssign<$b_name> for $a_name {
+                fn sub_assign(&mut self, other: $b_name) {
+                    if other.0 < 0 {
+                        // Subtracting a negative by adding the absolute value
+                        self.0 += (other.0.abs()) as $a_inner;
+                    } else if other.0 > 0 {
+                        self.0 -= other.0 as $a_inner;
+                    } else {
+                        // Nothing to do
+                    }
+                }
+            }
+
+            impl core::ops::Sub<$b_name> for $a_name {
+                type Output = Self;
+
+                fn sub(mut self, other: $b_name) -> Self::Output {
+                    self -= other;
+                    self
+                }
+            }
+        )+}
+    }
+
+    signed_paired_impls!{
+        X, XD, Inner
+        Y, YD, Inner
+    }
+
+    impl core::ops::Sub<X> for X {
+        type Output = XD;
+
+        fn sub(self, other: X) -> Self::Output {
+            XD(self.0 - other.0)
+        }
+    }
+
+    impl core::ops::Sub<Y> for Y {
+        type Output = YD;
+
+        fn sub(self, other: Y) -> Self::Output {
+            YD(self.0 - other.0)
+        }
+    }
+
+    impl core::ops::Sub for XY {
+        type Output = XYD;
+
+        fn sub(self, other: XY) -> Self::Output {
+            XYD {
+                xd: XD(self.x.0 as Inner - other.x.0 as Inner),
+                yd: YD(self.y.0 as Inner - other.y.0 as Inner),
+            }
+        }
+    }
+
+    macro_rules! shared_delta_impl {
+        ($($name: ident $component_1: ident : $type_1: ident  $component_2: ident : $type_2: ident $inner: ident),+ $(,)?) => {
+            $(
+                impl core::ops::AddAssign<$name> for XY {
+                    fn add_assign(&mut self, other: $name) {
+                        self.x += other.$component_1;
+                        self.y += other.$component_2;
+                    }
+                }
+
+                impl core::ops::Add<$name> for XY {
+                    type Output = Self;
+
+                    fn add(mut self, other: $name) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+
+                impl core::ops::SubAssign<$name> for XY {
+                    fn sub_assign(&mut self, other: $name) {
+                        self.x -= other.$component_1;
+                        self.y -= other.$component_2;
+                    }
+                }
+
+                impl core::ops::Sub<$name> for XY {
+                    type Output = Self;
+
+                    fn sub(mut self, other: $name) -> Self::Output {
+                        self -= other;
+                        self
+                    }
+                }
+
+                impl core::ops::AddAssign<$type_1> for XY {
+                    fn add_assign(&mut self, other: $type_1) {
+                        self.x += other;
+                    }
+                }
+
+                impl core::ops::Add<$type_1> for XY {
+                    type Output = Self;
+
+                    fn add(mut self, other: $type_1) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+
+                impl core::ops::SubAssign<$type_1> for XY {
+                    fn sub_assign(&mut self, other: $type_1) {
+                        self.x -= other;
+                    }
+                }
+
+                impl core::ops::Sub<$type_1> for XY {
+                    type Output = Self;
+
+                    fn sub(mut self, other: $type_1) -> Self::Output {
+                        self -= other;
+                        self
+                    }
+                }
+
+                impl core::ops::AddAssign<$type_2> for XY {
+                    fn add_assign(&mut self, other: $type_2) {
+                        self.y += other;
+                    }
+                }
+
+                impl core::ops::Add<$type_2> for XY {
+                    type Output = Self;
+
+                    fn add(mut self, other: $type_2) -> Self::Output {
+                        self += other;
+                        self
+                    }
+                }
+
+                impl core::ops::SubAssign<$type_2> for XY {
+                    fn sub_assign(&mut self, other: $type_2) {
+                        self.y -= other;
+                    }
+                }
+
+                impl core::ops::Sub<$type_2> for XY {
+                    type Output = Self;
+
+                    fn sub(mut self, other: $type_2) -> Self::Output {
+                        self -= other;
+                        self
+                    }
+                }
+            )+
+        }
+    }
+
+    shared_delta_impl!{
+        XYD xd: XD yd: YD Inner,
+    }
+
+    // TODO fiddle with these once we have things rendering
+    const X_Q_FACTOR: Inner = 1;
+    const Y_Q_FACTOR: Inner = 1;
+
+    const X_R_FACTOR: Inner = 1;
+    const Y_R_FACTOR: Inner = 1;
+
+    const HEX_X_SCALE: Inner = 1;
+    const HEX_Y_SCALE: Inner = 1;
+
+    const HEX_X_OFFSET: Inner = 0;
+    const HEX_Y_OFFSET: Inner = 0;
+
+    fn qrs_to_world(qrs: QRS) -> XY {
+        let q = qrs.q.0;
+        let r = qrs.r.0;
+
+        let x = (X_Q_FACTOR * q + X_R_FACTOR * r) * HEX_X_SCALE + HEX_X_OFFSET;
+        let y = (Y_Q_FACTOR * q + Y_R_FACTOR * r) * HEX_Y_SCALE + HEX_Y_OFFSET;
+
+        XY {
+            x: X(x.try_into().unwrap_or(0)),
+            y: Y(y.try_into().unwrap_or(0)),
+        }
+    }
+
+    pub fn sprial_iter(
+        radius: qrs::Distance,
+        center: XY,
+    ) -> impl Iterator<Item = XY> {
+        let offset = center - XY::default();
+
+        qrs::spiral(radius, <_>::default())
+            .map(move |qrs| qrs_to_world(qrs) + offset)
     }
 }
 
@@ -144,6 +365,11 @@ const LOCK_SCENE_OUTER_RECT: unscaled::Rect = unscaled::Rect {
     y: unscaled::Y(0),
     w: unscaled::W::new(CARD_X_MIN.get() - SPACING),
     h: unscaled::H::new(INVENTORY_OUTER_RECT.y.get() - SPACING),
+};
+
+const MAP_WH: unscaled::WH = unscaled::WH {
+    w: unscaled::w_const_mul(LOCK_SCENE_OUTER_RECT.w, 4),
+    h: unscaled::h_const_mul(LOCK_SCENE_OUTER_RECT.h, 4),
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -285,11 +511,11 @@ impl State {
 
         let lock_scene_inner_rect: unscaled::Rect = gfx::nine_slice::inner_rect(edge_wh, LOCK_SCENE_OUTER_RECT);
 
-        let world_to_unscaled = |xy: world::XY| -> unscaled::XY {
+        let world_to_unscaled = |xy: world::XY, world_scroll: unscaled::XYD| -> unscaled::XY {
             unscaled::XY {
                 x: unscaled::X(xy.x.0) + (lock_scene_inner_rect.x - unscaled::X(0)),
                 y: unscaled::Y(xy.y.0) + (lock_scene_inner_rect.y - unscaled::Y(0)),
-            }
+            } + world_scroll
         };
 
         //
@@ -328,7 +554,7 @@ impl State {
 
                     let lock = &self.locks.locks[self.locks.index];
         
-                    let mut xy = world_to_unscaled(lock.xy) + self.world_scroll;
+                    let mut xy = world_to_unscaled(lock.xy, self.world_scroll);
 
                     let lock_tile = specs.keycard_shuffle_lights.tile();
                     
@@ -353,7 +579,7 @@ impl State {
                             self.world_scroll.xd -= lock_scene_inner_rect.w.into();
                         }
 
-                        xy = world_to_unscaled(lock.xy) + self.world_scroll;
+                        xy = world_to_unscaled(lock.xy, self.world_scroll);
                     }
                 },
                 UiSection::Inventory => {
@@ -591,7 +817,6 @@ impl State {
         }
 
         // Render lock scene
-        // TODO render coloured splotches so we can confirm whether the scrolling is correct
 
         commands.nine_slice_overridable(
             if self.ui_section == UiSection::AboveMap {
@@ -604,10 +829,43 @@ impl State {
 
         let mut clipped_commands = commands.clipped(lock_scene_inner_rect);
 
+        // Render coloured splotches for background
+
+        for (center, colour) in [
+            (
+                world::XY {
+                    x: world::X(0) + world::XD(MAP_WH.w.halve().get()),
+                    y: world::Y(0) + world::YD(MAP_WH.h.halve().halve().get()),
+                },
+                PALETTE[0]
+            ),
+            (
+                world::XY {
+                    x: world::X(0),
+                    y: world::Y(0),
+                },
+                PALETTE[1]
+            ),
+        ] {
+            // FIXME why is ths rendering as a straight line?
+            for w_xy in world::sprial_iter(50, center) {
+                let xy = world_to_unscaled(w_xy, self.world_scroll);
+
+                // draw splotch
+                clipped_commands.sspr_override(
+                    specs.keycard_shuffle_lights.xy_from_tile_sprite(2u16),
+                    specs.keycard_shuffle_lights.rect(xy),
+                    colour
+                );
+            }
+        }
+
+        // Render flags
+
         for i in 0..self.locks.locks.len() {
             let lock = &self.locks.locks[i];
 
-            let xy = world_to_unscaled(lock.xy) + self.world_scroll;
+            let xy = world_to_unscaled(lock.xy, self.world_scroll);
             
             // Render flag
             let sprite_offset = match self.flag_state {
