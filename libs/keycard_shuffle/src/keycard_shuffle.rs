@@ -255,15 +255,14 @@ mod world {
         XYD xd: XD yd: YD Inner,
     }
 
-    // TODO fiddle with these once we have things rendering
-    const X_Q_FACTOR: Inner = 1;
-    const Y_Q_FACTOR: Inner = 1;
+    const X_Q_FACTOR: Inner = 2;
+    const Y_Q_FACTOR: Inner = 0;
 
     const X_R_FACTOR: Inner = 1;
-    const Y_R_FACTOR: Inner = 1;
+    const Y_R_FACTOR: Inner = 2;
 
-    const HEX_X_SCALE: Inner = 1;
-    const HEX_Y_SCALE: Inner = 1;
+    const HEX_X_SCALE: Inner = 3;
+    const HEX_Y_SCALE: Inner = 2;
 
     const HEX_X_OFFSET: Inner = 0;
     const HEX_Y_OFFSET: Inner = 0;
@@ -847,7 +846,6 @@ impl State {
                 PALETTE[1]
             ),
         ] {
-            // FIXME why is ths rendering as a straight line?
             for w_xy in world::sprial_iter(50, center) {
                 let xy = world_to_unscaled(w_xy, self.world_scroll);
 
