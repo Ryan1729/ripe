@@ -366,9 +366,11 @@ const LOCK_SCENE_OUTER_RECT: unscaled::Rect = unscaled::Rect {
     h: unscaled::H::new(INVENTORY_OUTER_RECT.y.get() - SPACING),
 };
 
+// This kinda cheats to make things fit, by knowing that we are unlikely to change sizes at the moment
+// but, if we make it change more often, we have implmented basic scrolling that should keep things playable.
 const MAP_WH: unscaled::WH = unscaled::WH {
-    w: unscaled::w_const_mul(LOCK_SCENE_OUTER_RECT.w, 4),
-    h: unscaled::h_const_mul(LOCK_SCENE_OUTER_RECT.h, 4),
+    w: unscaled::w_const_div(unscaled::w_const_mul(LOCK_SCENE_OUTER_RECT.w, 3), 4),
+    h: unscaled::h_const_div(unscaled::h_const_mul(LOCK_SCENE_OUTER_RECT.h, 3), 4),
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -420,8 +422,8 @@ impl State {
         let mut locks = Locks::default();
         for i in 0..20 {
             let xy = world::XY {
-                x: world::X(xs::range(rng, 0..LOCK_SCENE_OUTER_RECT.w.get() as u32 * 4) as unscaled::Inner),
-                y: world::Y(xs::range(rng, 0..LOCK_SCENE_OUTER_RECT.h.get() as u32 * 4) as unscaled::Inner),
+                x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
+                y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
             };
 
             locks.locks.push(Lock {
