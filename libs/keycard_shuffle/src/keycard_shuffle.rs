@@ -510,7 +510,15 @@ impl State {
     ) {
         let edge_wh = commands.ui_edge_wh();
 
-        let lock_scene_inner_rect: unscaled::Rect = gfx::nine_slice::inner_rect(edge_wh, LOCK_SCENE_OUTER_RECT);
+        let lock_scene_outline_rect: unscaled::Rect = gfx::nine_slice::inner_rect(
+            edge_wh,
+            LOCK_SCENE_OUTER_RECT
+        );
+
+        let lock_scene_inner_rect: unscaled::Rect = gfx::nine_slice::inner_rect(
+            edge_wh,
+            lock_scene_outline_rect
+        );
 
         let world_to_unscaled = |xy: world::XY, world_scroll: unscaled::XYD| -> unscaled::XY {
             unscaled::XY {
@@ -825,7 +833,7 @@ impl State {
             } else {
                 nine_slice::Kind::CustomOutline(INDICATOR_COLOUR)
             },
-            lock_scene_inner_rect
+            lock_scene_outline_rect
         );
 
         let mut clipped_commands = commands.clipped(lock_scene_inner_rect);

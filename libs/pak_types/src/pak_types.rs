@@ -492,6 +492,10 @@ pub mod unscaled {
                     pub const fn halve(self) -> Self {
                         Self(self.0 >> 1)
                     }
+
+                    pub const fn double(self) -> Self {
+                        Self(self.0 << 1)
+                    }
                 }
             )+
         }
@@ -512,6 +516,14 @@ pub mod unscaled {
             Self {
                 w: self.w.halve(),
                 h: self.h.halve(),
+            }
+        }
+
+        /// Doubles both components
+        pub const fn double(self) -> Self {
+            Self {
+                w: self.w.double(),
+                h: self.h.double(),
             }
         }
     }
