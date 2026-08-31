@@ -124,7 +124,7 @@ impl XY {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum XYToIError {
+pub enum XYToIError {
     XPastWidth
 }
 
@@ -579,7 +579,7 @@ pub fn generate_fallback(
 ) -> Generated {    
     let sizes = Sizes::new(w, h);
 
-    let mut proto_tiles = vec1![ALL_DIRS; sizes.proto_length];
+    let proto_tiles = vec1![ALL_DIRS; sizes.proto_length];
 
     let tiles = to_one_thick(&proto_tiles, &sizes);
 
@@ -612,13 +612,9 @@ pub fn generate(
     // TODO? assert/return error for (w, h) where there are no non-edge proto tiles?
     let sizes = Sizes::new(w, h);
 
-    let tiles_width_usize = w as usize;
-
     let mut proto_tiles = vec1![0; sizes.proto_length];
 
     let proto_width = sizes.proto_width;
-
-    let proto_width_usize = usize::from(proto_width.0.get());
 
     //
     // Place the exit first
@@ -764,12 +760,10 @@ fn proto_i_to_tile_i(sizes: &Sizes, proto_index: ProtoTilesIndex) -> Option<Tile
 
 fn set_flags_for_simple_exit(
     proto_tiles: &mut [ProtoTileFlags],
-    proto_width: ProtoTilesWidth,
+    _proto_width: ProtoTilesWidth,
     exit_index: Index,
     exit_facing: Dir
 ) {
-    let ProtoTilesWidth(width) = proto_width;
-
     let u = Dir::Up.flag();
     let d = Dir::Down.flag();
     let l = Dir::Left.flag();
@@ -778,7 +772,6 @@ fn set_flags_for_simple_exit(
     proto_tiles[exit_index] = SKIP;
 
     let flag = exit_facing.flag();
-    let opposite_flag = exit_facing.opposite().flag();
 
     match exit_facing {
         Dir::Up

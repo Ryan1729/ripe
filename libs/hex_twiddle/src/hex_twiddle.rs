@@ -1,7 +1,7 @@
 #![deny(unreachable_patterns)]
 
 use gfx::{Commands, AddDrawCommands};
-use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
+use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
 use qrs::{QRS, QRSD, Q, R, qr};
 use xs::{Seed, Xs};
 

@@ -1,6 +1,6 @@
 use gfx::{Commands, AddDrawCommands};
 use gfx_sizes::{ARGB};
-use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
+use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
 //use vec1::{Grid1, Grid1Spec};
 use xs::{Seed, Xs};
 
@@ -49,14 +49,12 @@ struct CardKind {
 }
 
 #[derive(Clone, Debug, Default)]
-struct Inventory {
+pub struct Inventory {
     cells: Vec<CardKind>,
     index: Index,
 }
 
 mod world {
-    use super::MAP_WH;
-    use platform_types::{unscaled};
     pub use platform_types::{unscaled::{XD, YD, XYD}};
     use qrs::QRS;
 
@@ -292,13 +290,13 @@ mod world {
 }
 
 #[derive(Clone, Debug, Default)]
-struct Lock {
+pub struct Lock {
     xy: world::XY,
     // TODO state for lights and whether is unlocked
 }
 
 #[derive(Clone, Debug, Default)]
-struct Locks {
+pub struct Locks {
     locks: Vec<Lock>,
     index: Index,
 }
@@ -310,7 +308,7 @@ const MAX_INSIDE_FRAME: FrameCount = 20;
 const MAX_REMOVE_FRAME: FrameCount = 60;
 
 #[derive(Clone, Debug)]
-enum LockAnimationState {
+pub enum LockAnimationState {
     Insert(FrameCount),
     Inside(FrameCount),
     Remove(FrameCount),
@@ -321,21 +319,21 @@ impl Default for LockAnimationState {
 }
 
 #[derive(Clone, Debug, Default)]
-struct LockAnimation {
+pub struct LockAnimation {
     state: LockAnimationState,
     inventory_index: Index,
-    lock_index: Index,
+    //lock_index: Index,
 }
 
 #[derive(Clone, Debug, Default)]
-struct Animations {
+pub struct Animations {
     lock: Option<LockAnimation>,
 }
 
 const FLAG_ZERO_FRAMES: FrameCount = 45;
 
 #[derive(Clone, Debug)]
-enum FlagState {
+pub enum FlagState {
     Zero(FrameCount),
     One(FrameCount),
     Two(FrameCount),
@@ -374,7 +372,7 @@ const MAP_WH: unscaled::WH = unscaled::WH {
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-enum UiSection {
+pub enum UiSection {
     #[default]
     Map,
     Inventory,
@@ -420,7 +418,7 @@ impl State {
         }
 
         let mut locks = Locks::default();
-        for i in 0..20 {
+        for _ in 0..20 {
             let xy = world::XY {
                 x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
                 y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
@@ -672,7 +670,7 @@ impl State {
                                 LockAnimation{
                                     state: <_>::default(),
                                     inventory_index: self.inventory.index,
-                                    lock_index: self.locks.index,
+                                    //lock_index: self.locks.index,
                                 }
                             );
                         }
@@ -715,7 +713,6 @@ impl State {
         const SELECTRUM_COLOUR: ARGB = PALETTE[3];
         const INDICATOR_COLOUR: ARGB = PALETTE[0];
 
-        let card_wh = specs.keycard_shuffle_cards.tile();
         let letters_wh = specs.keycard_shuffle_letters.tile();
         let lights_wh = specs.keycard_shuffle_lights.tile();
 

@@ -972,13 +972,8 @@ pub fn generate(rng: &mut Xs, config: &Config, specs: &sprite::Specs) -> Result<
                 let hallway_index = xs::index(rng, 0..config.hallways.len());
                 let hallway = &config.hallways[hallway_index];
 
-                use models::config::HallwaySpec;
-
-
-                'insert: {
-                    if let Some(s) = hallway::State::from_spec(*hallway, rng, specs) {
-                        hallway_states.insert(key_i, key_j, s);
-                    }
+                if let Some(s) = hallway::State::from_spec(*hallway, rng, specs) {
+                    hallway_states.insert(key_i, key_j, s);
                 }
 
                 assert_door_targets_seem_right!();

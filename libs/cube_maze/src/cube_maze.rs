@@ -1,14 +1,13 @@
 use gfx::{Commands, AddDrawCommands};
 use gfx_sizes::{ARGB};
-use platform_types::{command, sprite, unscaled, Button, Dir, DirFlag, Input, Speaker};
-use qrs::{QRS, QRSD, Q, R, qr};
+use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
 use vec1::{Grid1, Grid1Spec};
 use xs::{Seed, Xs};
 
 type TileSprite = u8;
 
 #[derive(Clone, Copy, Default, Debug)]
-enum GoalFrame {
+pub enum GoalFrame {
     #[default]
     Zero, // Blank
     One,
@@ -27,24 +26,23 @@ impl GoalFrame {
             Self::Four => 4,
         }
     }
-
-    const DEFAULT: Self = Self::Zero;
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-struct Goal {
+pub struct Goal {
     xy: face::XY,
     frame: GoalFrame,
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
-enum TileKind {
+pub enum TileKind {
     #[default]
     Wall,
     Blank,
 }
 
 impl TileKind {
+    #[allow(unused)]
     const ALL: [Self; 2] = [
         Self::Wall,
         Self::Blank,
@@ -52,7 +50,7 @@ impl TileKind {
 }
 
 #[derive(Clone, Default, Debug)]
-struct Tile {
+pub struct Tile {
     kind: TileKind,
 }
 
@@ -291,7 +289,7 @@ mod face {
                 rng,
                 dimensions,
                 maze_flags,
-            ).unwrap_or_else(|e| maze::generate_fallback(dimensions));
+            ).unwrap_or_else(|_e| maze::generate_fallback(dimensions));
 
             faces[0].goal.xy = i_to_xy(width, base_generated.exit_index.try_into().expect("exit index invalid"));
             faces[0].tiles = to_tiles(&base_generated.tiles);
