@@ -5,9 +5,13 @@ use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
 use xs::{Seed, Xs};
 
 type Index = usize;
+type Distance = qrs::Distance;
 
-#[derive(Clone, Copy, Debug)]
+const TAU: f32 = core::f32::consts::TAU;
+
+#[derive(Clone, Copy, Debug, Default)]
 enum CardColour {
+    #[default]
     Blue,
     Green,
     Red,
@@ -25,6 +29,17 @@ impl CardColour {
         Self::Purple,
         Self::Cyan,
     ];
+
+    fn index(self) -> u16 {
+        match self {
+            CardColour::Blue => 0,
+            CardColour::Green => 1,
+            CardColour::Red => 2,
+            CardColour::Yellow => 3,
+            CardColour::Purple => 4,
+            CardColour::Cyan => 5,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -55,7 +70,7 @@ pub struct Inventory {
 }
 
 mod world {
-    pub use platform_types::{unscaled::{XD, YD, XYD}};
+    pub use platform_types::{unscaled::{W, H, XD, YD, XYD}};
     use qrs::QRS;
 
     pub type Inner = i16;
@@ -253,6 +268,14 @@ mod world {
         XYD xd: XD yd: YD Inner,
     }
 
+    pub const fn x_const_add_w(x: X, w: W) -> X {
+        X(x.0 + w.get())
+    }
+
+    pub const fn y_const_add_h(y: Y, h: H) -> Y {
+        Y(y.0 + h.get())
+    }
+
     const X_Q_FACTOR: Inner = 2;
     const Y_Q_FACTOR: Inner = 0;
 
@@ -371,6 +394,11 @@ const MAP_WH: unscaled::WH = unscaled::WH {
     h: unscaled::h_const_div(unscaled::h_const_mul(LOCK_SCENE_OUTER_RECT.h, 3), 4),
 };
 
+const MAP_CENTER: world::XY = world::XY {
+    x: world::x_const_add_w(world::X(0), MAP_WH.w.halve()),
+    y: world::y_const_add_h(world::Y(0), MAP_WH.h.halve()),
+};
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum UiSection {
     #[default]
@@ -379,6 +407,17 @@ pub enum UiSection {
     AboveMap,
     AboveInventory,
 }
+
+#[derive(Clone, Debug, Default)]
+pub struct Splotch {
+    xy: world::XY,
+    colour: CardColour,
+    radius: Distance,
+}
+
+const MAX_SPLOTCH_COUNT: u8 = 6;
+
+type Splotches = [Splotch; MAX_SPLOTCH_COUNT as usize];
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
@@ -391,6 +430,7 @@ pub struct State {
     pub animations: Animations,
     pub flag_state: FlagState,
     pub ui_section: UiSection,
+    pub splotches: Splotches,
 }
 
 impl State {
@@ -417,6 +457,38 @@ impl State {
             }
         }
 
+        let mut splotches = Splotches::default();
+
+        let x_radius = MAP_WH.w.halve().get() as f32 * 0.9;
+        let y_radius = MAP_WH.h.halve().get() as f32 * 0.9;
+
+        let ring_length = (MAX_SPLOTCH_COUNT - 1) as usize;
+
+        let center_index = 0;
+
+        splotches[center_index] = Splotch {
+            xy: MAP_CENTER,
+            colour: CardColour::ALL[CardColour::ALL.len() - 1],
+            radius: 6,
+        };
+
+        let first_ring_index = center_index + 1;
+
+        // Ring second so it is drawn on top of the center
+        for raw_i in 0..ring_length {
+            let i = raw_i + first_ring_index;
+            let angle = TAU * i as f32 / ring_length as f32;
+
+            splotches[i] = Splotch {
+                xy: world::XY {
+                    x: MAP_CENTER.x + world::XD((x_radius * f32::cos(angle)) as world::Inner),
+                    y: MAP_CENTER.y + world::YD((y_radius * f32::sin(angle)) as world::Inner),
+                },
+                colour: CardColour::ALL[raw_i],
+                radius: 8,
+            }
+        }
+
         let mut locks = Locks::default();
         for _ in 0..20 {
             let xy = world::XY {
@@ -436,6 +508,7 @@ impl State {
             rng: rng_,
             inventory,
             locks,
+            splotches,
             .. <_>::default()
         }
     }
@@ -762,14 +835,7 @@ impl State {
                     h: unscaled::H::new(command::HEIGHT_SIGNED),
                 };
 
-                let colour_index: u16 = match kind.colour {
-                    CardColour::Blue => 0,
-                    CardColour::Green => 1,
-                    CardColour::Red => 2,
-                    CardColour::Yellow => 3,
-                    CardColour::Purple => 4,
-                    CardColour::Cyan => 5,
-                };
+                let colour_index: u16 = kind.colour.index();
 
                 let mut cmds = $commands.clipped(clip_rect);
 
@@ -837,36 +903,21 @@ impl State {
 
         // Render coloured splotches for background
 
-        for (center, colour) in [
-            (
-                world::XY {
-                    x: world::X(0) + world::XD(MAP_WH.w.halve().get()),
-                    y: world::Y(0) + world::YD(MAP_WH.h.halve().halve().get()),
-                },
-                PALETTE[0]
-            ),
-            (
-                world::XY {
-                    x: world::X(0),
-                    y: world::Y(0),
-                },
-                PALETTE[1]
-            ),
-        ] {
-            for w_xy in world::sprial_iter(50, center) {
+        for splotch in &self.splotches {
+            for w_xy in world::sprial_iter(splotch.radius, splotch.xy) {
                 let xy = world_to_unscaled(w_xy, self.world_scroll);
 
                 // draw splotch
                 clipped_commands.sspr_override(
                     specs.keycard_shuffle_lights.xy_from_tile_sprite(2u16),
                     specs.keycard_shuffle_lights.rect(xy),
-                    colour
+                    PALETTE[usize::from(splotch.colour.index())]
                 );
             }
         }
 
         // Render flags
-
+        // FIXME change flags to be visible on all backgrounds
         for i in 0..self.locks.locks.len() {
             let lock = &self.locks.locks[i];
 

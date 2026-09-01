@@ -445,11 +445,11 @@ pub mod unscaled {
                     pub const ONE: Self = Self(1);
                     pub const TWO: Self = Self(2);
 
-                    pub fn dec(self) -> Self {
+                    pub const fn dec(self) -> Self {
                         Self(self.0.saturating_sub(1))
                     }
 
-                    pub fn inc(self) -> Self {
+                    pub const fn inc(self) -> Self {
                         Self(self.0.saturating_add(1))
                     }
                 }
