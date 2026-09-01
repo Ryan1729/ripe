@@ -917,7 +917,7 @@ impl State {
         }
 
         // Render flags
-        // FIXME change flags to be visible on all backgrounds
+
         for i in 0..self.locks.locks.len() {
             let lock = &self.locks.locks[i];
 
@@ -933,7 +933,9 @@ impl State {
             clipped_commands.sspr_override(
                 specs.keycard_shuffle_lights.xy_from_tile_sprite(4u16 + sprite_offset),
                 specs.keycard_shuffle_lights.rect(xy),
-                PALETTE[2]
+                // Need to be visible on all backgrounds. Could have a complicated colour
+                // swtiching scheme, but instead I'll wave the white flag.
+                PALETTE[6]
             );
 
             // Render either selectrum or selection indicator
