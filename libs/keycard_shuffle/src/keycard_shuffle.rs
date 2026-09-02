@@ -312,10 +312,26 @@ mod world {
     }
 }
 
+const LIGHT_COUNT: u8 = 3;
+
+#[derive(Clone, Debug, Default)]
+pub enum LockLightState {
+    #[default]
+    Off,
+    Right,
+    Wrong
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct LockLight {
+    state: LockLightState,
+    // TODO what is needed to unlock it
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Lock {
     xy: world::XY,
-    // TODO state for lights and whether is unlocked
+    lights: [LockLight; LIGHT_COUNT as usize],
 }
 
 #[derive(Clone, Debug, Default)]
@@ -498,6 +514,7 @@ impl State {
 
             locks.locks.push(Lock {
                 xy,
+                lights: <_>::default()
             });
         }
 
@@ -540,14 +557,14 @@ impl State {
                 LockAnimationState::Insert(at_frame) => {
                     *at_frame += 1;
                     if *at_frame > MAX_INSERT_FRAME {
-                        // TODO Good place for click sound effect
+                        // SFX Good place for click sound effect
                         animation.state = LockAnimationState::Inside(0);
                     }
                 },
                 LockAnimationState::Inside(at_frame) => {
                     *at_frame += 1;
                     if *at_frame > MAX_INSIDE_FRAME {
-                        // TODO Good place for click sound effect
+                        // SFX Good place for click sound effect
                         animation.state = LockAnimationState::Remove(0);
                     }
                 },
@@ -948,9 +965,48 @@ impl State {
             }
         }
 
-        // Render card slot back
+        // Render lock lights
 
-        // TODO Render lock lights
+        let lock = &self.locks.locks[self.locks.index];
+
+        let light_base_x = slot_xy.x - unscaled::W::new(15);
+        let light_y = slot_xy.y - unscaled::H::new(16);
+
+        for i in 0..LIGHT_COUNT {
+            // Outer ring
+            let light = &lock.lights[usize::from(i)];
+
+            let xy = unscaled::XY {
+                x: light_base_x + unscaled::W::new(i as unscaled::Inner * 16),
+                y: light_y,
+            };
+
+            commands.sspr_override(
+                specs.keycard_shuffle_lights.xy_from_tile_sprite(0u16),
+                specs.keycard_shuffle_lights.rect(xy),
+                PALETTE[0]
+            );
+
+            match light.state {
+                LockLightState::Off => {},
+                LockLightState::Right => {
+                    commands.sspr_override(
+                        specs.keycard_shuffle_lights.xy_from_tile_sprite(1u16),
+                        specs.keycard_shuffle_lights.rect(xy),
+                        PALETTE[2]
+                    );
+                },
+                LockLightState::Wrong => {
+                    commands.sspr_override(
+                        specs.keycard_shuffle_lights.xy_from_tile_sprite(1u16),
+                        specs.keycard_shuffle_lights.rect(xy),
+                        PALETTE[1]
+                    );
+                },
+            }
+        }
+
+        // Render card slot back
 
         commands.sspr(slot_sprite_xy, slot_rect);
 
