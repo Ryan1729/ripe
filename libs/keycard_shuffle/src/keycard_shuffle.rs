@@ -9,7 +9,7 @@ type Distance = qrs::Distance;
 
 const TAU: f32 = core::f32::consts::TAU;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum CardColour {
     #[default]
     Blue,
@@ -42,8 +42,9 @@ impl CardColour {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum CardSymbol {
+    #[default]
     None,
     OnePip,
     TwoPips,
@@ -57,7 +58,7 @@ impl CardSymbol {
     ];
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct CardKind {
     colour: CardColour,
     symbol: CardSymbol,
@@ -314,24 +315,45 @@ mod world {
 
 const LIGHT_COUNT: u8 = 3;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum LockLightState {
     #[default]
     Off,
-    Right,
+    Correct,
     Wrong
 }
+
+// Use a type alias in case we want to support like "any blue card" etc. later
+type LockMatcher = CardKind;
 
 #[derive(Clone, Debug, Default)]
 pub struct LockLight {
     state: LockLightState,
-    // TODO what is needed to unlock it
+    matcher: LockMatcher,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Lock {
     xy: world::XY,
     lights: [LockLight; LIGHT_COUNT as usize],
+}
+
+type LightIndex = usize;
+
+impl Lock {
+    fn matching_index(&self, matcher: LockMatcher) -> Option<LightIndex> {
+        for i in 0..self.lights.len() {
+            let light = &self.lights[i];
+
+            if light.state != LockLightState::Correct {
+                if light.matcher == matcher {
+                    return Some(i)
+                }
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -361,7 +383,7 @@ impl Default for LockAnimationState {
 pub struct LockAnimation {
     state: LockAnimationState,
     inventory_index: Index,
-    //lock_index: Index,
+    lock_index: Index,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -514,7 +536,11 @@ impl State {
 
             locks.locks.push(Lock {
                 xy,
-                lights: <_>::default()
+                lights: [
+                    LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
+                    LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
+                    LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
+                ]
             });
         }
 
@@ -566,11 +592,44 @@ impl State {
                     if *at_frame > MAX_INSIDE_FRAME {
                         // SFX Good place for click sound effect
                         animation.state = LockAnimationState::Remove(0);
+
+                        if let (Some(lock), Some(card)) = 
+                            (
+                                self.locks.locks.get_mut(animation.lock_index),
+                                self.inventory.cells.get(animation.inventory_index)
+                            ) 
+                        {
+                            if let Some(light_index) = lock.matching_index(*card) {
+                                lock.lights[light_index].state = LockLightState::Correct;
+                            } else {
+                                for i in 0..lock.lights.len() {
+                                    if lock.lights[i].state != LockLightState::Correct {
+                                        lock.lights[i].state = LockLightState::Wrong;
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 LockAnimationState::Remove(at_frame) => {
                     *at_frame += 1;
                     if *at_frame > MAX_REMOVE_FRAME {
+                        // Reset back to off
+                        // Not sure if this is the right palce to do that
+                        if let (Some(lock), Some(card)) = 
+                            (
+                                self.locks.locks.get_mut(animation.lock_index),
+                                self.inventory.cells.get(animation.inventory_index)
+                            ) 
+                        {
+                            for light in &mut lock.lights {
+                                if light.state != LockLightState::Correct {
+                                    light.state = LockLightState::Off;
+                                }
+                            }
+                        }
+
+                        // Removal
                         self.animations.lock = None;
                     }
                 },
@@ -760,7 +819,7 @@ impl State {
                                 LockAnimation{
                                     state: <_>::default(),
                                     inventory_index: self.inventory.index,
-                                    //lock_index: self.locks.index,
+                                    lock_index: self.locks.index,
                                 }
                             );
                         }
@@ -989,18 +1048,18 @@ impl State {
 
             match light.state {
                 LockLightState::Off => {},
-                LockLightState::Right => {
+                LockLightState::Correct => {
                     commands.sspr_override(
                         specs.keycard_shuffle_lights.xy_from_tile_sprite(1u16),
                         specs.keycard_shuffle_lights.rect(xy),
-                        PALETTE[2]
+                        PALETTE[1]
                     );
                 },
                 LockLightState::Wrong => {
                     commands.sspr_override(
                         specs.keycard_shuffle_lights.xy_from_tile_sprite(1u16),
                         specs.keycard_shuffle_lights.rect(xy),
-                        PALETTE[1]
+                        PALETTE[2]
                     );
                 },
             }
