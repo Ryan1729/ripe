@@ -64,9 +64,11 @@ struct CardKind {
     symbol: CardSymbol,
 }
 
+type InventoryItem = CardKind;
+
 #[derive(Clone, Debug, Default)]
 pub struct Inventory {
-    cells: Vec<CardKind>,
+    cells: Vec<InventoryItem>,
     index: Index,
 }
 
@@ -315,7 +317,7 @@ mod world {
 
 const LIGHT_COUNT: u8 = 3;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum LockLightState {
     #[default]
     Off,
@@ -326,28 +328,82 @@ pub enum LockLightState {
 // Use a type alias in case we want to support like "any blue card" etc. later
 type LockMatcher = CardKind;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct LockLight {
     state: LockLightState,
     matcher: LockMatcher,
 }
 
+type LightsSpec<'spec> = &'spec [LockLight];
+
+#[derive(Clone, Debug, Default)]
+struct Lights {
+    lights: [LockLight; LIGHT_COUNT as usize],
+    length: u8,
+}
+
+impl Lights {
+    fn iter(&self) -> impl Iterator<Item = &LockLight> {
+        self.lights[0..usize::from(self.length)].iter()
+    }
+
+    fn iter_mut(&mut self) -> impl Iterator<Item = &mut LockLight> {
+        self.lights[0..usize::from(self.length)].iter_mut()
+    }
+}
+
+impl From<LightsSpec<'_>> for Lights {
+    fn from(spec: LightsSpec<'_>) -> Self {
+        let len = spec.len();
+        assert!(len <= 3);
+        assert!(len <= u8::MAX as usize);
+
+        let mut lights: [LockLight; LIGHT_COUNT as usize] = <_>::default();
+
+        for i in 0..len {
+            lights[i] = spec[i];
+        }
+
+        Self {
+            lights,
+            length: len as u8
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub enum Reward {
+    #[default]
+    Win,
+    Item(InventoryItem)
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Lock {
     xy: world::XY,
-    lights: [LockLight; LIGHT_COUNT as usize],
+    lights: Lights,
+    reward: Option<Reward>,
 }
 
 type LightIndex = usize;
 
 impl Lock {
-    fn matching_index(&self, matcher: LockMatcher) -> Option<LightIndex> {
-        for i in 0..self.lights.len() {
-            let light = &self.lights[i];
+    fn is_open(&self) -> bool {
+        // Assume true so a 0 lights lock is always open
+        let mut output = true;
+        for light in self.lights.iter() {
+            if light.state != LockLightState::Correct {
+                output = false;
+            }
+        }
+        output
+    }
 
+    fn matching_light_mut(&mut self, matcher: LockMatcher) -> Option<&mut LockLight> {
+        for light in self.lights.iter_mut() {
             if light.state != LockLightState::Correct {
                 if light.matcher == matcher {
-                    return Some(i)
+                    return Some(light)
                 }
             }
         }
@@ -469,6 +525,7 @@ pub struct State {
     pub flag_state: FlagState,
     pub ui_section: UiSection,
     pub splotches: Splotches,
+    pub won: bool,
 }
 
 impl State {
@@ -482,16 +539,42 @@ impl State {
         let mut rng_ = xs::from_seed(seed);
         let rng = &mut rng_;
 
+        // Algorithm sketch:
+        // Generate all the splotches first.
+        // Pick a random spot for the final reward.
+        // Shuffle up a deck of cards to draw from.
+        // Draw a random set of cards from the deck for the first lock.
+        // For each card, add a new lock and draw new cards as needed.
+        // If we run out of cards, make locks require no cards, as needed
+
+        // Needed features:
+        // Rewards, including cards and the win
+        // Free cards
+        //    Maybe make variable number of keys including 0?
+
+        let mut deck = Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len());
+
+        for colour in CardColour::ALL {
+            for symbol in CardSymbol::ALL {
+                deck.push(
+                    CardKind { colour, symbol },
+                );
+            }    
+        }
+
+        xs::shuffle(rng, &mut deck);
+
         let mut inventory = Inventory {
             cells: Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len()),
             index: 0,
         };
 
-        for colour in CardColour::ALL {
-            for symbol in CardSymbol::ALL {
-                inventory.cells.push(
-                    CardKind { colour, symbol },
-                );
+        for _ in 0..13 {
+            let colour = CardColour::ALL[xs::index(rng, 0..CardColour::ALL.len())];
+            let symbol = CardSymbol::ALL[xs::index(rng, 0..CardSymbol::ALL.len())];
+
+            if let Some(card) = deck.pop() {
+                inventory.cells.push(card);
             }
         }
 
@@ -534,14 +617,17 @@ impl State {
                 y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
             };
 
-            locks.locks.push(Lock {
-                xy,
-                lights: [
-                    LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
-                    LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
-                    LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
-                ]
-            });
+            if let Some(card) = deck.pop() {
+                locks.locks.push(Lock {
+                    xy,
+                    lights: (&[
+                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
+                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
+                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
+                    ][..]).into(),
+                    reward: Some(Reward::Item(card)),
+                });
+            }
         }
 
         locks.locks.sort_by_key(|l| l.xy);
@@ -571,8 +657,18 @@ impl State {
             return false
         }
 
-        // TODO actual checking
-        false
+        self.won
+    }
+
+    fn apply_reward(&mut self, reward: Reward) {
+        match reward {
+            Reward::Win => { self.won = true },
+            Reward::Item(card) => {
+                // TODO maintain sorted order?
+                self.inventory.cells.push(card);
+                self.inventory.index = self.inventory.cells.len() - 1;
+            },
+        }
     }
 
     fn tick(&mut self) {
@@ -599,12 +695,12 @@ impl State {
                                 self.inventory.cells.get(animation.inventory_index)
                             ) 
                         {
-                            if let Some(light_index) = lock.matching_index(*card) {
-                                lock.lights[light_index].state = LockLightState::Correct;
+                            if let Some(light) = lock.matching_light_mut(*card) {
+                                light.state = LockLightState::Correct;
                             } else {
-                                for i in 0..lock.lights.len() {
-                                    if lock.lights[i].state != LockLightState::Correct {
-                                        lock.lights[i].state = LockLightState::Wrong;
+                                for light in lock.lights.iter_mut() {
+                                    if light.state != LockLightState::Correct {
+                                        light.state = LockLightState::Wrong;
                                     }
                                 }
                             }
@@ -614,19 +710,32 @@ impl State {
                 LockAnimationState::Remove(at_frame) => {
                     *at_frame += 1;
                     if *at_frame > MAX_REMOVE_FRAME {
-                        // Reset back to off
-                        // Not sure if this is the right palce to do that
+                        let mut reward = None;
+
                         if let (Some(lock), Some(card)) = 
                             (
                                 self.locks.locks.get_mut(animation.lock_index),
                                 self.inventory.cells.get(animation.inventory_index)
                             ) 
                         {
-                            for light in &mut lock.lights {
+                            // Dispense reward
+
+                            if lock.is_open() {
+                                reward = lock.reward.take();
+                            }
+
+                            // Reset back to off
+                            // Not sure if this is the right place to do that
+
+                            for light in lock.lights.iter_mut() {
                                 if light.state != LockLightState::Correct {
                                     light.state = LockLightState::Off;
                                 }
                             }
+                        }
+
+                        if let Some(reward) = reward {
+                            self.apply_reward(reward);
                         }
 
                         // Removal
@@ -811,17 +920,29 @@ impl State {
                 UiSection::Map => {},
                 UiSection::Inventory => {
                     if self.animations.lock.is_none() {
-                        if let (Some(_), Some(_)) = (
+                        let mut reward = None;
+
+                        if let (Some(_), Some(lock)) = (
                             self.inventory.cells.get(self.inventory.index),
-                            self.locks.locks.get(self.locks.index),
+                            self.locks.locks.get_mut(self.locks.index),
                         ) {
-                            self.animations.lock = Some(
-                                LockAnimation{
-                                    state: <_>::default(),
-                                    inventory_index: self.inventory.index,
-                                    lock_index: self.locks.index,
+                            if lock.reward.is_some() {
+                                if lock.is_open() {
+                                    reward = Some(lock.reward.take().expect("We just checked it was Some"));
+                                } else {
+                                    self.animations.lock = Some(
+                                        LockAnimation{
+                                            state: <_>::default(),
+                                            inventory_index: self.inventory.index,
+                                            lock_index: self.locks.index,
+                                        }
+                                    );
                                 }
-                            );
+                            }
+                        }
+
+                        if let Some(reward) = reward {
+                            self.apply_reward(reward);
                         }
                     }
                 },
@@ -1031,9 +1152,8 @@ impl State {
         let light_base_x = slot_xy.x - unscaled::W::new(15);
         let light_y = slot_xy.y - unscaled::H::new(16);
 
-        for i in 0..LIGHT_COUNT {
+        for (i, light) in lock.lights.iter().enumerate() {
             // Outer ring
-            let light = &lock.lights[usize::from(i)];
 
             let xy = unscaled::XY {
                 x: light_base_x + unscaled::W::new(i as unscaled::Inner * 16),
