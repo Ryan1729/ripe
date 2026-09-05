@@ -343,6 +343,10 @@ struct Lights {
 }
 
 impl Lights {
+    fn is_empty(&self) -> bool {
+        self.length == 0
+    }
+
     fn iter(&self) -> impl Iterator<Item = &LockLight> {
         self.lights[0..usize::from(self.length)].iter()
     }
@@ -547,10 +551,7 @@ impl State {
         // For each card, add a new lock and draw new cards as needed.
         // If we run out of cards, make locks require no cards, as needed
 
-        // Needed features:
-        // Rewards, including cards and the win
-        // Free cards
-        //    Maybe make variable number of keys including 0?
+        // TODO implement the above
 
         let mut deck = Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len());
 
@@ -569,7 +570,7 @@ impl State {
             index: 0,
         };
 
-        for _ in 0..13 {
+        for _ in 0..1 {
             let colour = CardColour::ALL[xs::index(rng, 0..CardColour::ALL.len())];
             let symbol = CardSymbol::ALL[xs::index(rng, 0..CardSymbol::ALL.len())];
 
@@ -611,7 +612,30 @@ impl State {
         }
 
         let mut locks = Locks::default();
-        for _ in 0..20 {
+        // Likely to be removed
+        for _ in 0..0 {
+            let xy = world::XY {
+                x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
+                y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
+            };
+
+            if let Some(card) = deck.pop() {
+                let lock = Lock {
+                    xy,
+                    lights: (&[
+                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
+                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
+                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
+                    ][..]).into(),
+                    reward: Some(Reward::Item(card)),
+                };
+
+                locks.locks.push(lock);
+            }
+        }
+
+        // Temp to test auto-win
+        for _ in 0..1 {
             let xy = world::XY {
                 x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
                 y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
@@ -625,8 +649,28 @@ impl State {
                         LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
                         LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
                     ][..]).into(),
-                    reward: Some(Reward::Item(card)),
+                    reward: Some(Reward::Win),
                 });
+            }
+        }
+
+        // Temp to test free cards
+        for _ in 0..20 {
+            let xy = world::XY {
+                x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
+                y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
+            };
+
+            if let Some(card) = deck.pop() {
+                let lock = Lock {
+                    xy,
+                    lights: (&[][..]).into(),
+                    reward: Some(Reward::Item(card)),
+                };
+
+                assert!(lock.lights.is_empty());
+
+                locks.locks.push(lock);
             }
         }
 
@@ -1152,80 +1196,102 @@ impl State {
         let light_base_x = slot_xy.x - unscaled::W::new(15);
         let light_y = slot_xy.y - unscaled::H::new(16);
 
-        for (i, light) in lock.lights.iter().enumerate() {
-            // Outer ring
-
-            let xy = unscaled::XY {
-                x: light_base_x + unscaled::W::new(i as unscaled::Inner * 16),
-                y: light_y,
-            };
-
-            commands.sspr_override(
-                specs.keycard_shuffle_lights.xy_from_tile_sprite(0u16),
-                specs.keycard_shuffle_lights.rect(xy),
-                PALETTE[0]
-            );
-
-            match light.state {
-                LockLightState::Off => {},
-                LockLightState::Correct => {
-                    commands.sspr_override(
-                        specs.keycard_shuffle_lights.xy_from_tile_sprite(1u16),
-                        specs.keycard_shuffle_lights.rect(xy),
-                        PALETTE[1]
-                    );
-                },
-                LockLightState::Wrong => {
-                    commands.sspr_override(
-                        specs.keycard_shuffle_lights.xy_from_tile_sprite(1u16),
-                        specs.keycard_shuffle_lights.rect(xy),
-                        PALETTE[2]
-                    );
-                },
-            }
-        }
-
-        // Render card slot back
-
-        commands.sspr(slot_sprite_xy, slot_rect);
-
-        let slot_overlay_x_shift = slot_rect.w.halve().inc();
-
-        let mut slot_overlay_sprite_xy = slot_sprite_xy;
-        slot_overlay_sprite_xy.x += slot_overlay_x_shift;
-
-        let mut slot_overlay_rect = slot_rect;
-        slot_overlay_rect.x += slot_overlay_x_shift;
-        slot_overlay_rect.w -= slot_overlay_x_shift;
-
-        match self.animations.lock {
-            Some(LockAnimation{ ref state, inventory_index, .. }) => {
-                if let Some(item) = self.inventory.cells.get(inventory_index) {
-                    let x = match state {
-                        LockAnimationState::Insert(frame_count) => {
-                            let fraction = (*frame_count) as f32 / MAX_INSERT_FRAME as f32;
-                            unscaled::X(unscaled::lerp(CARD_X_MIN.0, fraction, card_x_max.0))
+        if lock.lights.is_empty() {
+            match &lock.reward {
+                Some(Reward::Item(card)) => {
+                    draw_card!(
+                        unscaled::XY {
+                            x: CARD_X_MIN,
+                            y: card_y,
                         },
-                        LockAnimationState::Inside(_) => card_x_max,
-                        LockAnimationState::Remove(frame_count) => {
-                            let fraction = (MAX_REMOVE_FRAME - (*frame_count)) as f32 / MAX_REMOVE_FRAME as f32;
-                            unscaled::X(unscaled::lerp(CARD_X_MIN.0, fraction, card_x_max.0))
-                        },
-                    };
-
-                    let xy = unscaled::XY {
-                        x,
-                        y: card_y,
-                    };
-    
-                    draw_card!(xy, item, slot_overlay_rect.x);
+                        card
+                    );
+                }
+                Some(Reward::Win) => {
+                    // draw nothing
+                    // This case is not expected, but if it happens, no biggie
+                }
+                None => {
+                    // draw nothing
+                    // TODO? Render an empty card outline?
                 }
             }
-            None => {}
-        }
+        } else {
+            for (i, light) in lock.lights.iter().enumerate() {
+                // Outer ring
+    
+                let xy = unscaled::XY {
+                    x: light_base_x + unscaled::W::new(i as unscaled::Inner * 16),
+                    y: light_y,
+                };
+    
+                commands.sspr_override(
+                    specs.keycard_shuffle_lights.xy_from_tile_sprite(0u16),
+                    specs.keycard_shuffle_lights.rect(xy),
+                    PALETTE[0]
+                );
+    
+                match light.state {
+                    LockLightState::Off => {},
+                    LockLightState::Correct => {
+                        commands.sspr_override(
+                            specs.keycard_shuffle_lights.xy_from_tile_sprite(1u16),
+                            specs.keycard_shuffle_lights.rect(xy),
+                            PALETTE[1]
+                        );
+                    },
+                    LockLightState::Wrong => {
+                        commands.sspr_override(
+                            specs.keycard_shuffle_lights.xy_from_tile_sprite(1u16),
+                            specs.keycard_shuffle_lights.rect(xy),
+                            PALETTE[2]
+                        );
+                    },
+                }
+            }
 
-        // Render card slot overlay
-        commands.sspr(slot_overlay_sprite_xy, slot_overlay_rect);
+            // Render card slot back
+
+            commands.sspr(slot_sprite_xy, slot_rect);
+    
+            let slot_overlay_x_shift = slot_rect.w.halve().inc();
+    
+            let mut slot_overlay_sprite_xy = slot_sprite_xy;
+            slot_overlay_sprite_xy.x += slot_overlay_x_shift;
+    
+            let mut slot_overlay_rect = slot_rect;
+            slot_overlay_rect.x += slot_overlay_x_shift;
+            slot_overlay_rect.w -= slot_overlay_x_shift;
+    
+            match self.animations.lock {
+                Some(LockAnimation{ ref state, inventory_index, .. }) => {
+                    if let Some(item) = self.inventory.cells.get(inventory_index) {
+                        let x = match state {
+                            LockAnimationState::Insert(frame_count) => {
+                                let fraction = (*frame_count) as f32 / MAX_INSERT_FRAME as f32;
+                                unscaled::X(unscaled::lerp(CARD_X_MIN.0, fraction, card_x_max.0))
+                            },
+                            LockAnimationState::Inside(_) => card_x_max,
+                            LockAnimationState::Remove(frame_count) => {
+                                let fraction = (MAX_REMOVE_FRAME - (*frame_count)) as f32 / MAX_REMOVE_FRAME as f32;
+                                unscaled::X(unscaled::lerp(CARD_X_MIN.0, fraction, card_x_max.0))
+                            },
+                        };
+    
+                        let xy = unscaled::XY {
+                            x,
+                            y: card_y,
+                        };
+        
+                        draw_card!(xy, item, slot_overlay_rect.x);
+                    }
+                }
+                None => {}
+            }
+    
+            // Render card slot overlay
+            commands.sspr(slot_overlay_sprite_xy, slot_overlay_rect);
+        }
 
         // Render inventory
 
