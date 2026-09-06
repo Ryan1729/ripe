@@ -543,16 +543,41 @@ impl State {
         let mut rng_ = xs::from_seed(seed);
         let rng = &mut rng_;
 
-        // Algorithm sketch:
         // Generate all the splotches first.
-        // Pick a random spot for the final reward.
+        let mut splotches = Splotches::default();
+        {
+            let x_radius = MAP_WH.w.halve().get() as f32 * 0.9;
+            let y_radius = MAP_WH.h.halve().get() as f32 * 0.9;
+
+            let ring_length = (MAX_SPLOTCH_COUNT - 1) as usize;
+
+            let center_index = 0;
+
+            splotches[center_index] = Splotch {
+                xy: MAP_CENTER,
+                colour: CardColour::ALL[CardColour::ALL.len() - 1],
+                radius: 6,
+            };
+
+                    let first_ring_index = center_index + 1;
+
+            // Ring second so it is drawn on top of the center
+            for raw_i in 0..ring_length {
+                let i = raw_i + first_ring_index;
+                let angle = TAU * i as f32 / ring_length as f32;
+
+                splotches[i] = Splotch {
+                    xy: world::XY {
+                        x: MAP_CENTER.x + world::XD((x_radius * f32::cos(angle)) as world::Inner),
+                        y: MAP_CENTER.y + world::YD((y_radius * f32::sin(angle)) as world::Inner),
+                    },
+                    colour: CardColour::ALL[raw_i],
+                    radius: 8,
+                }
+            }
+        }
+
         // Shuffle up a deck of cards to draw from.
-        // Draw a random set of cards from the deck for the first lock.
-        // For each card, add a new lock and draw new cards as needed.
-        // If we run out of cards, make locks require no cards, as needed
-
-        // TODO implement the above
-
         let mut deck = Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len());
 
         for colour in CardColour::ALL {
@@ -560,121 +585,88 @@ impl State {
                 deck.push(
                     CardKind { colour, symbol },
                 );
-            }    
+            }
         }
 
         xs::shuffle(rng, &mut deck);
+
+        // Pick a random spot for the final reward.
+        let win_xy = world::XY {
+            x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
+            y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
+        };
+
+        let mut lock_xy = win_xy;
+        let mut light_specs = Vec::with_capacity(3);
+
+        use std::collections::VecDeque;
+
+        let mut to_place = VecDeque::with_capacity(deck.len());
+
+        struct PlacementState {
+            deck: Vec<CardKind>,
+            to_place: VecDeque<Reward>,
+            light_specs: Vec<LockLight>,
+            lock_xy: world::XY,
+        }
+
+        let mut placement_state = PlacementState {
+            deck,
+            to_place,
+            light_specs,
+            lock_xy,
+        };
+
+        fn place_lock_for_reward(placement_state: &mut PlacementState, locks: &mut Vec<Lock>, rng: &mut Xs, reward: Reward) {
+            // Place the passed in reward
+            // TODO pull out cards based on the colour of where the xy is
+            while placement_state.light_specs.len() != 3 && !placement_state.deck.is_empty() {
+                let card = placement_state.deck.pop().expect("We just checked that the deck isn't empty!");
+
+                placement_state.light_specs.push(LockLight { matcher: card, state: <_>::default() });
+
+                // TODO? randomize the ordering to produce different tree shapes?
+                placement_state.to_place.push_back(Reward::Item(card));
+            }
+
+            let lights: Lights = (&placement_state.light_specs[..]).into();
+            placement_state.light_specs.clear();
+
+            let lock = Lock {
+                xy: placement_state.lock_xy,
+                lights,
+                reward: Some(reward),
+            };
+
+            locks.push(lock);
+
+            placement_state.lock_xy = world::XY {
+                x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
+                y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
+            };
+
+            // Place rewards needed to unlock previously placed locks
+            while let Some(stack_reward) = placement_state.to_place.pop_front() {
+                place_lock_for_reward(placement_state, locks, rng, stack_reward);
+            }
+        }
+
+        let mut locks = Locks::default();
+
+        place_lock_for_reward(&mut placement_state, &mut locks.locks, rng, Reward::Win);
+
+        // TODO
+        // Put the leftovers as free cards
+        // ... or do leftovers show up?
+        assert!(placement_state.to_place.is_empty());
+        assert!(placement_state.light_specs.is_empty());
+
+        locks.locks.sort_by_key(|l| l.xy);
 
         let mut inventory = Inventory {
             cells: Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len()),
             index: 0,
         };
-
-        for _ in 0..1 {
-            let colour = CardColour::ALL[xs::index(rng, 0..CardColour::ALL.len())];
-            let symbol = CardSymbol::ALL[xs::index(rng, 0..CardSymbol::ALL.len())];
-
-            if let Some(card) = deck.pop() {
-                inventory.cells.push(card);
-            }
-        }
-
-        let mut splotches = Splotches::default();
-
-        let x_radius = MAP_WH.w.halve().get() as f32 * 0.9;
-        let y_radius = MAP_WH.h.halve().get() as f32 * 0.9;
-
-        let ring_length = (MAX_SPLOTCH_COUNT - 1) as usize;
-
-        let center_index = 0;
-
-        splotches[center_index] = Splotch {
-            xy: MAP_CENTER,
-            colour: CardColour::ALL[CardColour::ALL.len() - 1],
-            radius: 6,
-        };
-
-        let first_ring_index = center_index + 1;
-
-        // Ring second so it is drawn on top of the center
-        for raw_i in 0..ring_length {
-            let i = raw_i + first_ring_index;
-            let angle = TAU * i as f32 / ring_length as f32;
-
-            splotches[i] = Splotch {
-                xy: world::XY {
-                    x: MAP_CENTER.x + world::XD((x_radius * f32::cos(angle)) as world::Inner),
-                    y: MAP_CENTER.y + world::YD((y_radius * f32::sin(angle)) as world::Inner),
-                },
-                colour: CardColour::ALL[raw_i],
-                radius: 8,
-            }
-        }
-
-        let mut locks = Locks::default();
-        // Likely to be removed
-        for _ in 0..0 {
-            let xy = world::XY {
-                x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
-                y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
-            };
-
-            if let Some(card) = deck.pop() {
-                let lock = Lock {
-                    xy,
-                    lights: (&[
-                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
-                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
-                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
-                    ][..]).into(),
-                    reward: Some(Reward::Item(card)),
-                };
-
-                locks.locks.push(lock);
-            }
-        }
-
-        // Temp to test auto-win
-        for _ in 0..1 {
-            let xy = world::XY {
-                x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
-                y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
-            };
-
-            if let Some(card) = deck.pop() {
-                locks.locks.push(Lock {
-                    xy,
-                    lights: (&[
-                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
-                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
-                        LockLight { matcher: inventory.cells[xs::index(rng, 0..inventory.cells.len())], state: <_>::default() },
-                    ][..]).into(),
-                    reward: Some(Reward::Win),
-                });
-            }
-        }
-
-        // Temp to test free cards
-        for _ in 0..20 {
-            let xy = world::XY {
-                x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
-                y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
-            };
-
-            if let Some(card) = deck.pop() {
-                let lock = Lock {
-                    xy,
-                    lights: (&[][..]).into(),
-                    reward: Some(Reward::Item(card)),
-                };
-
-                assert!(lock.lights.is_empty());
-
-                locks.locks.push(lock);
-            }
-        }
-
-        locks.locks.sort_by_key(|l| l.xy);
 
         Self {
             seed,
@@ -733,11 +725,11 @@ impl State {
                         // SFX Good place for click sound effect
                         animation.state = LockAnimationState::Remove(0);
 
-                        if let (Some(lock), Some(card)) = 
+                        if let (Some(lock), Some(card)) =
                             (
                                 self.locks.locks.get_mut(animation.lock_index),
                                 self.inventory.cells.get(animation.inventory_index)
-                            ) 
+                            )
                         {
                             if let Some(light) = lock.matching_light_mut(*card) {
                                 light.state = LockLightState::Correct;
@@ -756,11 +748,11 @@ impl State {
                     if *at_frame > MAX_REMOVE_FRAME {
                         let mut reward = None;
 
-                        if let (Some(lock), Some(card)) = 
+                        if let (Some(lock), Some(card)) =
                             (
                                 self.locks.locks.get_mut(animation.lock_index),
                                 self.inventory.cells.get(animation.inventory_index)
-                            ) 
+                            )
                         {
                             // Dispense reward
 
@@ -831,6 +823,15 @@ impl State {
         // Update
         //
 
+        {
+            // FIXME this should start an animation moving the card to the inventory, instead
+            let lock = &mut self.locks.locks[self.locks.index];
+            if lock.lights.is_empty() && matches!(lock.reward, Some(Reward::Item(_))) {
+                let reward = lock.reward.take().expect("We just checked that the reward was an item!");
+                self.apply_reward(reward);
+            }
+        }
+
         let inventory_cell_wh = edge_wh + specs.keycard_shuffle_cards.tile() + edge_wh;
 
         let inventory_inner_rect = nine_slice::inner_rect(edge_wh, INVENTORY_OUTER_RECT);
@@ -843,10 +844,10 @@ impl State {
                 UiSection::Map => {
                     match dir {
                         Dir::Up => {
-                            
+
                         }
                         Dir::Down => {
-                            
+
                         }
                         Dir::Left => {
                             if self.locks.index > 0 {
@@ -862,27 +863,27 @@ impl State {
 
 
                     let lock = &self.locks.locks[self.locks.index];
-        
+
                     let mut xy = world_to_unscaled(lock.xy, self.world_scroll);
 
                     let lock_tile = specs.keycard_shuffle_lights.tile();
-                    
+
                     while !lock_scene_inner_rect.contains(xy) {
                         // If the top of the card is above the clip rect, adjust scroll so that it is in view, at the top
                         if xy.y < lock_scene_inner_rect.y {
                             self.world_scroll.yd += lock_scene_inner_rect.h.into();
                         }
-    
+
                         // If the bottom of the card is below the clip rect, adjust scroll so that it is in view, at the bottom
                         if xy.y + lock_tile.h > lock_scene_inner_rect.y + lock_scene_inner_rect.h {
                             self.world_scroll.yd -= lock_scene_inner_rect.h.into();
                         }
-    
+
                         // If the left of the card is above the clip rect, adjust scroll so that it is in view, at the top
                         if xy.x < lock_scene_inner_rect.x {
                             self.world_scroll.xd += lock_scene_inner_rect.w.into();
                         }
-    
+
                         // If the right of the card is below the clip rect, adjust scroll so that it is in view, at the bottom
                         if xy.x + lock_tile.w > lock_scene_inner_rect.x + lock_scene_inner_rect.w {
                             self.world_scroll.xd -= lock_scene_inner_rect.w.into();
@@ -893,7 +894,7 @@ impl State {
                 },
                 UiSection::Inventory => {
                     let inventory_cells_wide_count = usize::from(inventory_inner_rect.w / inventory_cell_wh.w.get());
-        
+
                     match dir {
                         Dir::Up => {
                             if self.inventory.index >= inventory_cells_wide_count {
@@ -916,15 +917,15 @@ impl State {
                             }
                         }
                     }
-        
-                    // This is a version of the render loop, done here to find the 
+
+                    // This is a version of the render loop, done here to find the
                     // amount to scroll.
                     // If we ever have a third place we do this, then combine them
-        
+
                     let mut inventory_render_index = 0;
-        
+
                     let mut at = inventory_inner_rect.xy();
-        
+
                     while inventory_render_index < self.inventory.cells.len() {
                         // draw selectrum
                         if inventory_render_index == self.inventory.index {
@@ -934,20 +935,20 @@ impl State {
                                 w: inventory_cell_wh.w,
                                 h: inventory_cell_wh.h,
                             } + self.inventory_scroll;
-        
+
                             // If the top of the card is above the clip rect, adjust scroll so that it is in view, at the top
                             if selected_at.y < inventory_inner_rect.y {
                                 self.inventory_scroll.yd += inventory_cell_wh.h.into();
                             }
-        
+
                             // If the bottom of the card is below the clip rect, adjust scroll so that it is in view, at the bottom
                             if selected_at.y + selected_at.h > inventory_y_max {
                                 self.inventory_scroll.yd -= inventory_cell_wh.h.into();
                             }
-        
+
                             break
                         }
-        
+
                         at.x += inventory_cell_wh.w;
                         if at.x + inventory_cell_wh.w >= inventory_x_max {
                             at.y += inventory_cell_wh.h;
@@ -1163,7 +1164,7 @@ impl State {
             let lock = &self.locks.locks[i];
 
             let xy = world_to_unscaled(lock.xy, self.world_scroll);
-            
+
             // Render flag
             let sprite_offset = match self.flag_state {
                 FlagState::Zero(_) => 0,
@@ -1219,18 +1220,18 @@ impl State {
         } else {
             for (i, light) in lock.lights.iter().enumerate() {
                 // Outer ring
-    
+
                 let xy = unscaled::XY {
                     x: light_base_x + unscaled::W::new(i as unscaled::Inner * 16),
                     y: light_y,
                 };
-    
+
                 commands.sspr_override(
                     specs.keycard_shuffle_lights.xy_from_tile_sprite(0u16),
                     specs.keycard_shuffle_lights.rect(xy),
                     PALETTE[0]
                 );
-    
+
                 match light.state {
                     LockLightState::Off => {},
                     LockLightState::Correct => {
@@ -1253,16 +1254,16 @@ impl State {
             // Render card slot back
 
             commands.sspr(slot_sprite_xy, slot_rect);
-    
+
             let slot_overlay_x_shift = slot_rect.w.halve().inc();
-    
+
             let mut slot_overlay_sprite_xy = slot_sprite_xy;
             slot_overlay_sprite_xy.x += slot_overlay_x_shift;
-    
+
             let mut slot_overlay_rect = slot_rect;
             slot_overlay_rect.x += slot_overlay_x_shift;
             slot_overlay_rect.w -= slot_overlay_x_shift;
-    
+
             match self.animations.lock {
                 Some(LockAnimation{ ref state, inventory_index, .. }) => {
                     if let Some(item) = self.inventory.cells.get(inventory_index) {
@@ -1277,18 +1278,18 @@ impl State {
                                 unscaled::X(unscaled::lerp(CARD_X_MIN.0, fraction, card_x_max.0))
                             },
                         };
-    
+
                         let xy = unscaled::XY {
                             x,
                             y: card_y,
                         };
-        
+
                         draw_card!(xy, item, slot_overlay_rect.x);
                     }
                 }
                 None => {}
             }
-    
+
             // Render card slot overlay
             commands.sspr(slot_overlay_sprite_xy, slot_overlay_rect);
         }
