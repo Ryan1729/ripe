@@ -1,3 +1,5 @@
+#![deny(unused_variables)]
+
 use gfx::{Commands, AddDrawCommands};
 use gfx_sizes::{ARGB};
 use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
@@ -30,7 +32,7 @@ impl CardColour {
         Self::Cyan,
     ];
 
-    fn index(self) -> u16 {
+    const fn index(self) -> u16 {
         match self {
             CardColour::Blue => 0,
             CardColour::Green => 1,
@@ -39,6 +41,14 @@ impl CardColour {
             CardColour::Purple => 4,
             CardColour::Cyan => 5,
         }
+    }
+}
+
+type CardColourFlags = u8;
+
+impl CardColour {
+    const fn flag(self) -> CardColourFlags {
+        1 << (self.index() as CardColourFlags)
     }
 }
 
@@ -59,12 +69,12 @@ impl CardSymbol {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct CardKind {
+pub struct CardKind {
     colour: CardColour,
     symbol: CardSymbol,
 }
 
-type InventoryItem = CardKind;
+pub type InventoryItem = CardKind;
 
 #[derive(Clone, Debug, Default)]
 pub struct Inventory {
@@ -389,8 +399,6 @@ pub struct Lock {
     reward: Option<Reward>,
 }
 
-type LightIndex = usize;
-
 impl Lock {
     fn is_open(&self) -> bool {
         // Assume true so a 0 lights lock is always open
@@ -513,6 +521,20 @@ pub struct Splotch {
     radius: Distance,
 }
 
+impl Splotch {
+    fn contains(&self, xy: world::XY) -> bool {
+        // We model as a circle for simplicity, even though as of now we draw these as hexagons.
+
+        // We compare squared distances to avoid a square root, since it's easy in this case
+        let x_leg = self.xy.x.0 - xy.x.0;
+        let y_leg = self.xy.y.0 - xy.y.0;
+
+        let squared_distance = (x_leg * x_leg) + (y_leg * y_leg);
+
+        squared_distance <= self.radius as i16 * self.radius as i16
+    }
+}
+
 const MAX_SPLOTCH_COUNT: u8 = 6;
 
 type Splotches = [Splotch; MAX_SPLOTCH_COUNT as usize];
@@ -559,7 +581,7 @@ impl State {
                 radius: 6,
             };
 
-                    let first_ring_index = center_index + 1;
+            let first_ring_index = center_index + 1;
 
             // Ring second so it is drawn on top of the center
             for raw_i in 0..ring_length {
@@ -596,14 +618,15 @@ impl State {
             y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
         };
 
-        let mut lock_xy = win_xy;
-        let mut light_specs = Vec::with_capacity(3);
+        let lock_xy = win_xy;
+        let light_specs = Vec::with_capacity(3);
 
         use std::collections::VecDeque;
 
-        let mut to_place = VecDeque::with_capacity(deck.len());
+        let to_place = VecDeque::with_capacity(deck.len());
 
-        struct PlacementState {
+        struct PlacementState<'splotches> {
+            splotches: &'splotches Splotches,
             deck: Vec<CardKind>,
             to_place: VecDeque<Reward>,
             light_specs: Vec<LockLight>,
@@ -611,17 +634,62 @@ impl State {
         }
 
         let mut placement_state = PlacementState {
+            splotches: &splotches,
             deck,
             to_place,
             light_specs,
             lock_xy,
         };
 
-        fn place_lock_for_reward(placement_state: &mut PlacementState, locks: &mut Vec<Lock>, rng: &mut Xs, reward: Reward) {
+        fn map_colours_at(
+            splotches: &Splotches,
+            xy: world::XY
+        ) -> CardColourFlags {
+            let mut output = 0;
+
+            for splotch in splotches {
+                if splotch.contains(xy) {
+                    output |= splotch.colour.flag();
+                }
+            }
+
+            output
+        }
+
+        fn place_lock_for_reward(
+            placement_state: &mut PlacementState,
+            locks: &mut Vec<Lock>,
+            rng: &mut Xs,
+            reward: Reward
+        ) {
             // Place the passed in reward
-            // TODO pull out cards based on the colour of where the xy is
+            // TODO ensure that every spot in exactly one colour ends up with that colour's card, if available.
+            // Likely need to pick all the points first to accomplish that
+            let target_colours = map_colours_at(
+                placement_state.splotches,
+                placement_state.lock_xy
+            );
+
             while placement_state.light_specs.len() != 3 && !placement_state.deck.is_empty() {
-                let card = placement_state.deck.pop().expect("We just checked that the deck isn't empty!");
+                let mut card_opt = None;
+
+                // Reverse so more likely to hit the fast path of no shifting needed
+                for i in (0..placement_state.deck.len()).rev() {
+                    let flag = placement_state.deck[i].colour.flag();
+
+                    if target_colours == 0 || (flag & target_colours) != 0 {
+                        card_opt = Some(placement_state.deck.remove(i));
+                        break
+                    }
+                }
+
+                let card = card_opt
+                    .or_else(|| {
+                        // TODO? Pick a card from a colour with the most cards left in the deck
+                        // to preserve options as long as possible?
+                        placement_state.deck.pop()
+                    })
+                    .expect("We just checked that the deck isn't empty!");
 
                 placement_state.light_specs.push(LockLight { matcher: card, state: <_>::default() });
 
@@ -663,7 +731,7 @@ impl State {
 
         locks.locks.sort_by_key(|l| l.xy);
 
-        let mut inventory = Inventory {
+        let inventory = Inventory {
             cells: Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len()),
             index: 0,
         };
@@ -748,11 +816,7 @@ impl State {
                     if *at_frame > MAX_REMOVE_FRAME {
                         let mut reward = None;
 
-                        if let (Some(lock), Some(card)) =
-                            (
-                                self.locks.locks.get_mut(animation.lock_index),
-                                self.inventory.cells.get(animation.inventory_index)
-                            )
+                        if let Some(lock) = self.locks.locks.get_mut(animation.lock_index)
                         {
                             // Dispense reward
 
@@ -962,8 +1026,7 @@ impl State {
             }
         } else if input.pressed_this_frame(Button::A) {
             match self.ui_section {
-                UiSection::Map => {},
-                UiSection::Inventory => {
+                UiSection::Map | UiSection::Inventory => {
                     if self.animations.lock.is_none() {
                         let mut reward = None;
 
