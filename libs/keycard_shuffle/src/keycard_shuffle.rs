@@ -46,6 +46,23 @@ impl CardColour {
 
 type CardColourFlags = u8;
 
+#[allow(unused)]
+fn flag_string(flags: CardColourFlags) -> String {
+    let mut output = String::new();
+
+    for i in 0..CardColour::ALL.len() as CardColourFlags {
+        if (flags & (1 << i)) != 0 {
+            output.push_str(&format!("{:?} ", CardColour::ALL[usize::from(i)]));
+        }
+    }
+
+    if output.is_empty() {
+        output.push_str("(none)");
+    }
+
+    output
+}
+
 impl CardColour {
     const fn flag(self) -> CardColourFlags {
         1 << (self.index() as CardColourFlags)
@@ -58,13 +75,17 @@ enum CardSymbol {
     None,
     OnePip,
     TwoPips,
+    ThreePips,
+    FourPips,
 }
 
 impl CardSymbol {
-    const ALL: [Self; 3] = [
+    const ALL: [Self; 5] = [
         Self::None,
         Self::OnePip,
         Self::TwoPips,
+        Self::ThreePips,
+        Self::FourPips,
     ];
 }
 
@@ -539,6 +560,216 @@ const MAX_SPLOTCH_COUNT: u8 = 6;
 
 type Splotches = [Splotch; MAX_SPLOTCH_COUNT as usize];
 
+fn generate_splotches(/* we intend to make these random eventually */_rng: &mut Xs) -> Splotches {
+    let mut splotches = Splotches::default();
+
+    let x_radius = MAP_WH.w.halve().get() as f32 * 0.9;
+    let y_radius = MAP_WH.h.halve().get() as f32 * 0.9;
+
+    let ring_length = (MAX_SPLOTCH_COUNT - 1) as usize;
+
+    let center_index = 0;
+
+    splotches[center_index] = Splotch {
+        xy: MAP_CENTER,
+        colour: CardColour::ALL[CardColour::ALL.len() - 1],
+        radius: 6,
+    };
+
+    let first_ring_index = center_index + 1;
+
+    // Ring second so it is drawn on top of the center
+    for raw_i in 0..ring_length {
+        let i = raw_i + first_ring_index;
+        let angle = TAU * i as f32 / ring_length as f32;
+
+        splotches[i] = Splotch {
+            xy: world::XY {
+                x: MAP_CENTER.x + world::XD((x_radius * f32::cos(angle)) as world::Inner),
+                y: MAP_CENTER.y + world::YD((y_radius * f32::sin(angle)) as world::Inner),
+            },
+            colour: CardColour::ALL[raw_i],
+            radius: 8,
+        }
+    }
+
+    splotches
+}
+
+fn map_colours_at(
+    splotches: &Splotches,
+    xy: world::XY
+) -> CardColourFlags {
+    let mut output = 0;
+
+    for splotch in splotches {
+        if splotch.contains(xy) {
+            output |= splotch.colour.flag();
+        }
+    }
+
+    output
+}
+
+fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
+    let mut locks = Locks::default();
+
+    // Shuffle up a deck of cards to draw from.
+    let mut deck = Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len());
+
+    for colour in CardColour::ALL {
+        for symbol in CardSymbol::ALL {
+            deck.push(
+                CardKind { colour, symbol },
+            );
+        }
+    }
+
+    xs::shuffle(rng, &mut deck);
+
+    // Pick a random spot for the final reward.
+    let win_xy = world::XY {
+        x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
+        y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
+    };
+
+    let lock_xy = win_xy;
+    let light_specs = Vec::with_capacity(3);
+
+    use std::collections::VecDeque;
+
+    let to_place = VecDeque::with_capacity(deck.len());
+
+    struct PlacementState<'splotches> {
+        splotches: &'splotches Splotches,
+        deck: Vec<CardKind>,
+        to_place: VecDeque<Reward>,
+        light_specs: Vec<LockLight>,
+        lock_xy: world::XY,
+    }
+
+    let mut placement_state = PlacementState {
+        splotches: &splotches,
+        deck,
+        to_place,
+        light_specs,
+        lock_xy,
+    };
+
+    fn place_lock_for_reward(
+        placement_state: &mut PlacementState,
+        locks: &mut Vec<Lock>,
+        rng: &mut Xs,
+        reward: Reward
+    ) {
+        // Place the passed in reward
+        // TODO ensure that every spot in exactly one colour ends up with that colour's card, if available.
+        // Likely need to pick all the points first to accomplish that
+        let target_colours = map_colours_at(
+            placement_state.splotches,
+            placement_state.lock_xy
+        );
+
+        while placement_state.light_specs.len() != 3 && !placement_state.deck.is_empty() {
+            let mut card_opt = None;
+
+            // Reverse so more likely to hit the fast path of no shifting needed
+            for i in (0..placement_state.deck.len()).rev() {
+                let flag = placement_state.deck[i].colour.flag();
+
+                if target_colours == 0 || (flag & target_colours) != 0 {
+                    card_opt = Some(placement_state.deck.remove(i));
+                    break
+                }
+            }
+
+            let card = card_opt
+                .or_else(|| {
+                    // TODO? Pick a card from a colour with the most cards left in the deck
+                    // to preserve options as long as possible?
+                    placement_state.deck.pop()
+                })
+                .expect("We just checked that the deck isn't empty!");
+
+            placement_state.light_specs.push(LockLight { matcher: card, state: <_>::default() });
+
+            // TODO? randomize the ordering to produce different tree shapes?
+            placement_state.to_place.push_back(Reward::Item(card));
+        }
+
+        let lights: Lights = (&placement_state.light_specs[..]).into();
+        placement_state.light_specs.clear();
+
+        let lock = Lock {
+            xy: placement_state.lock_xy,
+            lights,
+            reward: Some(reward),
+        };
+
+        locks.push(lock);
+
+        placement_state.lock_xy = world::XY {
+            x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
+            y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
+        };
+
+        // Place rewards needed to unlock previously placed locks
+        while let Some(stack_reward) = placement_state.to_place.pop_front() {
+            place_lock_for_reward(placement_state, locks, rng, stack_reward);
+        }
+    }
+
+    place_lock_for_reward(&mut placement_state, &mut locks.locks, rng, Reward::Win);
+
+    // TODO
+    // Put the leftovers as free cards
+    // ... or do leftovers show up?
+    assert!(placement_state.to_place.is_empty());
+    assert!(placement_state.light_specs.is_empty());
+
+    locks.locks.sort_by_key(|l| l.xy);
+
+    locks
+}
+
+#[cfg(test)]
+mod generate_locks_assigns_colours_well_on {
+    use super::*;
+
+    #[test]
+    fn this_example() {
+        let mut rng = xs::from_seed([
+            0x0, !0x1, 0x2, 0x3,
+            0x4, 0x5, 0x6, 0x7,
+            0x8, 0x9, 0xA, 0xB,
+            0xC, 0xD, 0xE, 0xF,
+        ]);
+
+        let splotches = generate_splotches(&mut rng);
+
+        let locks = generate_locks(&mut rng, &splotches);
+
+        for lock in &locks.locks {
+            let target_colours = map_colours_at(&splotches, lock.xy);
+
+            let mut misses = vec![];
+
+            for light in lock.lights.iter() {
+                let colour = light.matcher.colour;
+
+                if target_colours == 0 || (colour.flag() & target_colours) != 0 {
+                    continue
+                }
+
+                misses.push((colour, flag_string(colour.flag()), flag_string(target_colours)));
+            }
+
+            // At least one light from each splotch should match the matcher
+            assert!(lock.lights.length == 0 || misses.len() < lock.lights.length.into(), "{misses:?}",);
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct State {
     pub seed: Seed, // For restarting
@@ -565,171 +796,9 @@ impl State {
         let mut rng_ = xs::from_seed(seed);
         let rng = &mut rng_;
 
-        // Generate all the splotches first.
-        let mut splotches = Splotches::default();
-        {
-            let x_radius = MAP_WH.w.halve().get() as f32 * 0.9;
-            let y_radius = MAP_WH.h.halve().get() as f32 * 0.9;
+        let splotches = generate_splotches(rng);
 
-            let ring_length = (MAX_SPLOTCH_COUNT - 1) as usize;
-
-            let center_index = 0;
-
-            splotches[center_index] = Splotch {
-                xy: MAP_CENTER,
-                colour: CardColour::ALL[CardColour::ALL.len() - 1],
-                radius: 6,
-            };
-
-            let first_ring_index = center_index + 1;
-
-            // Ring second so it is drawn on top of the center
-            for raw_i in 0..ring_length {
-                let i = raw_i + first_ring_index;
-                let angle = TAU * i as f32 / ring_length as f32;
-
-                splotches[i] = Splotch {
-                    xy: world::XY {
-                        x: MAP_CENTER.x + world::XD((x_radius * f32::cos(angle)) as world::Inner),
-                        y: MAP_CENTER.y + world::YD((y_radius * f32::sin(angle)) as world::Inner),
-                    },
-                    colour: CardColour::ALL[raw_i],
-                    radius: 8,
-                }
-            }
-        }
-
-        // Shuffle up a deck of cards to draw from.
-        let mut deck = Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len());
-
-        for colour in CardColour::ALL {
-            for symbol in CardSymbol::ALL {
-                deck.push(
-                    CardKind { colour, symbol },
-                );
-            }
-        }
-
-        xs::shuffle(rng, &mut deck);
-
-        // Pick a random spot for the final reward.
-        let win_xy = world::XY {
-            x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
-            y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
-        };
-
-        let lock_xy = win_xy;
-        let light_specs = Vec::with_capacity(3);
-
-        use std::collections::VecDeque;
-
-        let to_place = VecDeque::with_capacity(deck.len());
-
-        struct PlacementState<'splotches> {
-            splotches: &'splotches Splotches,
-            deck: Vec<CardKind>,
-            to_place: VecDeque<Reward>,
-            light_specs: Vec<LockLight>,
-            lock_xy: world::XY,
-        }
-
-        let mut placement_state = PlacementState {
-            splotches: &splotches,
-            deck,
-            to_place,
-            light_specs,
-            lock_xy,
-        };
-
-        fn map_colours_at(
-            splotches: &Splotches,
-            xy: world::XY
-        ) -> CardColourFlags {
-            let mut output = 0;
-
-            for splotch in splotches {
-                if splotch.contains(xy) {
-                    output |= splotch.colour.flag();
-                }
-            }
-
-            output
-        }
-
-        fn place_lock_for_reward(
-            placement_state: &mut PlacementState,
-            locks: &mut Vec<Lock>,
-            rng: &mut Xs,
-            reward: Reward
-        ) {
-            // Place the passed in reward
-            // TODO ensure that every spot in exactly one colour ends up with that colour's card, if available.
-            // Likely need to pick all the points first to accomplish that
-            let target_colours = map_colours_at(
-                placement_state.splotches,
-                placement_state.lock_xy
-            );
-
-            while placement_state.light_specs.len() != 3 && !placement_state.deck.is_empty() {
-                let mut card_opt = None;
-
-                // Reverse so more likely to hit the fast path of no shifting needed
-                for i in (0..placement_state.deck.len()).rev() {
-                    let flag = placement_state.deck[i].colour.flag();
-
-                    if target_colours == 0 || (flag & target_colours) != 0 {
-                        card_opt = Some(placement_state.deck.remove(i));
-                        break
-                    }
-                }
-
-                let card = card_opt
-                    .or_else(|| {
-                        // TODO? Pick a card from a colour with the most cards left in the deck
-                        // to preserve options as long as possible?
-                        placement_state.deck.pop()
-                    })
-                    .expect("We just checked that the deck isn't empty!");
-
-                placement_state.light_specs.push(LockLight { matcher: card, state: <_>::default() });
-
-                // TODO? randomize the ordering to produce different tree shapes?
-                placement_state.to_place.push_back(Reward::Item(card));
-            }
-
-            let lights: Lights = (&placement_state.light_specs[..]).into();
-            placement_state.light_specs.clear();
-
-            let lock = Lock {
-                xy: placement_state.lock_xy,
-                lights,
-                reward: Some(reward),
-            };
-
-            locks.push(lock);
-
-            placement_state.lock_xy = world::XY {
-                x: world::X(xs::range(rng, 0..MAP_WH.w.get() as u32) as unscaled::Inner),
-                y: world::Y(xs::range(rng, 0..MAP_WH.h.get() as u32) as unscaled::Inner),
-            };
-
-            // Place rewards needed to unlock previously placed locks
-            while let Some(stack_reward) = placement_state.to_place.pop_front() {
-                place_lock_for_reward(placement_state, locks, rng, stack_reward);
-            }
-        }
-
-        let mut locks = Locks::default();
-
-        place_lock_for_reward(&mut placement_state, &mut locks.locks, rng, Reward::Win);
-
-        // TODO
-        // Put the leftovers as free cards
-        // ... or do leftovers show up?
-        assert!(placement_state.to_place.is_empty());
-        assert!(placement_state.light_specs.is_empty());
-
-        locks.locks.sort_by_key(|l| l.xy);
+        let locks = generate_locks(rng, &splotches);
 
         let inventory = Inventory {
             cells: Vec::with_capacity(CardColour::ALL.len() * CardSymbol::ALL.len()),
@@ -1166,28 +1235,48 @@ impl State {
                     PALETTE[6]
                 );
 
+                let base_pip_xy = label_base_xy
+                    + letters_wh.w + lights_wh.w.halve()
+                    + letters_wh.h.halve() - lights_wh.h.halve();
+
                 // Symbol (if any)
                 match kind.symbol {
                     CardSymbol::None => {},
                     CardSymbol::OnePip => {
                         draw_pip_at!(
                             @commands: cmds,
-                            label_base_xy
-                                + letters_wh.w + lights_wh.w.halve()
-                                + letters_wh.h.halve() - lights_wh.h.halve()
+                            base_pip_xy
                         );
                     },
                     CardSymbol::TwoPips => {
-                        let one_pip_xy = label_base_xy
-                            + letters_wh.w + lights_wh.w.halve()
-                            + letters_wh.h.halve() - lights_wh.h.halve();
-
-                        draw_pip_at!(@commands: cmds, one_pip_xy);
+                        draw_pip_at!(@commands: cmds, base_pip_xy);
 
                         draw_pip_at!(
                             @commands: cmds,
-                            one_pip_xy + lights_wh.w + lights_wh.w.halve()
+                            base_pip_xy + lights_wh.w + lights_wh.w.halve()
                         );
+                    },
+                    CardSymbol::ThreePips => {
+                        // in order from lower left to upper right
+                        let one_pip_xy = base_pip_xy + lights_wh.h.halve();
+                        let two_pip_xy = one_pip_xy + lights_wh.w + lights_wh.w.halve();
+                        let three_pip_xy = one_pip_xy + lights_wh.w.halve() - (lights_wh.h + lights_wh.h.halve());
+
+                        draw_pip_at!(@commands: cmds, one_pip_xy);
+                        draw_pip_at!(@commands: cmds, two_pip_xy);
+                        draw_pip_at!(@commands: cmds, three_pip_xy);
+                    },
+                    CardSymbol::FourPips => {
+                        // in order from lower left to upper right
+                        let one_pip_xy = base_pip_xy + lights_wh.h.halve();
+                        let two_pip_xy = one_pip_xy + lights_wh.w + lights_wh.w.halve();
+                        let three_pip_xy = one_pip_xy - (lights_wh.h + lights_wh.h.halve());
+                        let four_pip_xy = three_pip_xy + lights_wh.w + lights_wh.w.halve();
+
+                        draw_pip_at!(@commands: cmds, one_pip_xy);
+                        draw_pip_at!(@commands: cmds, two_pip_xy);
+                        draw_pip_at!(@commands: cmds, three_pip_xy);
+                        draw_pip_at!(@commands: cmds, four_pip_xy);
                     },
                 };
             });
