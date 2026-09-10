@@ -98,8 +98,14 @@ pub struct CardKind {
 pub type InventoryItem = CardKind;
 
 #[derive(Clone, Debug, Default)]
+pub struct InventoryCell {
+    item: InventoryItem,
+    used: bool
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct Inventory {
-    cells: Vec<InventoryItem>,
+    cells: Vec<InventoryCell>,
     index: Index,
 }
 
@@ -553,6 +559,7 @@ pub struct Splotch {
 }
 
 impl Splotch {
+    #[cfg(false)]
     fn contains(&self, xy: world::XY) -> bool {
         // We model as a circle for simplicity, even though as of now we draw these as hexagons.
 
@@ -665,9 +672,13 @@ fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
     
                 placement_state.light_specs.push(LockLight { matcher: card, state: <_>::default() });
     
-                // TODO randomize the ordering to produce different tree shapes or otherwise make the
-                // structure more interesting
-                placement_state.to_place.push_back(Reward::Item(card));
+                // randomize the ordering to produce different tree shapes in an 
+                // attempt to make the structure more interesting
+                if xs::range(rng, 0..2) == 0 {
+                    placement_state.to_place.push_front(Reward::Item(card));
+                } else {
+                    placement_state.to_place.push_back(Reward::Item(card));
+                }
             }
         }
 
@@ -749,8 +760,7 @@ fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
 
     place_lock_for_reward(&mut placement_state, &mut locks.locks, rng, Reward::Win);
 
-    // TODO
-    // Put the leftovers as free cards
+    // TODO? Put the leftovers as free cards
     // ... or do leftovers show up?
     assert!(placement_state.to_place.is_empty());
     assert!(placement_state.light_specs.is_empty());
@@ -895,9 +905,9 @@ impl State {
     fn apply_reward(&mut self, reward: Reward) {
         match reward {
             Reward::Win => { self.won = true },
-            Reward::Item(card) => {
+            Reward::Item(item) => {
                 // TODO maintain sorted order?
-                self.inventory.cells.push(card);
+                self.inventory.cells.push(InventoryCell { item, used: <_>::default() });
                 self.inventory.index = self.inventory.cells.len() - 1;
             },
         }
@@ -921,14 +931,15 @@ impl State {
                         // SFX Good place for click sound effect
                         animation.state = LockAnimationState::Remove(0);
 
-                        if let (Some(lock), Some(card)) =
+                        if let (Some(lock), Some(cell)) =
                             (
                                 self.locks.locks.get_mut(animation.lock_index),
-                                self.inventory.cells.get(animation.inventory_index)
+                                self.inventory.cells.get_mut(animation.inventory_index)
                             )
                         {
-                            if let Some(light) = lock.matching_light_mut(*card) {
+                            if let Some(light) = lock.matching_light_mut(cell.item) {
                                 light.state = LockLightState::Correct;
+                                cell.used = true;
                             } else {
                                 for light in lock.lights.iter_mut() {
                                     if light.state != LockLightState::Correct {
@@ -987,7 +998,7 @@ impl State {
 
     pub fn update_and_render(
         &mut self,
-        mut commands: &mut Commands,
+        commands: &mut Commands,
         specs: &sprite::Specs,
         input: Input,
         _speaker: &mut Speaker,
@@ -1219,9 +1230,6 @@ impl State {
         const SELECTRUM_COLOUR: ARGB = PALETTE[3];
         const INDICATOR_COLOUR: ARGB = PALETTE[0];
 
-        let letters_wh = specs.keycard_shuffle_letters.tile();
-        let lights_wh = specs.keycard_shuffle_lights.tile();
-
         let slot_sprite_xy = specs.keycard_shuffle_slot.xy_from_tile_sprite(0u16);
 
         let card_y = unscaled::Y(0) + unscaled::H::new(command::HEIGHT_SIGNED / 6);
@@ -1235,110 +1243,123 @@ impl State {
 
         let card_x_max = slot_rect.x + unscaled::W::new(2);
 
-        macro_rules! draw_pip_at {
-            ($xy: expr) => {
-                draw_pip_at!(@commands: &mut commands, $xy);
+        #[derive(Default)]
+        struct DrawCardSpec {
+            xy: unscaled::XY,
+            kind: CardKind,
+            cutoff_x: Option<unscaled::X>,
+            used: bool,
+        }
+
+        fn draw_card(
+            commands: &mut impl AddDrawCommands,
+            specs: &sprite::Specs,
+            DrawCardSpec { xy, kind, cutoff_x, used }: DrawCardSpec,
+        ) {
+            macro_rules! draw_pip_at {
+                ($xy: expr) => {
+                    draw_pip_at!(@commands: &mut commands, $xy);
+                };
+                (@commands: $commands: expr, $xy: expr) => {
+                    $commands.sspr_override(
+                        specs.keycard_shuffle_lights.xy_from_tile_sprite(2u16),
+                        specs.keycard_shuffle_lights.rect($xy),
+                        PALETTE[6]
+                    );
+                }
+            }
+
+            let letters_wh = specs.keycard_shuffle_letters.tile();
+            let lights_wh = specs.keycard_shuffle_lights.tile();
+            let card_wh = specs.keycard_shuffle_cards.tile();
+
+            let cutoff_x = cutoff_x.unwrap_or_else(|| unscaled::X(command::WIDTH_SIGNED));
+            let clip_rect = unscaled::Rect {
+                x: unscaled::X(0),
+                y: unscaled::Y(0),
+                w: cutoff_x - unscaled::X(0),
+                h: unscaled::H::new(command::HEIGHT_SIGNED),
             };
-            (@commands: $commands: expr, $xy: expr) => {
-                $commands.sspr_override(
-                    specs.keycard_shuffle_lights.xy_from_tile_sprite(2u16),
-                    specs.keycard_shuffle_lights.rect($xy),
+
+            let colour_index: u16 = kind.colour.index();
+
+            let mut cmds = commands.clipped(clip_rect);
+
+            // Card Back
+            cmds.sspr_override(
+                specs.keycard_shuffle_cards.xy_from_tile_sprite(0u16),
+                specs.keycard_shuffle_cards.rect(xy),
+                PALETTE[usize::from(colour_index)],
+            );
+
+            // Card Stripe
+            cmds.sspr(
+                specs.keycard_shuffle_cards.xy_from_tile_sprite(1u16),
+                specs.keycard_shuffle_cards.rect(xy),
+            );
+
+            // Colour Label
+            let label_base_xy = xy + unscaled::H::new(20);
+
+            cmds.sspr_override(
+                specs.keycard_shuffle_letters.xy_from_tile_sprite(colour_index),
+                specs.keycard_shuffle_letters.rect(label_base_xy),
+                PALETTE[6]
+            );
+
+            let base_pip_xy = label_base_xy
+                + letters_wh.w + lights_wh.w.halve()
+                + letters_wh.h.halve() - lights_wh.h.halve();
+
+            // Symbol (if any)
+            match kind.symbol {
+                CardSymbol::None => {},
+                CardSymbol::OnePip => {
+                    draw_pip_at!(
+                        @commands: cmds,
+                        base_pip_xy
+                    );
+                },
+                CardSymbol::TwoPips => {
+                    draw_pip_at!(@commands: cmds, base_pip_xy);
+
+                    draw_pip_at!(
+                        @commands: cmds,
+                        base_pip_xy + lights_wh.w + lights_wh.w.halve()
+                    );
+                },
+                CardSymbol::ThreePips => {
+                    // in order from lower left to upper right
+                    let one_pip_xy = base_pip_xy + lights_wh.h.halve();
+                    let two_pip_xy = one_pip_xy + lights_wh.w + lights_wh.w.halve();
+                    let three_pip_xy = one_pip_xy + lights_wh.w.halve() - (lights_wh.h + lights_wh.h.halve());
+
+                    draw_pip_at!(@commands: cmds, one_pip_xy);
+                    draw_pip_at!(@commands: cmds, two_pip_xy);
+                    draw_pip_at!(@commands: cmds, three_pip_xy);
+                },
+                CardSymbol::FourPips => {
+                    // in order from lower left to upper right
+                    let one_pip_xy = base_pip_xy + lights_wh.h.halve();
+                    let two_pip_xy = one_pip_xy + lights_wh.w + lights_wh.w.halve();
+                    let three_pip_xy = one_pip_xy - (lights_wh.h + lights_wh.h.halve());
+                    let four_pip_xy = three_pip_xy + lights_wh.w + lights_wh.w.halve();
+
+                    draw_pip_at!(@commands: cmds, one_pip_xy);
+                    draw_pip_at!(@commands: cmds, two_pip_xy);
+                    draw_pip_at!(@commands: cmds, three_pip_xy);
+                    draw_pip_at!(@commands: cmds, four_pip_xy);
+                },
+            };
+
+            // Used indicator
+            if used {
+                commands.sspr_override(
+                    specs.keycard_shuffle_lights.xy_from_tile_sprite(7u16),
+                    specs.keycard_shuffle_lights.rect(xy + card_wh - lights_wh  - lights_wh.halve()),
                     PALETTE[6]
                 );
             }
-        }
-
-        macro_rules! draw_card {
-            ($xy: expr, $kind: expr) => ({
-                draw_card!($xy, $kind, unscaled::X(command::WIDTH_SIGNED))
-            });
-            ($xy: expr, $kind: expr, $cutoff_x: expr) => ({
-                draw_card!(@commands: &mut commands, $xy, $kind, $cutoff_x)
-            });
-            (@commands: $commands: expr, $xy: expr, $kind: expr) => ({
-                draw_card!(@commands: $commands, $xy, $kind, unscaled::X(command::WIDTH_SIGNED))
-            });
-            (@commands: $commands: expr, $xy: expr, $kind: expr, $cutoff_x: expr) => ({
-                let xy = $xy;
-                let kind = $kind;
-                let clip_rect = unscaled::Rect {
-                    x: unscaled::X(0),
-                    y: unscaled::Y(0),
-                    w: $cutoff_x - unscaled::X(0),
-                    h: unscaled::H::new(command::HEIGHT_SIGNED),
-                };
-
-                let colour_index: u16 = kind.colour.index();
-
-                let mut cmds = $commands.clipped(clip_rect);
-
-                // Card Back
-                cmds.sspr_override(
-                    specs.keycard_shuffle_cards.xy_from_tile_sprite(0u16),
-                    specs.keycard_shuffle_cards.rect(xy),
-                    PALETTE[usize::from(colour_index)],
-                );
-
-                // Card Stripe
-                cmds.sspr(
-                    specs.keycard_shuffle_cards.xy_from_tile_sprite(1u16),
-                    specs.keycard_shuffle_cards.rect(xy),
-                );
-
-                // Colour Label
-                let label_base_xy = xy + unscaled::H::new(20);
-
-                cmds.sspr_override(
-                    specs.keycard_shuffle_letters.xy_from_tile_sprite(colour_index),
-                    specs.keycard_shuffle_letters.rect(label_base_xy),
-                    PALETTE[6]
-                );
-
-                let base_pip_xy = label_base_xy
-                    + letters_wh.w + lights_wh.w.halve()
-                    + letters_wh.h.halve() - lights_wh.h.halve();
-
-                // Symbol (if any)
-                match kind.symbol {
-                    CardSymbol::None => {},
-                    CardSymbol::OnePip => {
-                        draw_pip_at!(
-                            @commands: cmds,
-                            base_pip_xy
-                        );
-                    },
-                    CardSymbol::TwoPips => {
-                        draw_pip_at!(@commands: cmds, base_pip_xy);
-
-                        draw_pip_at!(
-                            @commands: cmds,
-                            base_pip_xy + lights_wh.w + lights_wh.w.halve()
-                        );
-                    },
-                    CardSymbol::ThreePips => {
-                        // in order from lower left to upper right
-                        let one_pip_xy = base_pip_xy + lights_wh.h.halve();
-                        let two_pip_xy = one_pip_xy + lights_wh.w + lights_wh.w.halve();
-                        let three_pip_xy = one_pip_xy + lights_wh.w.halve() - (lights_wh.h + lights_wh.h.halve());
-
-                        draw_pip_at!(@commands: cmds, one_pip_xy);
-                        draw_pip_at!(@commands: cmds, two_pip_xy);
-                        draw_pip_at!(@commands: cmds, three_pip_xy);
-                    },
-                    CardSymbol::FourPips => {
-                        // in order from lower left to upper right
-                        let one_pip_xy = base_pip_xy + lights_wh.h.halve();
-                        let two_pip_xy = one_pip_xy + lights_wh.w + lights_wh.w.halve();
-                        let three_pip_xy = one_pip_xy - (lights_wh.h + lights_wh.h.halve());
-                        let four_pip_xy = three_pip_xy + lights_wh.w + lights_wh.w.halve();
-
-                        draw_pip_at!(@commands: cmds, one_pip_xy);
-                        draw_pip_at!(@commands: cmds, two_pip_xy);
-                        draw_pip_at!(@commands: cmds, three_pip_xy);
-                        draw_pip_at!(@commands: cmds, four_pip_xy);
-                    },
-                };
-            });
         }
 
         // Render lock scene
@@ -1411,12 +1432,17 @@ impl State {
         if lock.lights.is_empty() {
             match &lock.reward {
                 Some(Reward::Item(card)) => {
-                    draw_card!(
-                        unscaled::XY {
-                            x: CARD_X_MIN,
-                            y: card_y,
+                    draw_card(
+                        commands,
+                        specs,
+                        DrawCardSpec {
+                            xy: unscaled::XY {
+                                x: CARD_X_MIN,
+                                y: card_y,
+                            },
+                            kind: *card,
+                            ..<_>::default()
                         },
-                        card
                     );
                 }
                 Some(Reward::Win) => {
@@ -1477,7 +1503,7 @@ impl State {
 
             match self.animations.lock {
                 Some(LockAnimation{ ref state, inventory_index, .. }) => {
-                    if let Some(item) = self.inventory.cells.get(inventory_index) {
+                    if let Some(cell) = self.inventory.cells.get(inventory_index) {
                         let x = match state {
                             LockAnimationState::Insert(frame_count) => {
                                 let fraction = (*frame_count) as f32 / MAX_INSERT_FRAME as f32;
@@ -1495,7 +1521,16 @@ impl State {
                             y: card_y,
                         };
 
-                        draw_card!(xy, item, slot_overlay_rect.x);
+                        draw_card(
+                            commands,
+                            specs,
+                            DrawCardSpec {
+                                xy,
+                                kind: cell.item,
+                                cutoff_x: Some(slot_overlay_rect.x),
+                                ..<_>::default()
+                            },
+                        );
                     }
                 }
                 None => {}
@@ -1506,7 +1541,6 @@ impl State {
         }
 
         // Render inventory
-        // TODO show which cards have been used already (needs to be tracked)
         commands.nine_slice_overridable(
             if self.ui_section == UiSection::AboveInventory {
                 nine_slice::Kind::CustomOutline(SELECTRUM_COLOUR)
@@ -1540,8 +1574,17 @@ impl State {
                 );
             }
 
-            if let Some(card_kind) = self.inventory.cells.get(inventory_render_index) {
-                draw_card!(@commands: &mut clipped_commands, at + edge_wh + self.inventory_scroll, card_kind);
+            if let Some(InventoryCell { item, used }) = self.inventory.cells.get(inventory_render_index) {
+                draw_card(
+                    &mut clipped_commands,
+                    specs,
+                    DrawCardSpec {
+                        xy: at + edge_wh + self.inventory_scroll,
+                        kind: *item,
+                        used: *used,
+                        ..<_>::default()
+                    },
+                );
             };
 
             at.x += inventory_cell_wh.w;
