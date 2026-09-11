@@ -559,7 +559,7 @@ pub struct Splotch {
 }
 
 impl Splotch {
-    #[cfg(false)]
+    #[cfg(test)]
     fn contains(&self, xy: world::XY) -> bool {
         // We model as a circle for simplicity, even though as of now we draw these as hexagons.
 
@@ -577,7 +577,7 @@ const MAX_SPLOTCH_COUNT: u8 = 6;
 
 type Splotches = [Splotch; MAX_SPLOTCH_COUNT as usize];
 
-fn generate_splotches(/* we intend to make these random eventually */_rng: &mut Xs) -> Splotches {
+fn generate_splotches(/* TODO make these random */_rng: &mut Xs) -> Splotches {
     let mut splotches = Splotches::default();
 
     let x_radius = MAP_WH.w.halve().get() as f32 * 0.9;
@@ -770,6 +770,8 @@ fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
     locks
 }
 
+// TODO can we ensure that every card available of the given colour gets used before a different one is?
+//      We've obseved cases that seem to break that rule
 #[cfg(test)]
 mod generate_locks_assigns_colours_well_on {
     use super::*;
@@ -839,6 +841,89 @@ mod generate_locks_assigns_colours_well_on {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct AtFromInventoryIndexInfo {
+    target_index: usize,
+    inner_rect: unscaled::Rect,
+    cell_wh: unscaled::WH,
+}
+
+fn at_from_inventory_index(info: AtFromInventoryIndexInfo) -> unscaled::XY {
+    let mut at = info.inner_rect.xy();
+
+    let per_row = info.inner_rect.w.get() / info.cell_wh.w.get();
+
+    let cell_x = info.target_index as unscaled::Inner % per_row;
+    let cell_y = info.target_index as unscaled::Inner / per_row;
+
+    at.x += info.cell_wh.w * cell_x;
+    at.y += info.cell_wh.h * cell_y;
+
+    at
+}
+
+#[cfg(test)]
+mod at_from_inventory_index_matches_the_slow_version_on {
+    use super::*;
+
+    fn at_from_inventory_index_slow(info: AtFromInventoryIndexInfo) -> unscaled::XY {
+        let x_max = info.inner_rect.x + info.inner_rect.w;
+
+        let mut at = info.inner_rect.xy();
+
+        let mut i = 0;
+
+        while i < info.target_index {
+            at.x += info.cell_wh.w;
+            if at.x + info.cell_wh.w >= x_max {
+                at.y += info.cell_wh.h;
+                at.x = info.inner_rect.x;
+            }
+
+            i += 1;
+        }
+
+        at
+    }
+
+    #[test]
+    fn on_this_range_of_examples() {
+        for target_index in 0..=128 {
+            let info = AtFromInventoryIndexInfo {
+                target_index,
+                inner_rect: unscaled::Rect {
+                    x: unscaled::X(
+                        4,
+                    ),
+                    y: unscaled::Y(
+                        164,
+                    ),
+                    w: unscaled::W::new(
+                        472,
+                    ),
+                    h: unscaled::H::new(
+                        152,
+                    ),
+                },
+                cell_wh:  unscaled::WH {
+                    w: unscaled::W::new(
+                        94,
+                    ),
+                    h: unscaled::H::new(
+                        62,
+                    ),
+                },
+            };
+
+            let actual = at_from_inventory_index(info);
+            let expected = at_from_inventory_index_slow(info);
+
+            assert_eq!(actual, expected, "target_index {target_index}");
+        }
+    }
+}
+
+
 #[derive(Clone, Debug, Default)]
 pub struct State {
     pub seed: Seed, // For restarting
@@ -906,7 +991,7 @@ impl State {
         match reward {
             Reward::Win => { self.won = true },
             Reward::Item(item) => {
-                // TODO maintain sorted order?
+                // TODO? maintain sorted order? That is, group all of the same colour together
                 self.inventory.cells.push(InventoryCell { item, used: <_>::default() });
                 self.inventory.index = self.inventory.cells.len() - 1;
             },
@@ -1027,6 +1112,7 @@ impl State {
         //
 
         {
+            // TODO
             // FIXME this should start an animation moving the card to the inventory, instead
             let lock = &mut self.locks.locks[self.locks.index];
             if lock.lights.is_empty() && matches!(lock.reward, Some(Reward::Item(_))) {
@@ -1039,7 +1125,6 @@ impl State {
 
         let inventory_inner_rect = nine_slice::inner_rect(edge_wh, INVENTORY_OUTER_RECT);
 
-        let inventory_x_max = inventory_inner_rect.x + inventory_inner_rect.w;
         let inventory_y_max = inventory_inner_rect.y + inventory_inner_rect.h;
 
         if let Some(dir) = input.dir_pressed_this_frame() {
@@ -1127,9 +1212,15 @@ impl State {
 
                     let mut inventory_render_index = 0;
 
-                    let mut at = inventory_inner_rect.xy();
-
                     while inventory_render_index < self.inventory.cells.len() {
+                        let at = at_from_inventory_index(
+                            AtFromInventoryIndexInfo {
+                                target_index: inventory_render_index,
+                                inner_rect: inventory_inner_rect,
+                                cell_wh: inventory_cell_wh,
+                            }
+                        );
+
                         // draw selectrum
                         if inventory_render_index == self.inventory.index {
                             let selected_at = unscaled::Rect {
@@ -1152,11 +1243,6 @@ impl State {
                             break
                         }
 
-                        at.x += inventory_cell_wh.w;
-                        if at.x + inventory_cell_wh.w >= inventory_x_max {
-                            at.y += inventory_cell_wh.h;
-                            at.x = inventory_inner_rect.x;
-                        }
                         inventory_render_index += 1;
                     }
                 },
@@ -1424,6 +1510,11 @@ impl State {
 
         // Render lock lights
 
+        // TODO add visual indications of how many pips there are for each light
+        // If having them always there is too much, we can make them randomly there on some lights only
+        //    That kinda fits with not quite all of the cards on a given splotch matching
+
+        
         let lock = &self.locks.locks[self.locks.index];
 
         let light_base_x = slot_xy.x - unscaled::W::new(15);
@@ -1552,11 +1643,17 @@ impl State {
 
         let mut inventory_render_index = 0;
 
-        let mut at = inventory_inner_rect.xy();
-
         let mut clipped_commands = commands.clipped(inventory_inner_rect);
 
         while inventory_render_index < self.inventory.cells.len() {
+            let at = at_from_inventory_index(
+                AtFromInventoryIndexInfo {
+                    target_index: inventory_render_index,
+                    inner_rect: inventory_inner_rect,
+                    cell_wh: inventory_cell_wh,
+                }
+            );
+
             // Render either selectrum or selection indicator
             if inventory_render_index == self.inventory.index {
                 clipped_commands.nine_slice_overridable(
@@ -1587,11 +1684,6 @@ impl State {
                 );
             };
 
-            at.x += inventory_cell_wh.w;
-            if at.x + inventory_cell_wh.w >= inventory_x_max {
-                at.y += inventory_cell_wh.h;
-                at.x = inventory_inner_rect.x;
-            }
             inventory_render_index += 1;
         }
     }
