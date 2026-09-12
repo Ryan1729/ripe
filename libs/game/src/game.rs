@@ -431,6 +431,16 @@ pub use world::hallway::State as HallwayState;
 //                back to simulating the shift patterns as we generate, but still use the trick of just ripping out things 
 //                that get in the way
 
+// Proposal for something based on Disgaea's geo-block puzzles:
+// You move on a grid
+// Winning is stepping onto a specific space
+// There's the kind of geo-blocks that lead to puzzles, like "no entry", "no throwing" and so forth.
+// To provide a challenge, there's at least one other guy on the grid that takes turns with you and 
+//   runs around throwing blocks back to the starting location.
+//     The strategy is to make them not reset things in such a ay that blocks you. Maybe they move slower than you?
+//        You should be allowed to throw them, and I guess they can throw you too.
+// Maybe the geo-blocks cannot be destroyed?
+
 // Meta-idea:
 // How many of these can we meaningfully blend? For example, a cube_maze, with ice_puzzles-like icy patches?
 

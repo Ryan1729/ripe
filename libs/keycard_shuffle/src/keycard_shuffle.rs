@@ -492,8 +492,58 @@ pub struct LockAnimation {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct ItemAnimation {
+    at: unscaled::XY,
+    item: InventoryItem,
+}
+
+impl ItemAnimation {
+    fn approach(&mut self, target: unscaled::XY) {
+        use std::cmp::{min, Ordering::*};
+        use unscaled::{W, H};
+
+        let x_rate = 3;
+        let y_rate = 3;
+        let d_x = match self.at.x.cmp(&target.x) {
+            Equal => 0,
+            Greater => {
+                let x_diff = self.at.x - target.x;
+                -(min(x_diff.get(), x_rate) as i8)
+            },
+            Less => {
+                let x_diff = target.x - self.at.x;
+                min(x_diff.get(), x_rate) as i8
+            },
+        };
+        let d_y = match self.at.y.cmp(&target.y) {
+            Equal => 0,
+            Greater => {
+                let y_diff = self.at.y - target.y;
+                -(min(y_diff.get(), y_rate) as i8)
+            },
+            Less => {
+                let y_diff = target.y - self.at.y;
+                min(y_diff.get(), y_rate) as i8
+            },
+        };
+
+        self.at.x = match d_x {
+            d_x if d_x > 0 => self.at.x.saturating_add_w(W::new(d_x as unscaled::Inner)),
+            d_x if d_x < 0 => self.at.x.saturating_sub_w(W::new(d_x.unsigned_abs() as unscaled::Inner)),
+            _ => self.at.x,
+        };
+        self.at.y = match d_y {
+            d_y if d_y > 0 => self.at.y.saturating_add_h(H::new(d_y as unscaled::Inner)),
+            d_y if d_y < 0 => self.at.y.saturating_sub_h(H::new(d_y.unsigned_abs() as unscaled::Inner)),
+            _ => self.at.y,
+        };
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct Animations {
     lock: Option<LockAnimation>,
+    items: Vec<ItemAnimation>
 }
 
 const FLAG_ZERO_FRAMES: FrameCount = 45;
@@ -842,22 +892,30 @@ mod generate_locks_assigns_colours_well_on {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct AtFromInventoryIndexInfo {
-    target_index: usize,
+struct InventorySizes {
     inner_rect: unscaled::Rect,
     cell_wh: unscaled::WH,
 }
 
-fn at_from_inventory_index(info: AtFromInventoryIndexInfo) -> unscaled::XY {
-    let mut at = info.inner_rect.xy();
+#[derive(Clone, Copy, Debug)]
+struct AtFromInventoryIndexInfo {
+    target_index: usize,
+    sizes: InventorySizes,
+}
 
-    let per_row = info.inner_rect.w.get() / info.cell_wh.w.get();
+fn at_from_inventory_index(info: AtFromInventoryIndexInfo) -> unscaled::XY {
+    let inner_rect = info.sizes.inner_rect;
+    let cell_wh = info.sizes.cell_wh;
+
+    let mut at = inner_rect.xy();
+
+    let per_row = inner_rect.w.get() / cell_wh.w.get();
 
     let cell_x = info.target_index as unscaled::Inner % per_row;
     let cell_y = info.target_index as unscaled::Inner / per_row;
 
-    at.x += info.cell_wh.w * cell_x;
-    at.y += info.cell_wh.h * cell_y;
+    at.x += cell_wh.w * cell_x;
+    at.y += cell_wh.h * cell_y;
 
     at
 }
@@ -867,17 +925,20 @@ mod at_from_inventory_index_matches_the_slow_version_on {
     use super::*;
 
     fn at_from_inventory_index_slow(info: AtFromInventoryIndexInfo) -> unscaled::XY {
-        let x_max = info.inner_rect.x + info.inner_rect.w;
+        let inner_rect = info.sizes.inner_rect;
+        let cell_wh = info.sizes.cell_wh;
 
-        let mut at = info.inner_rect.xy();
+        let x_max = inner_rect.x + inner_rect.w;
+
+        let mut at = inner_rect.xy();
 
         let mut i = 0;
 
         while i < info.target_index {
-            at.x += info.cell_wh.w;
-            if at.x + info.cell_wh.w >= x_max {
-                at.y += info.cell_wh.h;
-                at.x = info.inner_rect.x;
+            at.x += cell_wh.w;
+            if at.x + cell_wh.w >= x_max {
+                at.y += cell_wh.h;
+                at.x = inner_rect.x;
             }
 
             i += 1;
@@ -923,6 +984,10 @@ mod at_from_inventory_index_matches_the_slow_version_on {
     }
 }
 
+const REWARD_CARD_XY: unscaled::XY = unscaled::XY {
+    x: CARD_X_MIN,
+    y: unscaled::Y(command::HEIGHT_SIGNED / 6),
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
@@ -998,7 +1063,21 @@ impl State {
         }
     }
 
-    fn tick(&mut self) {
+    fn queue_reward(&mut self, reward: Reward) {
+        match reward {
+            Reward::Item(item) => {
+                self.animations.items.push(
+                    ItemAnimation {
+                        at: REWARD_CARD_XY,
+                        item,
+                    }
+                );
+            },
+            Reward::Win => self.apply_reward(reward),
+        }
+    }
+
+    fn tick(&mut self, inventory_sizes: InventorySizes) {
         // Advance animations
         // We can make an iterator if we actually need at least 3 distinct animations that are handled the same.
         if let Some(animation) = &mut self.animations.lock {
@@ -1059,7 +1138,7 @@ impl State {
                         }
 
                         if let Some(reward) = reward {
-                            self.apply_reward(reward);
+                            self.queue_reward(reward);
                         }
 
                         // Removal
@@ -1067,6 +1146,29 @@ impl State {
                     }
                 },
             };
+        }
+
+        if self.animations.items.len() > 0 {
+            let new_item_xy = at_from_inventory_index(
+                AtFromInventoryIndexInfo {
+                    target_index: self.inventory.cells.len(),
+                    sizes: inventory_sizes,
+                }
+            );
+
+            // Reverse so we can remove without messing up indexes    
+            for i in (0..self.animations.items.len()).rev() {
+                let animation = &mut self.animations.items[i];
+
+                animation.approach(new_item_xy);
+
+                if animation.at == new_item_xy {
+                    let reward = Reward::Item(animation.item);
+
+                    self.apply_reward(reward);
+                    self.animations.items.remove(i);
+                }
+            }
         }
 
         self.flag_state = match self.flag_state {
@@ -1112,18 +1214,21 @@ impl State {
         //
 
         {
-            // TODO
-            // FIXME this should start an animation moving the card to the inventory, instead
             let lock = &mut self.locks.locks[self.locks.index];
             if lock.lights.is_empty() && matches!(lock.reward, Some(Reward::Item(_))) {
                 let reward = lock.reward.take().expect("We just checked that the reward was an item!");
-                self.apply_reward(reward);
+                self.queue_reward(reward);
             }
         }
 
         let inventory_cell_wh = edge_wh + specs.keycard_shuffle_cards.tile() + edge_wh;
 
         let inventory_inner_rect = nine_slice::inner_rect(edge_wh, INVENTORY_OUTER_RECT);
+
+        let inventory_sizes = InventorySizes {
+            inner_rect: inventory_inner_rect,
+            cell_wh: inventory_cell_wh,
+        };
 
         let inventory_y_max = inventory_inner_rect.y + inventory_inner_rect.h;
 
@@ -1216,8 +1321,7 @@ impl State {
                         let at = at_from_inventory_index(
                             AtFromInventoryIndexInfo {
                                 target_index: inventory_render_index,
-                                inner_rect: inventory_inner_rect,
-                                cell_wh: inventory_cell_wh,
+                                sizes: inventory_sizes,
                             }
                         );
 
@@ -1275,7 +1379,7 @@ impl State {
                         }
 
                         if let Some(reward) = reward {
-                            self.apply_reward(reward);
+                            self.queue_reward(reward);
                         }
                     }
                 },
@@ -1294,7 +1398,7 @@ impl State {
             self.restart(specs);
         }
 
-        self.tick();
+        self.tick(inventory_sizes);
 
         //
         // Render
@@ -1318,11 +1422,9 @@ impl State {
 
         let slot_sprite_xy = specs.keycard_shuffle_slot.xy_from_tile_sprite(0u16);
 
-        let card_y = unscaled::Y(0) + unscaled::H::new(command::HEIGHT_SIGNED / 6);
-
         let slot_xy = unscaled::XY {
             x: unscaled::X(0) + unscaled::W::new((command::WIDTH_SIGNED / 8) * 7),
-            y: card_y - unscaled::H::new(4),
+            y: REWARD_CARD_XY.y - unscaled::H::new(4),
         };
 
         let slot_rect = specs.keycard_shuffle_slot.rect(slot_xy);
@@ -1527,10 +1629,7 @@ impl State {
                         commands,
                         specs,
                         DrawCardSpec {
-                            xy: unscaled::XY {
-                                x: CARD_X_MIN,
-                                y: card_y,
-                            },
+                            xy: REWARD_CARD_XY,
                             kind: *card,
                             ..<_>::default()
                         },
@@ -1609,7 +1708,7 @@ impl State {
 
                         let xy = unscaled::XY {
                             x,
-                            y: card_y,
+                            y: REWARD_CARD_XY.y,
                         };
 
                         draw_card(
@@ -1649,8 +1748,7 @@ impl State {
             let at = at_from_inventory_index(
                 AtFromInventoryIndexInfo {
                     target_index: inventory_render_index,
-                    inner_rect: inventory_inner_rect,
-                    cell_wh: inventory_cell_wh,
+                    sizes: inventory_sizes,
                 }
             );
 
@@ -1685,6 +1783,19 @@ impl State {
             };
 
             inventory_render_index += 1;
+        }
+
+        for animation in &self.animations.items {
+            draw_card(
+                commands,
+                specs,
+                DrawCardSpec {
+                    xy: animation.at,
+                    kind: animation.item,
+                    used: false,
+                    ..<_>::default()
+                },
+            );
         }
     }
 }
