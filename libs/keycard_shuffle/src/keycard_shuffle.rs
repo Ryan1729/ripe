@@ -700,7 +700,7 @@ fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
     }
 
     let mut placement_state = PlacementState {
-        target_lock_count: 3,
+        target_lock_count: xs::range(rng, 3..6) as _,
         splotches: &splotches,
         deck,
         to_place,
@@ -715,14 +715,51 @@ fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
     ) {
         // Place the passed in reward
 
+        macro_rules! get_target_colours {
+            () => ({
+                let mut target_colours = 0;
+                for spec in &placement_state.light_specs {
+                    let flag = spec.matcher.colour.flag();
+
+                    if (target_colours & flag) != 0 {
+                        // This works well because we know there are exactly 3 cards max.
+                        target_colours = flag;
+                    } else {
+                        target_colours |= flag;
+                    }
+                }
+                target_colours
+            })
+        }
+
         if locks.len() < placement_state.target_lock_count as usize {
             while placement_state.light_specs.len() != LIGHT_COUNT_USIZE && !placement_state.deck.is_empty() {
-                let card = placement_state.deck.pop()
-                    .expect("We just checked that the deck isn't empty!");
-    
+                let target_colours = get_target_colours!();
+
+                let card = if target_colours == 0 {
+                    placement_state.deck.pop()
+                        .expect("We just checked that the deck isn't empty!")
+                } else {
+                    let mut card_opt = None;
+
+                    // Reverse so we shift less on average
+                    for i in (0..placement_state.deck.len()).rev() {
+                        if (placement_state.deck[i].colour.flag() & target_colours) != 0 {
+                            card_opt = Some(placement_state.deck.remove(i));
+
+                            break
+                        }
+                    }
+
+                    card_opt.unwrap_or_else(||
+                        placement_state.deck.pop()
+                            .expect("We just checked that the deck isn't empty!")
+                    )
+                };
+
                 placement_state.light_specs.push(LockLight { matcher: card, state: <_>::default() });
-    
-                // randomize the ordering to produce different tree shapes in an 
+
+                // randomize the ordering to produce different tree shapes in an
                 // attempt to make the structure more interesting
                 if xs::range(rng, 0..2) == 0 {
                     placement_state.to_place.push_front(Reward::Item(card));
@@ -732,17 +769,7 @@ fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
             }
         }
 
-        let mut target_colours = 0;
-        for spec in &placement_state.light_specs {
-            let flag = spec.matcher.colour.flag();
-
-            if (target_colours & flag) != 0 {
-                // This works well because we know there are exactly 3 cards max.
-                target_colours = flag;
-            } else {
-                target_colours |= flag;
-            }
-        }
+        let target_colours = get_target_colours!();
 
         let colour_offset = xs::index(rng, 0..CardColour::ALL.len());
 
@@ -763,9 +790,9 @@ fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
 
                 for index in 0..placement_state.splotches.len() {
                     let i = (index + colour_offset) % placement_state.splotches.len();
-    
+
                     let splotch = &placement_state.splotches[i];
-    
+
                     if (splotch.colour.flag() & target_colours) != 0 {
                         target_splotch = Some(splotch.clone());
 
@@ -774,7 +801,7 @@ fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
                 }
 
                 if let Some(target_splotch) = target_splotch {
-                    let xy: world::XY = target_splotch.xy 
+                    let xy: world::XY = target_splotch.xy
                         - world::XYD {
                             xd: world::XD((target_splotch.radius / 2).into()),
                             yd: world::YD((target_splotch.radius / 2).into()),
@@ -820,8 +847,6 @@ fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
     locks
 }
 
-// TODO can we ensure that every card available of the given colour gets used before a different one is?
-//      We've obseved cases that seem to break that rule
 #[cfg(test)]
 mod generate_locks_assigns_colours_well_on {
     use super::*;
@@ -831,13 +856,13 @@ mod generate_locks_assigns_colours_well_on {
         xy: world::XY
     ) -> CardColourFlags {
         let mut output = 0;
-    
+
         for splotch in splotches {
             if splotch.contains(xy) {
                 output |= splotch.colour.flag();
             }
         }
-    
+
         output
     }
 
@@ -846,26 +871,46 @@ mod generate_locks_assigns_colours_well_on {
             let rng = &mut $rng;
 
             let splotches = generate_splotches(rng);
-    
+
             let locks = generate_locks(rng, &splotches);
-    
+
             for lock in &locks.locks {
                 let target_colours = map_colours_at(&splotches, lock.xy);
-    
+
                 let mut misses = vec![];
-    
+
                 for light in lock.lights.iter() {
                     let colour = light.matcher.colour;
-    
+
                     if target_colours == 0 || (colour.flag() & target_colours) != 0 {
                         continue
                     }
-    
+
                     misses.push((colour, flag_string(target_colours)));
                 }
-    
+
                 // At least one light from each splotch should match the matcher
                 assert!(lock.lights.length == 0 || misses.len() < lock.lights.length.into(), "{misses:?}",);
+
+                if target_colours != 0 && !misses.is_empty() {
+                    // If a lock needed to use a non-matching card, then all of the cards of the given
+                    // colour(s) should be used.
+
+                    let target_usage_count = target_colours.count_ones() as usize * CardColour::ALL.len();
+
+                    let mut actual_usage_count = 0;
+                    for l in &locks.locks {
+                        for light in l.lights.iter() {
+                            let colour = light.matcher.colour;
+                            if (colour.flag() & target_colours) != 0 {
+                                actual_usage_count += 1;
+                            }
+                        }
+                    }
+
+                    assert!(actual_usage_count <= target_usage_count);
+                    assert_eq!(actual_usage_count, target_usage_count, "target: {}", flag_string(target_colours));
+                }
             }
         }
     }
@@ -952,27 +997,29 @@ mod at_from_inventory_index_matches_the_slow_version_on {
         for target_index in 0..=128 {
             let info = AtFromInventoryIndexInfo {
                 target_index,
-                inner_rect: unscaled::Rect {
-                    x: unscaled::X(
-                        4,
-                    ),
-                    y: unscaled::Y(
-                        164,
-                    ),
-                    w: unscaled::W::new(
-                        472,
-                    ),
-                    h: unscaled::H::new(
-                        152,
-                    ),
-                },
-                cell_wh:  unscaled::WH {
-                    w: unscaled::W::new(
-                        94,
-                    ),
-                    h: unscaled::H::new(
-                        62,
-                    ),
+                sizes: InventorySizes {
+                    inner_rect: unscaled::Rect {
+                        x: unscaled::X(
+                            4,
+                        ),
+                        y: unscaled::Y(
+                            164,
+                        ),
+                        w: unscaled::W::new(
+                            472,
+                        ),
+                        h: unscaled::H::new(
+                            152,
+                        ),
+                    },
+                    cell_wh:  unscaled::WH {
+                        w: unscaled::W::new(
+                            94,
+                        ),
+                        h: unscaled::H::new(
+                            62,
+                        ),
+                    }
                 },
             };
 
@@ -1104,6 +1151,7 @@ impl State {
                             if let Some(light) = lock.matching_light_mut(cell.item) {
                                 light.state = LockLightState::Correct;
                                 cell.used = true;
+                                // TODO Move the selectrum to another card if there is one
                             } else {
                                 for light in lock.lights.iter_mut() {
                                     if light.state != LockLightState::Correct {
@@ -1156,7 +1204,7 @@ impl State {
                 }
             );
 
-            // Reverse so we can remove without messing up indexes    
+            // Reverse so we can remove without messing up indexes
             for i in (0..self.animations.items.len()).rev() {
                 let animation = &mut self.animations.items[i];
 
@@ -1605,6 +1653,7 @@ impl State {
                 clipped_commands.sspr_override(
                     specs.keycard_shuffle_lights.xy_from_tile_sprite(3u16),
                     specs.keycard_shuffle_lights.rect(xy),
+                    // TODO avoid this blending in with the background
                     if self.ui_section == UiSection::Map { SELECTRUM_COLOUR } else { INDICATOR_COLOUR }
                 );
             }
@@ -1616,7 +1665,7 @@ impl State {
         // If having them always there is too much, we can make them randomly there on some lights only
         //    That kinda fits with not quite all of the cards on a given splotch matching
 
-        
+
         let lock = &self.locks.locks[self.locks.index];
 
         let light_base_x = slot_xy.x - unscaled::W::new(15);
