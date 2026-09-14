@@ -609,7 +609,6 @@ pub struct Splotch {
 }
 
 impl Splotch {
-    #[cfg(test)]
     fn contains(&self, xy: world::XY) -> bool {
         // We model as a circle for simplicity, even though as of now we draw these as hexagons.
 
@@ -626,6 +625,21 @@ impl Splotch {
 const MAX_SPLOTCH_COUNT: u8 = 6;
 
 type Splotches = [Splotch; MAX_SPLOTCH_COUNT as usize];
+
+fn map_colours_at(
+    splotches: &Splotches,
+    xy: world::XY
+) -> CardColourFlags {
+    let mut output = 0;
+
+    for splotch in splotches {
+        if splotch.contains(xy) {
+            output |= splotch.colour.flag();
+        }
+    }
+
+    output
+}
 
 fn generate_splotches(/* TODO make these random */_rng: &mut Xs) -> Splotches {
     let mut splotches = Splotches::default();
@@ -850,21 +864,6 @@ fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
 #[cfg(test)]
 mod generate_locks_assigns_colours_well_on {
     use super::*;
-
-    fn map_colours_at(
-        splotches: &Splotches,
-        xy: world::XY
-    ) -> CardColourFlags {
-        let mut output = 0;
-
-        for splotch in splotches {
-            if splotch.contains(xy) {
-                output |= splotch.colour.flag();
-            }
-        }
-
-        output
-    }
 
     macro_rules! a {
         ($rng: expr) => {
@@ -1151,7 +1150,15 @@ impl State {
                             if let Some(light) = lock.matching_light_mut(cell.item) {
                                 light.state = LockLightState::Correct;
                                 cell.used = true;
-                                // TODO Move the selectrum to another card if there is one
+                            
+                                // Move the selectrum to another unused card if there is one
+                                for offset in 1..self.inventory.cells.len() {
+                                    let i = (self.inventory.index + offset) % self.inventory.cells.len();
+
+                                    if !self.inventory.cells[i].used {
+                                        self.inventory.index = i;
+                                    }
+                                }
                             } else {
                                 for light in lock.lights.iter_mut() {
                                     if light.state != LockLightState::Correct {
@@ -1650,11 +1657,14 @@ impl State {
 
             // Render either selectrum or selection indicator
             if i == self.locks.index {
+                let lock_colours = map_colours_at(&self.splotches, lock.xy);
+
                 clipped_commands.sspr_override(
                     specs.keycard_shuffle_lights.xy_from_tile_sprite(3u16),
                     specs.keycard_shuffle_lights.rect(xy),
-                    // TODO avoid this blending in with the background
-                    if self.ui_section == UiSection::Map { SELECTRUM_COLOUR } else { INDICATOR_COLOUR }
+                    // Seems like the easiest way avoid this blending in with the background, while also
+                    // not blending in with the flag itself
+                    if lock_colours == 0 { SELECTRUM_COLOUR } else { PALETTE[7] }
                 );
             }
         }
