@@ -9,9 +9,10 @@ use xs::{Seed, Xs};
 type Index = usize;
 type Distance = qrs::Distance;
 
+#[cfg(false)]
 const TAU: f32 = core::f32::consts::TAU;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 enum CardColour {
     #[default]
     Blue,
@@ -69,7 +70,7 @@ impl CardColour {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 enum CardSymbol {
     #[default]
     None,
@@ -89,7 +90,7 @@ impl CardSymbol {
     ];
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CardKind {
     colour: CardColour,
     symbol: CardSymbol,
@@ -110,6 +111,7 @@ pub struct Inventory {
 }
 
 mod world {
+    #[allow(unused)]
     pub use platform_types::{unscaled::{W, H, WH, XD, YD, XYD}};
     use qrs::QRS;
 
@@ -317,10 +319,12 @@ mod world {
         XYD xd: XD yd: YD Inner,
     }
 
+    #[cfg(test)]
     pub const fn x_const_add_w(x: X, w: W) -> X {
         X(x.0 + w.get())
     }
 
+    #[cfg(test)]
     pub const fn y_const_add_h(y: Y, h: H) -> Y {
         Y(y.0 + h.get())
     }
@@ -587,6 +591,7 @@ const MAP_WH: unscaled::WH = unscaled::WH {
     h: unscaled::h_const_div(unscaled::h_const_mul(LOCK_SCENE_OUTER_RECT.h, 3), 4),
 };
 
+#[cfg(test)]
 const MAP_CENTER: world::XY = world::XY {
     x: world::x_const_add_w(world::X(0), MAP_WH.w.halve()),
     y: world::y_const_add_h(world::Y(0), MAP_WH.h.halve()),
@@ -640,38 +645,101 @@ fn map_colours_at(
 
     output
 }
+#[cfg(test)]
+mod map_colours_at_works_on {
+    use super::*;
 
-fn generate_splotches(/* TODO make these random */_rng: &mut Xs) -> Splotches {
+    #[test]
+    fn this_handmade_example() {
+        let mut splotches = Splotches::default();
+
+        splotches[0] = Splotch {
+            xy: MAP_CENTER,
+            colour: CardColour::ALL[0],
+            radius: MAP_WH.w.halve().get() as _,
+        };
+
+        for i in 1..splotches.len() {
+            splotches[i] = splotches[0].clone();
+        }
+
+        let y = world::Y(MAP_WH.h.halve().get());
+
+        macro_rules! a {
+            ($x: expr => $flags: expr) => {
+                assert_eq!(
+                    map_colours_at(&splotches, world::XY { x: world::X($x), y }),
+                    $flags
+                );
+            }
+        }
+
+        a!(0 => 0);
+        a!(MAP_WH.w.halve().halve().halve().get() => 0);
+        a!(MAP_WH.w.halve().halve().get() => 1);
+        a!(MAP_WH.w.halve().get() => 1);
+    }
+}
+
+fn generate_splotches(rng: &mut Xs) -> Splotches {
     let mut splotches = Splotches::default();
+
+    let splotch_count = usize::from(MAX_SPLOTCH_COUNT);
+
+    let colour_offset = xs::index(rng, 0..CardColour::ALL.len());
 
     let x_radius = MAP_WH.w.halve().get() as f32 * 0.9;
     let y_radius = MAP_WH.h.halve().get() as f32 * 0.9;
+    let target_squared_distance = x_radius * y_radius;
 
-    let ring_length = (MAX_SPLOTCH_COUNT - 1) as usize;
+    let map_w = MAP_WH.w.get() as f32;
+    let map_h = MAP_WH.h.get() as f32;
 
-    let center_index = 0;
+    let x_buffer_fraction = 0.1;
+    let x_buffer_fraction_inverse = 1. - x_buffer_fraction;
+    let x_offset = map_w * x_buffer_fraction;
 
-    splotches[center_index] = Splotch {
-        xy: MAP_CENTER,
-        colour: CardColour::ALL[CardColour::ALL.len() - 1],
-        radius: 6,
-    };
+    let y_buffer_fraction = 0.1;
+    let y_buffer_fraction_inverse = 1. - y_buffer_fraction;
+    let y_offset = map_h * y_buffer_fraction;
 
-    let first_ring_index = center_index + 1;
+    for iteration in 0..splotch_count {
+        let colour_index = (iteration + colour_offset) % CardColour::ALL.len();
 
-    // Ring second so it is drawn on top of the center
-    for raw_i in 0..ring_length {
-        let i = raw_i + first_ring_index;
-        let angle = TAU * i as f32 / ring_length as f32;
+        let mut x = xs::zero_to_one(rng) * (map_w * x_buffer_fraction_inverse) + x_offset;
+        let mut y = xs::zero_to_one(rng) * (map_h * y_buffer_fraction_inverse) + y_offset;
 
-        splotches[i] = Splotch {
-            xy: world::XY {
-                x: MAP_CENTER.x + world::XD((x_radius * f32::cos(angle)) as world::Inner),
-                y: MAP_CENTER.y + world::YD((y_radius * f32::sin(angle)) as world::Inner),
-            },
-            colour: CardColour::ALL[raw_i],
-            radius: 8,
+        let mut tries_left = 16;
+        while tries_left > 0 {
+            let mut squared_distance_from_previous = f32::INFINITY;
+
+            for splotch in &splotches {
+                let x_diff = splotch.xy.x.0 as f32 - x;
+                let y_diff = splotch.xy.y.0 as f32 - y;
+                let current_squared_distance = x_diff * x_diff + y_diff * y_diff;
+
+                if current_squared_distance < squared_distance_from_previous {
+                    squared_distance_from_previous = current_squared_distance;
+                }
+            }
+
+            if squared_distance_from_previous > target_squared_distance {
+                break
+            }
+
+            x = xs::zero_to_one(rng) * (map_w * x_buffer_fraction_inverse) + x_offset;
+            y = xs::zero_to_one(rng) * (map_h * y_buffer_fraction_inverse) + y_offset;
+
+            tries_left -= 1;
         }
+
+        // Placing it anyway makes the overlap cases come up sometimes, but not overwhelmingly.
+
+        splotches[iteration] = Splotch {
+            xy: world::XY { x: world::X(x as world::Inner), y: world::Y(y as world::Inner) },
+            colour: CardColour::ALL[colour_index],
+            radius: xs::range(rng, 5..7) as _,
+        };
     }
 
     splotches
@@ -693,7 +761,6 @@ fn generate_locks(rng: &mut Xs, splotches: &Splotches) -> Locks {
 
     xs::shuffle(rng, &mut deck);
 
-    // Sketch:
     // Draw three cards, and pick a colour from among them to make the target
     //    Prefer any colour that is multiple of the cards
     // Search through the splotches and find one of the matching colour, and pick a random point inside it
@@ -873,7 +940,7 @@ mod generate_locks_assigns_colours_well_on {
 
             let locks = generate_locks(rng, &splotches);
 
-            for lock in &locks.locks {
+            for (lock_number, lock) in locks.locks.iter().enumerate() {
                 let target_colours = map_colours_at(&splotches, lock.xy);
 
                 let mut misses = vec![];
@@ -895,20 +962,54 @@ mod generate_locks_assigns_colours_well_on {
                     // If a lock needed to use a non-matching card, then all of the cards of the given
                     // colour(s) should be used.
 
-                    let target_usage_count = target_colours.count_ones() as usize * CardColour::ALL.len();
+                    let target_usage_count = target_colours.count_ones() as usize * CardSymbol::ALL.len();
 
-                    let mut actual_usage_count = 0;
+                    let mut used = std::collections::BTreeSet::new();
+
                     for l in &locks.locks {
                         for light in l.lights.iter() {
                             let colour = light.matcher.colour;
                             if (colour.flag() & target_colours) != 0 {
-                                actual_usage_count += 1;
+                                used.insert(light.matcher);
                             }
+                        }
+
+                        match &l.reward {
+                            Some(Reward::Item(item)) => {
+                                let colour = item.colour;
+                                if (colour.flag() & target_colours) != 0 {
+                                    used.insert(*item);
+                                }    
+                            }
+                            Some(Reward::Win) | None => {}
                         }
                     }
 
-                    assert!(actual_usage_count <= target_usage_count);
-                    assert_eq!(actual_usage_count, target_usage_count, "target: {}", flag_string(target_colours));
+                    let actual_usage_count = used.len();
+
+                    assert_eq!(
+                        actual_usage_count,
+                        target_usage_count, 
+                        "lock {lock_number} target: {}\nused: {used:?}\nassignment: {:?}",
+                        flag_string(target_colours),
+                        {
+                            let mut output = vec![];
+                            for l in &locks.locks {
+                                for light in l.lights.iter() {
+                                    output.push(light.matcher.colour);
+                                }
+
+                                match &l.reward {
+                                    Some(Reward::Item(item)) => {
+                                        output.push(item.colour);
+                                    }
+                                    Some(Reward::Win) | None => {}
+                                }
+                            }
+
+                            output
+                        }
+                    );
                 }
             }
         }
@@ -1658,12 +1759,13 @@ impl State {
             // Render either selectrum or selection indicator
             if i == self.locks.index {
                 let lock_colours = map_colours_at(&self.splotches, lock.xy);
+                dbg!(lock_colours, lock.xy);
 
                 clipped_commands.sspr_override(
                     specs.keycard_shuffle_lights.xy_from_tile_sprite(3u16),
                     specs.keycard_shuffle_lights.rect(xy),
-                    // Seems like the easiest way avoid this blending in with the background, while also
-                    // not blending in with the flag itself
+                    // Seems like the easiest way to avoid this blending in with the background, 
+                    // while also not blending in with the flag itself
                     if lock_colours == 0 { SELECTRUM_COLOUR } else { PALETTE[7] }
                 );
             }
