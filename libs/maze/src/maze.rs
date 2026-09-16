@@ -722,7 +722,7 @@ mod generate_places_the_edges_properly_on {
             &mut rng,
             (w, w),
             0,
-        );
+        ).expect("generation should succeed");
 
         print_tiles(&generated.tiles.cells, w.try_into().unwrap());
 

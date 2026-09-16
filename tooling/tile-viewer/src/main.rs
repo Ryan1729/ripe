@@ -4,7 +4,7 @@
 ///! neighboring tiles, to make sure we have all of those possibilities looking good.
 // TODO? Make a Game of Life implementation using these tiles, just for fun?
 
-use gfx::{Commands};
+use gfx::{AddDrawCommands, Commands};
 use models::{sprite, Spritesheet};
 use platform_types::{command, unscaled, Button, Input};
 use sword::{NeighborFlag, NeighborMask, TileIndex};
@@ -78,7 +78,7 @@ fn frame(state: &mut State) -> (&[platform_types::Command], (&[gfx_sizes::ARGB],
 
         commands.sspr(
             s_xy,
-            command::Rect::from_unscaled(rect),
+            rect,
         );
     };
 

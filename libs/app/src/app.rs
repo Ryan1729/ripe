@@ -766,9 +766,9 @@ fn something_gets_drawn_for_ice_puzzle_alone() {
 
     let mut rng  = xs::from_seed(seed);
 
-    let mut state = ice_puzzle::State::new(&mut rng, &specs.ice_puzzles);
+    let mut state = ice_puzzle::State::new(&mut rng, &specs);
 
-    let mut commands = Commands::new(seed, specs.base_font, specs.base_ui);
+    let mut commands = Commands::new(seed, specs.base_font.clone(), specs.base_ui.clone());
     let input = <_>::default();
     let mut speaker = <_>::default();
 
@@ -776,7 +776,7 @@ fn something_gets_drawn_for_ice_puzzle_alone() {
 
     state.update_and_render(
         &mut commands,
-        &specs.ice_puzzles,
+        &specs,
         input,
         &mut speaker,
     );
@@ -807,7 +807,12 @@ fn something_gets_drawn_for_ice_puzzle_within_app_state() {
 
     let mut rng = xs::from_seed(seed);
 
-    state.game_state.as_mut().expect("should not be in an error state").hallway_states.insert(source, target, HallwayState::IcePuzzle(ice_puzzle::State::new(&mut rng, &specs.ice_puzzles)));
+    state.game_state.as_mut().expect("should not be in an error state")
+        .hallway_states.insert(
+            source,
+            target,
+            HallwayState::IcePuzzle(ice_puzzle::State::new(&mut rng, &specs)),
+        );
 
     assert!(state.commands.slice().len() <= 0, "precondition failure");
 
@@ -817,8 +822,9 @@ fn something_gets_drawn_for_ice_puzzle_within_app_state() {
     let mut count_of_20s = 0;
     let mut sizes = Vec::with_capacity(state.commands.slice().len());
     for command in state.commands.slice() {
-        let w = (command.rect.x_max.get() - command.rect.x_min.get()).get();
-        let h = (command.rect.y_max.get() - command.rect.y_min.get()).get();
+        let rect = command.rect();
+        let w = rect.x_max.u16() - rect.x_min.u16();
+        let h = rect.y_max.u16() - rect.y_min.u16();
         if w == 19 && h == 19 {
             count_of_20s += 1;
         }

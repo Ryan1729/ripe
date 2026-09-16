@@ -166,9 +166,13 @@ impl HashCells {
 
 #[cfg(test)]
 mod reset_then_hash_commands_around_a_swap_produces_identical_current_and_prev_cells {
+    use platform_types::unscaled;
+
     use super::*;
     const CELLS_W: u16 = 16;
+    const CELLS_W_SIGNED: i16 = 16;
     const CELLS_H: u16 = 16;
+    const CELLS_H_SIGNED: i16 = 16;
     #[test]
     fn on_the_empty_slice() {
         let mut h_c = HashCells::default();
@@ -186,15 +190,16 @@ mod reset_then_hash_commands_around_a_swap_produces_identical_current_and_prev_c
     fn on_this_one_element_slice() {
         let mut h_c = HashCells::default();
 
-        let mut command = command::Command::default();
-        command.rect = command::Rect::from_unscaled(
+        let command = command::Command::new(
+            <_>::default(),
             unscaled::Rect {
                 x: unscaled::X(0),
                 y: unscaled::Y(0),
-                w: unscaled::W(CELLS_W),
-                h: unscaled::H(CELLS_H),
-            }
-        );
+                w: unscaled::W::new(CELLS_W_SIGNED),
+                h: unscaled::H::new(CELLS_H_SIGNED),
+            },
+            <_>::default(),
+        ).expect("command should be there");
 
         let commands = &[command];
 

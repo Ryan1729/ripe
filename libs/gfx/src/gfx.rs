@@ -746,12 +746,12 @@ mod nine_slice_works {
             unscaled::Rect {
                 x: unscaled::X(0),
                 y: unscaled::Y(0),
-                w: unscaled::W(32),
-                h: unscaled::H(20),
+                w: unscaled::W::new(32),
+                h: unscaled::H::new(20),
             },
         );
 
-        let actual = commands.commands.iter().map(|c| c.rect.clone()).collect::<Vec<_>>();
+        let actual = commands.commands.iter().map(|c| c.rect().clone()).collect::<Vec<_>>();
         // This was mainly written as a quick way to just look at the results. Might be useful to keep around, so
         // put in an assert that is unlikely to break later, and if it does, it should be clear why
         assert_eq!(actual.len(), 12);
