@@ -1615,18 +1615,12 @@ impl State {
 
         let card_x_max = slot_rect.x + unscaled::W::new(2);
 
-        #[derive(Default)]
-        struct DrawCardSpec {
-            xy: unscaled::XY,
-            kind: CardKind,
-            cutoff_x: Option<unscaled::X>,
-            used: bool,
-        }
-
-        fn draw_card(
-            commands: &mut impl AddDrawCommands,
+        // Draw the symbol (if any)
+        fn draw_symbol(
+            cmds: &mut impl AddDrawCommands,
             specs: &sprite::Specs,
-            DrawCardSpec { xy, kind, cutoff_x, used }: DrawCardSpec,
+            base_pip_xy: unscaled::XY,
+            symbol: CardSymbol,
         ) {
             macro_rules! draw_pip_at {
                 ($xy: expr) => {
@@ -1641,6 +1635,62 @@ impl State {
                 }
             }
 
+            let lights_wh = specs.keycard_shuffle_lights.tile();
+
+            match symbol {
+                CardSymbol::None => {},
+                CardSymbol::OnePip => {
+                    draw_pip_at!(
+                        @commands: cmds,
+                        base_pip_xy + lights_wh.w.halve() + lights_wh.w.halve().halve()
+                    );
+                },
+                CardSymbol::TwoPips => {
+                    draw_pip_at!(@commands: cmds, base_pip_xy);
+
+                    draw_pip_at!(
+                        @commands: cmds,
+                        base_pip_xy + lights_wh.w + lights_wh.w.halve()
+                    );
+                },
+                CardSymbol::ThreePips => {
+                    // in order from lower left to upper right
+                    let one_pip_xy = base_pip_xy + lights_wh.h.halve();
+                    let two_pip_xy = one_pip_xy + lights_wh.w + lights_wh.w.halve();
+                    let three_pip_xy = one_pip_xy + lights_wh.w.halve() - (lights_wh.h + lights_wh.h.halve());
+
+                    draw_pip_at!(@commands: cmds, one_pip_xy);
+                    draw_pip_at!(@commands: cmds, two_pip_xy);
+                    draw_pip_at!(@commands: cmds, three_pip_xy);
+                },
+                CardSymbol::FourPips => {
+                    // in order from lower left to upper right
+                    let one_pip_xy = base_pip_xy + lights_wh.h.halve();
+                    let two_pip_xy = one_pip_xy + lights_wh.w + lights_wh.w.halve();
+                    let three_pip_xy = one_pip_xy - (lights_wh.h + lights_wh.h.halve());
+                    let four_pip_xy = three_pip_xy + lights_wh.w + lights_wh.w.halve();
+
+                    draw_pip_at!(@commands: cmds, one_pip_xy);
+                    draw_pip_at!(@commands: cmds, two_pip_xy);
+                    draw_pip_at!(@commands: cmds, three_pip_xy);
+                    draw_pip_at!(@commands: cmds, four_pip_xy);
+                },
+            };
+        }
+
+        #[derive(Default)]
+        struct DrawCardSpec {
+            xy: unscaled::XY,
+            kind: CardKind,
+            cutoff_x: Option<unscaled::X>,
+            used: bool,
+        }
+
+        fn draw_card(
+            commands: &mut impl AddDrawCommands,
+            specs: &sprite::Specs,
+            DrawCardSpec { xy, kind, cutoff_x, used }: DrawCardSpec,
+        ) {
             let letters_wh = specs.keycard_shuffle_letters.tile();
             let lights_wh = specs.keycard_shuffle_lights.tile();
             let card_wh = specs.keycard_shuffle_cards.tile();
@@ -1683,46 +1733,12 @@ impl State {
                 + letters_wh.w + lights_wh.w.halve()
                 + letters_wh.h.halve() - lights_wh.h.halve();
 
-            // Symbol (if any)
-            match kind.symbol {
-                CardSymbol::None => {},
-                CardSymbol::OnePip => {
-                    draw_pip_at!(
-                        @commands: cmds,
-                        base_pip_xy
-                    );
-                },
-                CardSymbol::TwoPips => {
-                    draw_pip_at!(@commands: cmds, base_pip_xy);
-
-                    draw_pip_at!(
-                        @commands: cmds,
-                        base_pip_xy + lights_wh.w + lights_wh.w.halve()
-                    );
-                },
-                CardSymbol::ThreePips => {
-                    // in order from lower left to upper right
-                    let one_pip_xy = base_pip_xy + lights_wh.h.halve();
-                    let two_pip_xy = one_pip_xy + lights_wh.w + lights_wh.w.halve();
-                    let three_pip_xy = one_pip_xy + lights_wh.w.halve() - (lights_wh.h + lights_wh.h.halve());
-
-                    draw_pip_at!(@commands: cmds, one_pip_xy);
-                    draw_pip_at!(@commands: cmds, two_pip_xy);
-                    draw_pip_at!(@commands: cmds, three_pip_xy);
-                },
-                CardSymbol::FourPips => {
-                    // in order from lower left to upper right
-                    let one_pip_xy = base_pip_xy + lights_wh.h.halve();
-                    let two_pip_xy = one_pip_xy + lights_wh.w + lights_wh.w.halve();
-                    let three_pip_xy = one_pip_xy - (lights_wh.h + lights_wh.h.halve());
-                    let four_pip_xy = three_pip_xy + lights_wh.w + lights_wh.w.halve();
-
-                    draw_pip_at!(@commands: cmds, one_pip_xy);
-                    draw_pip_at!(@commands: cmds, two_pip_xy);
-                    draw_pip_at!(@commands: cmds, three_pip_xy);
-                    draw_pip_at!(@commands: cmds, four_pip_xy);
-                },
-            };
+            draw_symbol(
+                &mut cmds,
+                specs,
+                base_pip_xy,
+                kind.symbol,
+            );
 
             // Used indicator
             if used {
@@ -1800,15 +1816,12 @@ impl State {
 
         // Render lock lights
 
-        // TODO add visual indications of how many pips there are for each light
-        // If having them always there is too much, we can make them randomly there on some lights only
-        //    That kinda fits with not quite all of the cards on a given splotch matching
-
 
         let lock = &self.locks.locks[self.locks.index];
 
-        let light_base_x = slot_xy.x - unscaled::W::new(15);
+        let light_base_x = slot_xy.x - unscaled::W::new(24);
         let light_y = slot_xy.y - unscaled::H::new(16);
+        let symbol_y = light_y - unscaled::H::new(16);
 
         if lock.lights.is_empty() {
             match &lock.reward {
@@ -1833,11 +1846,13 @@ impl State {
                 }
             }
         } else {
+            let lights_wh = specs.keycard_shuffle_lights.tile();
+
             for (i, light) in lock.lights.iter().enumerate() {
                 // Outer ring
 
                 let xy = unscaled::XY {
-                    x: light_base_x + unscaled::W::new(i as unscaled::Inner * 16),
+                    x: light_base_x + unscaled::W::new(i as unscaled::Inner * 24),
                     y: light_y,
                 };
 
@@ -1846,6 +1861,8 @@ impl State {
                     specs.keycard_shuffle_lights.rect(xy),
                     PALETTE[0]
                 );
+
+                // Inner portion, if any
 
                 match light.state {
                     LockLightState::Off => {},
@@ -1864,6 +1881,19 @@ impl State {
                         );
                     },
                 }
+
+                // Symbol, if any
+                // If having them always there is too much, we can make them randomly there on some lights only
+                //    That kinda fits with not quite all of the cards on a given splotch matching
+                draw_symbol(
+                    commands,
+                    specs,
+                    unscaled::XY {
+                        x: xy.x - (lights_wh.w.halve() + lights_wh.w.halve().halve()),
+                        y: symbol_y,
+                    },
+                    light.matcher.symbol,
+                );
             }
 
             // Render card slot back
