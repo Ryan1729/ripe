@@ -1657,7 +1657,7 @@ impl State {
                     // in order from lower left to upper right
                     let one_pip_xy = base_pip_xy + lights_wh.h.halve();
                     let two_pip_xy = one_pip_xy + lights_wh.w + lights_wh.w.halve();
-                    let three_pip_xy = one_pip_xy + lights_wh.w.halve() - (lights_wh.h + lights_wh.h.halve());
+                    let three_pip_xy = one_pip_xy + lights_wh.w.halve() + lights_wh.w.halve().halve() - (lights_wh.h + lights_wh.h.halve());
 
                     draw_pip_at!(@commands: cmds, one_pip_xy);
                     draw_pip_at!(@commands: cmds, two_pip_xy);
