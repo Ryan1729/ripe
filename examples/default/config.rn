@@ -148,10 +148,14 @@ pub fn main() /* -> Result<Object, String> */ {
                 kind: HW::CUBE_MAZE,
                 // TODO configuration of Cube Maze.
             },
-            */
             #{
                 kind: HW::KEYCARD_SHUFFLE,
                 // TODO configuration of Keycard Shuffle.
+            },
+            */
+            #{
+                kind: HW::PYRAMID_PITCH,
+                // TODO configuration of Pyramid Pitch.
             },
         ],
         entities: entities,

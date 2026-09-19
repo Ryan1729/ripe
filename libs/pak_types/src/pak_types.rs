@@ -1388,6 +1388,11 @@ pub mod sprite {
             tile: (6, 6),
             tiles_per_row: 1,
         },
+        pub pyramid_pitch_tiles: Spec<PyramidPitchTiles> {
+            offset: (86, 256),
+            tile: (64, 41),
+            tiles_per_row: 1,
+        },
     }
 }
 pub use sprite::Specs;
@@ -1503,6 +1508,7 @@ mod hallway_spec {
         HexTwiddle HEX_TWIDDLE = 5,
         CubeMaze CUBE_MAZE = 6,
         KeycardShuffle KEYCARD_SHUFFLE = 7,
+        PyramidPitch PYRAMID_PITCH = 8,
     }
 }
 pub use hallway_spec::const_to_hallway_spec;

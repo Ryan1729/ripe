@@ -1,12 +1,11 @@
 #![deny(clippy::shadow_unrelated)]
-use gfx_sizes::ARGB;
+use gfx_sizes::{ARGB, colours};
 use pak_types::{
     sprite,
 };
 use platform_types::{
     Command,
     command::{self, Rect},
-    colours,
 };
 
 pub mod clip {

@@ -32,6 +32,9 @@ path = "../keycard_shuffle"
 [dependencies.models]
 path = "../models"
 
+[dependencies.pyramid_pitch]
+path = "../pyramid_pitch"
+
 [dependencies.sword]
 path = "../sword"
 

@@ -1,8 +1,3 @@
-/// A colour represented as a byte for each of Alpha, Red, Green, and Blue.
-/// Alpha is the most significant byte, blue is the least:
-/// `0xaarrggbb`
-pub type ARGB = u32;
-
 pub const GFX_WIDTH: usize = 768;
 pub const GFX_HEIGHT: usize = 512;
 pub const GFX_LENGTH: usize = GFX_WIDTH * GFX_HEIGHT;
@@ -30,3 +25,41 @@ compile_time_assert!{
 /// We assert that COMMAND_WIDTH is not too large to fit into an i16.
 pub const COMMAND_WIDTH_SIGNED: i16 = COMMAND_WIDTH as _;
 pub const COMMAND_HEIGHT_SIGNED: i16 = COMMAND_HEIGHT as _;
+
+/// A colour represented as a byte for each of Alpha, Red, Green, and Blue.
+/// Alpha is the most significant byte, blue is the least:
+/// `0xaarrggbb`
+pub type ARGB = u32;
+
+// reportedly colourblind friendly colours
+// https://twitter.com/ea_accessible/status/968595073184092160
+
+pub mod colours {
+    use super::ARGB;
+
+    pub const BLUE: ARGB = 0xFF3352E1;
+    pub const GREEN: ARGB = 0xFF30B06E;
+    pub const RED: ARGB = 0xFFDE4949;
+    pub const YELLOW: ARGB = 0xFFFFB937;
+    pub const PURPLE: ARGB = 0xFF533354;
+    #[allow(unused)]
+    pub const GREY: ARGB = 0xFF5A7D8B;
+    #[allow(unused)]
+    pub const GRAY: ARGB = GREY;
+    pub const WHITE: ARGB = 0xFFEEEEEE;
+    pub const BLACK: ARGB = 0xFF222222;
+}
+
+use colours::*;
+
+#[rustfmt::skip]
+pub const PALETTE: [ARGB; 8] = [
+    BLUE,
+    GREEN,
+    RED,
+    YELLOW,
+    PURPLE,
+    GREY,
+    WHITE,
+    BLACK,
+];

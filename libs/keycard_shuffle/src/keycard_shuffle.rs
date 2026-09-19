@@ -1,16 +1,12 @@
 #![deny(unused_variables)]
 
 use gfx::{Commands, AddDrawCommands};
-use gfx_sizes::{ARGB};
+use gfx_sizes::{ARGB, PALETTE};
 use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
-//use vec1::{Grid1, Grid1Spec};
 use xs::{Seed, Xs};
 
 type Index = usize;
 type Distance = qrs::Distance;
-
-#[cfg(false)]
-const TAU: f32 = core::f32::consts::TAU;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 enum CardColour {
@@ -553,6 +549,12 @@ pub struct Animations {
     items: Vec<ItemAnimation>
 }
 
+impl Animations {
+    fn all_settled(&self) -> bool {
+        self.lock.is_none() && self.items.is_empty()
+    }
+}
+
 const FLAG_ZERO_FRAMES: FrameCount = 45;
 
 #[derive(Clone, Debug)]
@@ -981,7 +983,7 @@ mod generate_locks_assigns_colours_well_on {
                 // At least one light from each splotch should match the matcher
                 assert!(lock.lights.length == 0 || misses.len() < lock.lights.length.into(), "{misses:?}",);
 
-                // This doesn't hold, vut at the moment the generation seems fine. This might be a good thing
+                // This doesn't hold, but at the moment the generation seems fine. This might be a good thing
                 // to ensure if we end up wanting it to be different again later though
                 #[cfg(false)]
                 if target_colours != 0 && !misses.is_empty() {
@@ -1215,7 +1217,7 @@ impl State {
     }
 
     fn all_offsets_settled(&self) -> bool {
-        true
+        self.animations.all_settled()
     }
 
     pub fn is_complete(&self) -> bool {
@@ -1589,17 +1591,6 @@ impl State {
         //
 
         use gfx::nine_slice;
-
-        const PALETTE: [ARGB; 8] = [
-            0xFF3352E1, // Blue
-            0xFF30B06E, // Green
-            0xFFDE4949, // Red
-            0xFFFFB937, // Yellow
-            0xFF533354, // Purple
-            0xFF5A7D8B, // Cyan/Grey
-            0xFFEEEEEE, // White
-            0xFF222222, // Black
-        ];
 
         const SELECTRUM_COLOUR: ARGB = PALETTE[3];
         const INDICATOR_COLOUR: ARGB = PALETTE[0];

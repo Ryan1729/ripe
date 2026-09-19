@@ -226,6 +226,7 @@ fn game_update(commands: &mut Commands, specs: &Specs, state: &mut game::State, 
                 Some(HallwayState::HexTwiddle(s)) => u_and_r_call!(s),
                 Some(HallwayState::CubeMaze(s)) => u_and_r_call!(s),
                 Some(HallwayState::KeycardShuffle(s)) => u_and_r_call!(s),
+                Some(HallwayState::PyramidPitch(s)) => u_and_r_call!(s),
                 None => {
                     invariant_assert!(false, "Hallway was not found while in Hallway mode!");
                     state.mode = Mode::Walking;

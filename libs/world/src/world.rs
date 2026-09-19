@@ -174,6 +174,7 @@ pub mod hallway {
         HexTwiddle(hex_twiddle::State),
         CubeMaze(cube_maze::State),
         KeycardShuffle(keycard_shuffle::State),
+        PyramidPitch(pyramid_pitch::State),
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

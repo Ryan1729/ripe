@@ -1,5 +1,5 @@
 use gfx::{Commands, AddDrawCommands};
-use gfx_sizes::{ARGB};
+use gfx_sizes::{PALETTE};
 use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
 use vec1::{Grid1, Grid1Spec};
 use xs::{Seed, Xs};
@@ -687,17 +687,6 @@ impl State {
         //
 
         let tiles_per_row = specs.cube_maze_sides.tiles_per_row();
-
-        const PALETTE: [ARGB; 8] = [
-            0xFF3352E1, // Blue
-            0xFF30B06E, // Green
-            0xFFDE4949, // Red
-            0xFFFFB937, // Yellow
-            0xFF533354, // Purple
-            0xFF5A7D8B, // Cyan/Grey
-            0xFFEEEEEE, // White
-            0xFF222222, // Black
-        ];
 
         let top: TileSprite = 0;
         let right: TileSprite = tiles_per_row;

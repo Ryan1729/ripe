@@ -1,0 +1,21 @@
+[package]
+name = "pyramid_pitch"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/pyramid_pitch.rs"
+
+[dependencies]
+
+[dependencies.gfx]
+path = "../gfx"
+
+[dependencies.gfx_sizes]
+path = "../gfx_sizes"
+
+[dependencies.platform_types]
+path = "../platform_types"
+
+[dependencies.xs]
+path = "../xs"

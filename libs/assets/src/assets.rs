@@ -1,36 +1,5 @@
 use gfx_sizes::{ARGB, GFX_LENGTH};
 
-// reportedly colourblind friendly colours
-// https://twitter.com/ea_accessible/status/968595073184092160
-
-mod colours {
-    pub const BLUE: u32 = 0xFF3352E1;
-    pub const GREEN: u32 = 0xFF30B06E;
-    pub const RED: u32 = 0xFFDE4949;
-    pub const YELLOW: u32 = 0xFFFFB937;
-    pub const PURPLE: u32 = 0xFF533354;
-    #[allow(unused)]
-    pub const GREY: u32 = 0xFF5A7D8B;
-    #[allow(unused)]
-    pub const GRAY: u32 = GREY;
-    pub const WHITE: u32 = 0xFFEEEEEE;
-    pub const BLACK: u32 = 0xFF222222;
-}
-
-use colours::*;
-
-#[rustfmt::skip]
-pub const PALETTE: [u32; 8] = [
-    BLUE,
-    GREEN,
-    RED,
-    YELLOW,
-    PURPLE,
-    GREY,
-    WHITE,
-    BLACK,
-];
-
 /*
     A way to convert an image to an array of bytes:
     Given an image called `image.png` use the following imagemagick command:
