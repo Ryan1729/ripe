@@ -1393,6 +1393,11 @@ pub mod sprite {
             tile: (64, 41),
             tiles_per_row: 1,
         },
+        pub pyramid_pitch_pyramids: Spec<PyramidPitchPyramids> {
+            offset: (0, 430),
+            tile: (52, 37),
+            tiles_per_row: 1,
+        },
     }
 }
 pub use sprite::Specs;
