@@ -2,7 +2,7 @@
 
 use gfx::{Commands, AddDrawCommands};
 use gfx_sizes::{ARGB, PALETTE};
-use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker};
+use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker, TileSprite};
 use xs::{Seed, Xs};
 
 mod board {
@@ -19,6 +19,8 @@ mod board {
         pub y: Y,
     }
 }
+
+type CellHeight = u8;
 
 #[derive(Clone, Debug)]
 pub struct State {
@@ -62,27 +64,31 @@ impl State {
         // Render
         //
 
-        let xy = board::XY {
-            x: board::X(0),
-            y: board::Y(0),
-        };
-
         fn board_to_unscaled(
-            specs: &sprite::Specs,
+            _specs: &sprite::Specs,
             xy: board::XY,
         ) -> unscaled::XY {
-            let board_wh = specs.pyramid_pitch_tiles.tile();
-
-            // TODO accunt for isometric view
+            //let board_wh = specs.pyramid_pitch_tiles.tile();
 
             unscaled::XY {
-                x: unscaled::X((command::WIDTH_SIGNED / 8) * 3) + unscaled::W::new(xy.x.0 * board_wh.w.get()),
-                y: unscaled::Y((command::HEIGHT_SIGNED / 8) * 3) + unscaled::H::new(xy.y.0 * board_wh.h.get()),
+                x: unscaled::X(
+                    //(xy.x.0 * board_wh.w.get() / 4)
+                    //- (xy.y.0 * board_wh.h.get() / 2)
+                    (xy.x.0 * 32)
+                    + (xy.y.0 * -32)
+                )
+                + unscaled::W::new((command::WIDTH_SIGNED / 8) * 3),
+                y: unscaled::Y(
+                    xy.x.0 * 16
+                    + xy.y.0 * 16
+                )
+                + unscaled::H::new((command::HEIGHT_SIGNED / 8) * 3),
             }
         }
 
         struct TileSpec {
             xy: board::XY,
+            height: CellHeight,
             top: ARGB,
             outline: ARGB,
             sides: ARGB,
@@ -93,48 +99,76 @@ impl State {
             specs: &sprite::Specs,
             TileSpec {
                 xy: board_xy,
+                height,
                 top,
                 outline,
                 sides,
             }: TileSpec,
         ) {
-            let xy = board_to_unscaled(specs, board_xy);
+            const TOP_FILL: TileSprite = 0;
+            const BASE_FILL: TileSprite = 1;
+            const TOP_OUTLINE: TileSprite = 2;
+            const BASE_OUTLINE: TileSprite = 3;
 
+            let board_wh = specs.pyramid_pitch_tiles.tile();
+
+            let base_xy = board_to_unscaled(specs, board_xy);
+
+            let mut xy = base_xy;
+
+            for i in 0..=height {
+                if i > 0 {
+                    xy.y -= board_wh.h / 4;
+                }
+
+                cmds.sspr_override(
+                    specs.pyramid_pitch_tiles.xy_from_tile_sprite(BASE_FILL),
+                    specs.pyramid_pitch_tiles.rect(xy),
+                    sides
+                );
+    
+                cmds.sspr_override(
+                    specs.pyramid_pitch_tiles.xy_from_tile_sprite(BASE_OUTLINE),
+                    specs.pyramid_pitch_tiles.rect(xy),
+                    outline
+                );
+            }
+            
             cmds.sspr_override(
-                specs.pyramid_pitch_tiles.xy_from_tile_sprite(0u16),
+                specs.pyramid_pitch_tiles.xy_from_tile_sprite(TOP_FILL),
                 specs.pyramid_pitch_tiles.rect(xy),
                 top
             );
     
             cmds.sspr_override(
-                specs.pyramid_pitch_tiles.xy_from_tile_sprite(1u16),
-                specs.pyramid_pitch_tiles.rect(xy),
-                sides
-            );
-    
-            cmds.sspr_override(
-                specs.pyramid_pitch_tiles.xy_from_tile_sprite(2u16),
+                specs.pyramid_pitch_tiles.xy_from_tile_sprite(TOP_OUTLINE),
                 specs.pyramid_pitch_tiles.rect(xy),
                 outline
             );
     
-            cmds.sspr_override(
-                specs.pyramid_pitch_tiles.xy_from_tile_sprite(3u16),
-                specs.pyramid_pitch_tiles.rect(xy),
-                outline
-            );
+            
         }
 
-        draw_tile(
-            commands,
-            specs,
-            TileSpec {
-                xy,
-                top: PALETTE[1],
-                outline: PALETTE[4],
-                sides: PALETTE[0],
+        for y in 0..4 {
+            for x in 0..4 {
+                let top_i = ((x + y) % 6) as usize;
+
+                draw_tile(
+                    commands,
+                    specs,
+                    TileSpec {
+                        xy: board::XY {
+                            x: board::X(x),
+                            y: board::Y(y),
+                        },
+                        height: x as _,
+                        top: PALETTE[top_i],
+                        outline: PALETTE[4],
+                        sides: PALETTE[0],
+                    }
+                );
             }
-        );
+        }
 
         struct PyramidSpec {
             xy: board::XY,
@@ -168,14 +202,35 @@ impl State {
             );
         }
 
+        // FIXME Seems like we need to iterate over the tiles and other things on 
+        // the tile together, and probably in an order related to x+y, to make
+        // the overlapping work out properly
         draw_pyramid(
             commands,
             specs,
             PyramidSpec {
-                xy,
+                xy: board::XY {
+                    x: board::X(1),
+                    y: board::Y(1),
+                },
+                outline: PALETTE[4],
+                sides: PALETTE[2],
+            }
+        );
+
+        draw_pyramid(
+            commands,
+            specs,
+            PyramidSpec {
+                xy: board::XY {
+                    x: board::X(1),
+                    y: board::Y(2),
+                },
                 outline: PALETTE[4],
                 sides: PALETTE[3],
             }
         );
+
+        
     }
 }
