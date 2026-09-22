@@ -5,6 +5,31 @@ use gfx_sizes::{ARGB, PALETTE};
 use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker, TileSprite};
 use xs::{Seed, Xs};
 
+use std::collections::BTreeMap;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+enum Colour {
+    #[default]
+    Blue,
+    Green,
+    Red,
+    Yellow,
+}
+
+impl Colour {
+    const ALL: [Colour; 4] = [
+        Colour::Blue,
+        Colour::Green,
+        Colour::Red,
+        Colour::Yellow,
+    ];
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct Pyramid {
+    colour: Colour,
+}
+
 mod board {
     pub type Inner = i16;
 
@@ -18,19 +43,85 @@ mod board {
         pub x: X,
         pub y: Y,
     }
+
+    pub fn xy_iter(base: XY) -> impl Iterator<Item = XY> {
+        // TODO take as params probably.
+        let width = 8;
+        let height = 8;
+
+        let max_x = base.x.0 + width;
+        let max_y = base.y.0 + height;
+
+        let mut x = base.x.0;
+        let mut y = base.y.0;
+
+        std::iter::from_fn(move || {
+            let output = XY {
+                x: X(x),
+                y: Y(y),
+            };
+
+            if y > max_y {
+                return None;
+            }
+
+            x += 1;
+
+            if x > max_x {
+                x = base.x.0;
+
+                y += 1;
+            }
+
+            Some(output)
+        })
+    }
 }
 
 type CellHeight = u8;
 
+type Contents = Option<Pyramid>;
+
+#[derive(Clone, Copy, Debug, Default)]
+struct Cell {
+    height: CellHeight,
+    top_colour: Colour,
+    contents: Contents,
+}
+
+type Board = BTreeMap<board::XY, Cell>;
+
 #[derive(Clone, Debug)]
 pub struct State {
-    
+    board: Board,
 }
 
 impl State {
     pub fn new(_rng: &mut Xs, _specs: &sprite::Specs) -> Self {
+        let mut board = Board::new();
+
+        for y in -1..4 {
+            for x in -2..4 {
+                let top_i: usize = ((x + y) % Colour::ALL.len() as board::Inner).abs() as usize;
+
+                board.insert(
+                    board::XY {
+                        x: board::X(x),
+                        y: board::Y(y),
+                    },
+                    Cell {
+                        height: x.abs() as _,
+                        top_colour: Colour::ALL[top_i],
+                        contents: Some(Pyramid {
+                            colour: Colour::ALL[top_i]
+                        }),
+                    }
+                );
+            }
+        }
+
         Self {
-            
+            board,
         }
     }
 
@@ -86,25 +177,15 @@ impl State {
             }
         }
 
-        struct TileSpec {
-            xy: board::XY,
-            height: CellHeight,
-            top: ARGB,
-            outline: ARGB,
-            sides: ARGB,
-        }
-
-        fn draw_tile(
+        fn draw_cell(
             cmds: &mut impl AddDrawCommands,
             specs: &sprite::Specs,
-            TileSpec {
-                xy: board_xy,
-                height,
-                top,
-                outline,
-                sides,
-            }: TileSpec,
+            board_xy: board::XY,
+            cell: &Cell,
         ) {
+            let outline = PALETTE[4];
+            let top = colour_to_argb(cell.top_colour);
+
             const TOP_FILL: TileSprite = 0;
             const BASE_FILL: TileSprite = 1;
             const TOP_OUTLINE: TileSprite = 2;
@@ -116,7 +197,7 @@ impl State {
 
             let mut xy = base_xy;
 
-            for i in 0..=height {
+            for i in 0..=cell.height {
                 if i > 0 {
                     xy.y -= board_wh.h / 4;
                 }
@@ -124,113 +205,71 @@ impl State {
                 cmds.sspr_override(
                     specs.pyramid_pitch_tiles.xy_from_tile_sprite(BASE_FILL),
                     specs.pyramid_pitch_tiles.rect(xy),
-                    sides
+                    PALETTE[5]
                 );
-    
+
                 cmds.sspr_override(
                     specs.pyramid_pitch_tiles.xy_from_tile_sprite(BASE_OUTLINE),
                     specs.pyramid_pitch_tiles.rect(xy),
                     outline
                 );
             }
-            
+
             cmds.sspr_override(
                 specs.pyramid_pitch_tiles.xy_from_tile_sprite(TOP_FILL),
                 specs.pyramid_pitch_tiles.rect(xy),
                 top
             );
-    
+
             cmds.sspr_override(
                 specs.pyramid_pitch_tiles.xy_from_tile_sprite(TOP_OUTLINE),
                 specs.pyramid_pitch_tiles.rect(xy),
                 outline
             );
-    
-            
+
+            match cell.contents {
+                Some(pyramid) => {
+                    let pyramid_xy = xy + unscaled::W::new(6) - unscaled::H::new(9);
+
+                    cmds.sspr_override(
+                        specs.pyramid_pitch_pyramids.xy_from_tile_sprite(0u16),
+                        specs.pyramid_pitch_pyramids.rect(pyramid_xy),
+                        outline
+                    );
+
+                    cmds.sspr_override(
+                        specs.pyramid_pitch_pyramids.xy_from_tile_sprite(1u16),
+                        specs.pyramid_pitch_pyramids.rect(pyramid_xy),
+                        colour_to_argb(pyramid.colour)
+                    );
+                },
+                None => {}
+            }
         }
 
-        for y in 0..4 {
-            for x in 0..4 {
-                let top_i = ((x + y) % 6) as usize;
+        fn colour_to_argb(colour: Colour) -> ARGB {
+            PALETTE[match colour {
+                Colour::Blue => 0,
+                Colour::Green => 1,
+                Colour::Red => 2,
+                Colour::Yellow => 3,
+            }]
+        }
 
-                draw_tile(
+        for xy in board::xy_iter(
+            board::XY {
+                x: board::X(-3),
+                y: board::Y(-3),
+            }
+        ) {
+            if let Some(cell) = self.board.get(&xy) {
+                draw_cell(
                     commands,
                     specs,
-                    TileSpec {
-                        xy: board::XY {
-                            x: board::X(x),
-                            y: board::Y(y),
-                        },
-                        height: x as _,
-                        top: PALETTE[top_i],
-                        outline: PALETTE[4],
-                        sides: PALETTE[0],
-                    }
+                    xy,
+                    cell,
                 );
             }
         }
-
-        struct PyramidSpec {
-            xy: board::XY,
-            outline: ARGB,
-            sides: ARGB,
-        }
-
-        fn draw_pyramid(
-            cmds: &mut impl AddDrawCommands,
-            specs: &sprite::Specs,
-            PyramidSpec {
-                xy: board_xy,
-                outline,
-                sides,
-            }: PyramidSpec,
-        ) {
-            let base_xy = board_to_unscaled(specs, board_xy);
-
-            let xy = base_xy + unscaled::W::new(6) - unscaled::H::new(9);
-
-            cmds.sspr_override(
-                specs.pyramid_pitch_pyramids.xy_from_tile_sprite(0u16),
-                specs.pyramid_pitch_pyramids.rect(xy),
-                outline
-            );
-
-            cmds.sspr_override(
-                specs.pyramid_pitch_pyramids.xy_from_tile_sprite(1u16),
-                specs.pyramid_pitch_pyramids.rect(xy),
-                sides
-            );
-        }
-
-        // FIXME Seems like we need to iterate over the tiles and other things on 
-        // the tile together, and probably in an order related to x+y, to make
-        // the overlapping work out properly
-        draw_pyramid(
-            commands,
-            specs,
-            PyramidSpec {
-                xy: board::XY {
-                    x: board::X(1),
-                    y: board::Y(1),
-                },
-                outline: PALETTE[4],
-                sides: PALETTE[2],
-            }
-        );
-
-        draw_pyramid(
-            commands,
-            specs,
-            PyramidSpec {
-                xy: board::XY {
-                    x: board::X(1),
-                    y: board::Y(2),
-                },
-                outline: PALETTE[4],
-                sides: PALETTE[3],
-            }
-        );
-
-        
     }
 }
