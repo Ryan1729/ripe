@@ -13,16 +13,25 @@ enum Colour {
     Blue,
     Green,
     Red,
-    Yellow,
+    //Yellow,
 }
 
 impl Colour {
-    const ALL: [Colour; 4] = [
+    const ALL: [Colour; 3] = [
         Colour::Blue,
         Colour::Green,
         Colour::Red,
-        Colour::Yellow,
+        //Colour::Yellow,
     ];
+
+    fn index(self) -> usize {
+        match self {
+            Colour::Blue => 0,
+            Colour::Green => 1,
+            Colour::Red => 2,
+            //Colour::Yellow => 3,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -80,6 +89,8 @@ mod board {
 
 type CellHeight = u8;
 
+// TODO add player
+// TODO add exit tile
 type Contents = Option<Pyramid>;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -94,21 +105,26 @@ type Board = BTreeMap<board::XY, Cell>;
 #[derive(Clone, Debug)]
 pub struct State {
     board: Board,
+    selectrum_at: board::XY,
 }
 
 impl State {
     pub fn new(_rng: &mut Xs, _specs: &sprite::Specs) -> Self {
         let mut board = Board::new();
 
+        let mut selectrum_at = board::XY::default();
+
         for y in -1..4 {
             for x in -2..4 {
                 let top_i: usize = ((x + y) % Colour::ALL.len() as board::Inner).abs() as usize;
 
+                let xy = board::XY {
+                    x: board::X(x),
+                    y: board::Y(y),
+                };
+
                 board.insert(
-                    board::XY {
-                        x: board::X(x),
-                        y: board::Y(y),
-                    },
+                    xy,
                     Cell {
                         height: x.abs() as _,
                         top_colour: Colour::ALL[top_i],
@@ -117,11 +133,14 @@ impl State {
                         }),
                     }
                 );
+
+                selectrum_at = xy;
             }
         }
 
         Self {
             board,
+            selectrum_at,
         }
     }
 
@@ -144,12 +163,29 @@ impl State {
         &mut self,
         commands: &mut Commands,
         specs: &sprite::Specs,
-        _input: Input,
+        input: Input,
         _speaker: &mut Speaker,
     ) {
         //
         // Update
         //
+
+        if let Some(dir) = input.dir_pressed_this_frame() {
+            match dir {
+                Dir::Up => {
+                    self.selectrum_at.y.0 = self.selectrum_at.y.0.saturating_sub(1);
+                },
+                Dir::Down => {
+                    self.selectrum_at.y.0 = self.selectrum_at.y.0.saturating_add(1);
+                },
+                Dir::Left => {
+                    self.selectrum_at.x.0 = self.selectrum_at.x.0.saturating_sub(1);
+                },
+                Dir::Right => {
+                    self.selectrum_at.x.0 = self.selectrum_at.x.0.saturating_add(1);
+                },
+            }
+        }
 
         //
         // Render
@@ -177,19 +213,35 @@ impl State {
             }
         }
 
+        const TOP_FILL: TileSprite = 0;
+        const BASE_FILL: TileSprite = 1;
+        const TOP_OUTLINE: TileSprite = 2;
+        const BASE_OUTLINE: TileSprite = 3;
+
+        const OUTLINE_INDEX: usize = 4;
+        const SELCTRUM_INDEX: usize = 3;
+
+        fn draw_top_outline(
+            cmds: &mut impl AddDrawCommands,
+            specs: &sprite::Specs,
+            xy: unscaled::XY,
+            colour: ARGB,
+        ) {
+            cmds.sspr_override(
+                specs.pyramid_pitch_tiles.xy_from_tile_sprite(TOP_OUTLINE),
+                specs.pyramid_pitch_tiles.rect(xy),
+                colour
+            );
+        }
+
         fn draw_cell(
             cmds: &mut impl AddDrawCommands,
             specs: &sprite::Specs,
             board_xy: board::XY,
             cell: &Cell,
+            outline: ARGB,
         ) {
-            let outline = PALETTE[4];
             let top = colour_to_argb(cell.top_colour);
-
-            const TOP_FILL: TileSprite = 0;
-            const BASE_FILL: TileSprite = 1;
-            const TOP_OUTLINE: TileSprite = 2;
-            const BASE_OUTLINE: TileSprite = 3;
 
             let board_wh = specs.pyramid_pitch_tiles.tile();
 
@@ -221,10 +273,11 @@ impl State {
                 top
             );
 
-            cmds.sspr_override(
-                specs.pyramid_pitch_tiles.xy_from_tile_sprite(TOP_OUTLINE),
-                specs.pyramid_pitch_tiles.rect(xy),
-                outline
+            draw_top_outline(
+                cmds,
+                specs,
+                xy,
+                outline,
             );
 
             match cell.contents {
@@ -248,12 +301,7 @@ impl State {
         }
 
         fn colour_to_argb(colour: Colour) -> ARGB {
-            PALETTE[match colour {
-                Colour::Blue => 0,
-                Colour::Green => 1,
-                Colour::Red => 2,
-                Colour::Yellow => 3,
-            }]
+            PALETTE[colour.index()]
         }
 
         for xy in board::xy_iter(
@@ -268,6 +316,18 @@ impl State {
                     specs,
                     xy,
                     cell,
+                    if self.selectrum_at == xy {
+                        PALETTE[SELCTRUM_INDEX]
+                    } else {
+                        PALETTE[OUTLINE_INDEX]
+                    }
+                );
+            } else if self.selectrum_at == xy {
+                draw_top_outline(
+                    commands,
+                    specs,
+                    board_to_unscaled(specs, xy),
+                    PALETTE[SELCTRUM_INDEX],
                 );
             }
         }
