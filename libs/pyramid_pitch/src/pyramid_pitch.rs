@@ -109,7 +109,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(_rng: &mut Xs, _specs: &sprite::Specs) -> Self {
+    pub fn new(rng: &mut Xs, _specs: &sprite::Specs) -> Self {
         let mut board = Board::new();
 
         let mut selectrum_at = board::XY::default();
@@ -123,14 +123,20 @@ impl State {
                     y: board::Y(y),
                 };
 
+                let contents = if xs::range(rng, 0..2) == 0 {
+                    Some(Pyramid {
+                        colour: Colour::ALL[top_i]
+                    })
+                } else {
+                    None
+                };
+
                 board.insert(
                     xy,
                     Cell {
                         height: x.abs() as _,
                         top_colour: Colour::ALL[top_i],
-                        contents: Some(Pyramid {
-                            colour: Colour::ALL[top_i]
-                        }),
+                        contents,
                     }
                 );
 
@@ -234,18 +240,25 @@ impl State {
             );
         }
 
+        struct CellSpec {
+            at: board::XY,
+            selectrum_at: board::XY,
+        }
+
         fn draw_cell(
             cmds: &mut impl AddDrawCommands,
             specs: &sprite::Specs,
-            board_xy: board::XY,
             cell: &Cell,
-            outline: ARGB,
+            CellSpec {
+                at,
+                selectrum_at,
+            }: CellSpec
         ) {
             let top = colour_to_argb(cell.top_colour);
 
             let board_wh = specs.pyramid_pitch_tiles.tile();
 
-            let base_xy = board_to_unscaled(specs, board_xy);
+            let base_xy = board_to_unscaled(specs, at);
 
             let mut xy = base_xy;
 
@@ -263,7 +276,7 @@ impl State {
                 cmds.sspr_override(
                     specs.pyramid_pitch_tiles.xy_from_tile_sprite(BASE_OUTLINE),
                     specs.pyramid_pitch_tiles.rect(xy),
-                    outline
+                    PALETTE[OUTLINE_INDEX]
                 );
             }
 
@@ -277,7 +290,11 @@ impl State {
                 cmds,
                 specs,
                 xy,
-                outline,
+                if selectrum_at == at {
+                    PALETTE[SELCTRUM_INDEX]
+                } else {
+                    PALETTE[OUTLINE_INDEX]
+                },
             );
 
             match cell.contents {
@@ -287,7 +304,7 @@ impl State {
                     cmds.sspr_override(
                         specs.pyramid_pitch_pyramids.xy_from_tile_sprite(0u16),
                         specs.pyramid_pitch_pyramids.rect(pyramid_xy),
-                        outline
+                        PALETTE[OUTLINE_INDEX]
                     );
 
                     cmds.sspr_override(
@@ -314,12 +331,10 @@ impl State {
                 draw_cell(
                     commands,
                     specs,
-                    xy,
                     cell,
-                    if self.selectrum_at == xy {
-                        PALETTE[SELCTRUM_INDEX]
-                    } else {
-                        PALETTE[OUTLINE_INDEX]
+                    CellSpec {
+                        at: xy,
+                        selectrum_at: self.selectrum_at,
                     }
                 );
             } else if self.selectrum_at == xy {
