@@ -89,7 +89,6 @@ mod board {
 
 type CellHeight = u8;
 
-// TODO add player
 // TODO add exit tile
 type Contents = Option<Pyramid>;
 
@@ -106,6 +105,8 @@ type Board = BTreeMap<board::XY, Cell>;
 pub struct State {
     board: Board,
     selectrum_at: board::XY,
+    player_at: board::XY,
+    player_frame: u16,
 }
 
 impl State {
@@ -147,6 +148,8 @@ impl State {
         Self {
             board,
             selectrum_at,
+            player_at: <_>::default(),
+            player_frame: <_>::default(),
         }
     }
 
@@ -237,6 +240,22 @@ impl State {
                 specs.pyramid_pitch_tiles.xy_from_tile_sprite(TOP_OUTLINE),
                 specs.pyramid_pitch_tiles.rect(xy),
                 colour
+            );
+        }
+
+        fn draw_player(
+            cmds: &mut impl AddDrawCommands,
+            specs: &sprite::Specs,
+            board_xy: board::XY,
+            player_frame: u16,
+        ) {
+            let xy = board_to_unscaled(specs, board_xy)
+                + unscaled::W::new(10)
+                - unscaled::H::new(25);
+
+            cmds.sspr(
+                specs.pyramid_pitch_player.xy_from_tile_sprite(player_frame),
+                specs.pyramid_pitch_player.rect(xy),
             );
         }
 
@@ -343,6 +362,15 @@ impl State {
                     specs,
                     board_to_unscaled(specs, xy),
                     PALETTE[SELCTRUM_INDEX],
+                );
+            }
+
+            if self.player_at == xy {
+                draw_player(
+                    commands,
+                    specs,
+                    xy,
+                    self.player_frame,
                 );
             }
         }
