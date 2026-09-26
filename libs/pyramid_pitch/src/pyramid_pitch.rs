@@ -102,11 +102,82 @@ struct Cell {
 type Board = BTreeMap<board::XY, Cell>;
 
 #[derive(Clone, Debug)]
-pub struct State {
+pub struct World {
     board: Board,
     selectrum_at: board::XY,
     player_at: board::XY,
-    player_frame: u16,
+}
+
+type PlayerFrame = u16;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum ContextOption {
+    Move,
+}
+
+type ContextOptionFlags = u8;
+
+impl ContextOption {
+    const ALL: [ContextOption; 1] = [
+        ContextOption::Move,
+    ];
+
+    fn flag(self) -> ContextOptionFlags {
+        let mut flag = 1;
+
+        for option in Self::ALL {
+            if option == self {
+                return flag;
+            }
+
+            flag <<= 1;
+        }
+
+        0
+    }
+
+    fn label(self) -> &'static [u8] {
+        match self {
+            ContextOption::Move => b"move",
+        }
+    }
+}
+
+fn available_options(
+    world: &World,
+) -> ContextOptionFlags {
+    let mut output = 0;
+
+    if world.selectrum_at == world.player_at {
+        output |= ContextOption::Move.flag();
+    }
+
+    output
+}
+
+fn first_set_context_option(flags: ContextOptionFlags) -> Option<ContextOption> {
+    for i in 0..ContextOption::ALL.len() as ContextOptionFlags {
+        if flags & (1 << i) != 0 {
+            return Some(ContextOption::ALL[i as usize]);
+        }
+    }
+
+    None
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+enum Menu {
+    #[default]
+    Closed,
+    Context(ContextOption),
+    Move,
+}
+
+#[derive(Clone, Debug)]
+pub struct State {
+    world: World,
+    player_frame: PlayerFrame,
+    menu: Menu,
 }
 
 impl State {
@@ -146,10 +217,13 @@ impl State {
         }
 
         Self {
-            board,
-            selectrum_at,
-            player_at: <_>::default(),
+            world: World { 
+                board,
+                selectrum_at,
+                player_at: <_>::default(),
+            },
             player_frame: <_>::default(),
+            menu: Menu::default(),
         }
     }
 
@@ -180,20 +254,45 @@ impl State {
         //
 
         if let Some(dir) = input.dir_pressed_this_frame() {
-            match dir {
-                Dir::Up => {
-                    self.selectrum_at.y.0 = self.selectrum_at.y.0.saturating_sub(1);
-                },
-                Dir::Down => {
-                    self.selectrum_at.y.0 = self.selectrum_at.y.0.saturating_add(1);
-                },
-                Dir::Left => {
-                    self.selectrum_at.x.0 = self.selectrum_at.x.0.saturating_sub(1);
-                },
-                Dir::Right => {
-                    self.selectrum_at.x.0 = self.selectrum_at.x.0.saturating_add(1);
-                },
+            match self.menu {
+                Menu::Closed | Menu::Move => {
+                    match dir {
+                        Dir::Up => {
+                            self.world.selectrum_at.y.0 = self.world.selectrum_at.y.0.saturating_sub(1);
+                        },
+                        Dir::Down => {
+                            self.world.selectrum_at.y.0 = self.world.selectrum_at.y.0.saturating_add(1);
+                        },
+                        Dir::Left => {
+                            self.world.selectrum_at.x.0 = self.world.selectrum_at.x.0.saturating_sub(1);
+                        },
+                        Dir::Right => {
+                            self.world.selectrum_at.x.0 = self.world.selectrum_at.x.0.saturating_add(1);
+                        },
+                    }
+                }
+                Menu::Context(ContextOption::Move) => {}
             }
+        } else if input.pressed_this_frame(Button::A) {
+            match dbg!(self.menu) {
+                Menu::Closed => {
+                    let flags = available_options(
+                        &self.world,
+                    );
+
+                    if let Some(context_option) = dbg!(first_set_context_option(flags)) {
+                        self.menu = Menu::Context(context_option);
+                    }
+                }
+                Menu::Context(ContextOption::Move) => {
+                    self.menu = Menu::Move;
+                }
+                Menu::Move => {
+                    // TODO check whether the move should be allowed
+                }
+            }
+        } else if input.pressed_this_frame(Button::B) {
+            self.menu = Menu::Closed;
         }
 
         //
@@ -346,17 +445,17 @@ impl State {
                 y: board::Y(-3),
             }
         ) {
-            if let Some(cell) = self.board.get(&xy) {
+            if let Some(cell) = self.world.board.get(&xy) {
                 draw_cell(
                     commands,
                     specs,
                     cell,
                     CellSpec {
                         at: xy,
-                        selectrum_at: self.selectrum_at,
+                        selectrum_at: self.world.selectrum_at,
                     }
                 );
-            } else if self.selectrum_at == xy {
+            } else if self.world.selectrum_at == xy {
                 draw_top_outline(
                     commands,
                     specs,
@@ -365,13 +464,80 @@ impl State {
                 );
             }
 
-            if self.player_at == xy {
+            if self.world.player_at == xy {
                 draw_player(
                     commands,
                     specs,
                     xy,
                     self.player_frame,
                 );
+            }
+        }
+
+        // Render menu
+
+        match self.menu {
+            // TODO highlight plces that can be moved to in move mode
+            Menu::Closed | Menu::Move => {}
+            Menu::Context(selection) => {
+                let menu_options_flags = available_options(
+                    &self.world,
+                );
+        
+                if menu_options_flags != 0 {
+                    const OPTION_W: unscaled::W = unscaled::W::new(120);
+                    const OPTION_H: unscaled::H = unscaled::H::new(25);
+            
+                    let selectrum_xy = board_to_unscaled(specs, self.world.selectrum_at);
+            
+                    commands.nine_slice(
+                        gfx::nine_slice::CONTEXT_MENU,
+                        unscaled::Rect {
+                            x: selectrum_xy.x,
+                            y: selectrum_xy.y,
+                            w: OPTION_W,
+                            h: OPTION_H * menu_options_flags.count_ones() as _,
+                        },
+                    );
+            
+                    let mut at = selectrum_xy;
+        
+                    let mut flags = menu_options_flags;
+                    let mut index = 0;
+        
+                    while flags != 0 && index < ContextOption::ALL.len() {
+                        let current_flag = 1 << index;
+        
+                        if flags & current_flag != 0 {
+                            let option = ContextOption::ALL[index];
+        
+                            commands.print_line(
+                                option.label(),
+                                at + unscaled::WH{ w: unscaled::W::new(6), h: unscaled::H::new(9) },
+                                4
+                            );
+                
+                            
+                                    if option == selection {
+                                        commands.nine_slice(
+                                            gfx::nine_slice::SELECTRUM,
+                                            unscaled::Rect {
+                                                x: at.x,
+                                                y: at.y,
+                                                w: OPTION_W,
+                                                h: OPTION_H,
+                                            },
+                                        );
+                                    }
+                
+                            at += OPTION_H;
+        
+                            flags = flags &!current_flag;
+                        }
+        
+                        index += 1;
+                    }
+                }
             }
         }
     }

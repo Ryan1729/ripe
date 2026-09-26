@@ -1870,16 +1870,16 @@ impl State {
 
                             if input.pressed_this_frame(Button::UP) {
                                 if *selection == 0 {
-                                    *selection = menu_options .len();
+                                    *selection = menu_options.len();
                                 }
                                 *selection -= 1;
                             } else if input.pressed_this_frame(Button::DOWN) {
                                 *selection += 1;
-                                if *selection == menu_options .len() {
+                                if *selection == menu_options.len() {
                                     *selection = 0;
                                 }
                             } else if input.pressed_this_frame(Button::A) {
-                                match menu_options [*selection].0 {
+                                match menu_options[*selection].0 {
                                     MenuOption::Move => {
                                         self.ui_mode = UiMode::Move { start: self.selectrum_at };
                                     },
