@@ -7,6 +7,8 @@ use xs::{Seed, Xs};
 
 use std::collections::BTreeMap;
 
+const MOVE_HIGHLIGHT_COLOUR: ARGB = (0x00FF_FFFF & PALETTE[6]) | 0xAA00_0000;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 enum Colour {
     #[default]
@@ -41,6 +43,8 @@ struct Pyramid {
 
 mod board {
     pub type Inner = i16;
+
+    pub type Distance = u8;
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct X(pub Inner);
@@ -85,6 +89,12 @@ mod board {
             Some(output)
         })
     }
+
+    #[allow(unused)]
+    pub fn manhattan_distance(a: XY, b: XY) -> Distance {
+        ((a.x.0 as i8 - b.x.0 as i8).abs()
+        + (a.y.0 as i8 - b.y.0 as i8).abs()) as Distance
+    }
 }
 
 type CellHeight = u8;
@@ -106,6 +116,16 @@ pub struct World {
     board: Board,
     selectrum_at: board::XY,
     player_at: board::XY,
+}
+
+// TODO? Worth caching this and/or precomputing it for each cell?
+fn can_move_to(world: &World, xy: board::XY) -> bool {
+    xy != world.player_at
+    // TODO do a proper floodfill that takes the cell contents into account, instead
+    && board::manhattan_distance(xy, world.player_at) < 3
+    && world.board.get(&xy)
+        .map(|cell| cell.contents.is_none())
+        .unwrap_or_default()
 }
 
 type PlayerFrame = u16;
@@ -165,7 +185,7 @@ fn first_set_context_option(flags: ContextOptionFlags) -> Option<ContextOption> 
     None
 }
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 enum Menu {
     #[default]
     Closed,
@@ -217,7 +237,7 @@ impl State {
         }
 
         Self {
-            world: World { 
+            world: World {
                 board,
                 selectrum_at,
                 player_at: <_>::default(),
@@ -274,13 +294,13 @@ impl State {
                 Menu::Context(ContextOption::Move) => {}
             }
         } else if input.pressed_this_frame(Button::A) {
-            match dbg!(self.menu) {
+            match self.menu {
                 Menu::Closed => {
                     let flags = available_options(
                         &self.world,
                     );
 
-                    if let Some(context_option) = dbg!(first_set_context_option(flags)) {
+                    if let Some(context_option) = first_set_context_option(flags) {
                         self.menu = Menu::Context(context_option);
                     }
                 }
@@ -288,7 +308,10 @@ impl State {
                     self.menu = Menu::Move;
                 }
                 Menu::Move => {
-                    // TODO check whether the move should be allowed
+                    if can_move_to(&self.world, self.world.selectrum_at) {
+                        self.world.player_at = self.world.selectrum_at;
+                        self.menu = Menu::Closed;
+                    }
                 }
             }
         } else if input.pressed_this_frame(Button::B) {
@@ -329,6 +352,19 @@ impl State {
         const OUTLINE_INDEX: usize = 4;
         const SELCTRUM_INDEX: usize = 3;
 
+        fn draw_top_fill(
+            cmds: &mut impl AddDrawCommands,
+            specs: &sprite::Specs,
+            xy: unscaled::XY,
+            colour: ARGB,
+        ) {
+            cmds.sspr_override(
+                specs.pyramid_pitch_tiles.xy_from_tile_sprite(TOP_FILL),
+                specs.pyramid_pitch_tiles.rect(xy),
+                colour
+            );
+        }
+
         fn draw_top_outline(
             cmds: &mut impl AddDrawCommands,
             specs: &sprite::Specs,
@@ -361,6 +397,7 @@ impl State {
         struct CellSpec {
             at: board::XY,
             selectrum_at: board::XY,
+            show_move_highlight: bool,
         }
 
         fn draw_cell(
@@ -370,6 +407,7 @@ impl State {
             CellSpec {
                 at,
                 selectrum_at,
+                show_move_highlight,
             }: CellSpec
         ) {
             let top = colour_to_argb(cell.top_colour);
@@ -415,6 +453,15 @@ impl State {
                 },
             );
 
+            if show_move_highlight {
+                draw_top_fill(
+                    cmds,
+                    specs,
+                    xy,
+                    MOVE_HIGHLIGHT_COLOUR,
+                );
+            }
+
             match cell.contents {
                 Some(pyramid) => {
                     let pyramid_xy = xy + unscaled::W::new(6) - unscaled::H::new(9);
@@ -439,6 +486,8 @@ impl State {
             PALETTE[colour.index()]
         }
 
+        let show_move_options = self.menu == Menu::Move;
+
         for xy in board::xy_iter(
             board::XY {
                 x: board::X(-3),
@@ -453,14 +502,10 @@ impl State {
                     CellSpec {
                         at: xy,
                         selectrum_at: self.world.selectrum_at,
+                        show_move_highlight:
+                            show_move_options
+                            && can_move_to(&self.world, xy)
                     }
-                );
-            } else if self.world.selectrum_at == xy {
-                draw_top_outline(
-                    commands,
-                    specs,
-                    board_to_unscaled(specs, xy),
-                    PALETTE[SELCTRUM_INDEX],
                 );
             }
 
@@ -483,13 +528,13 @@ impl State {
                 let menu_options_flags = available_options(
                     &self.world,
                 );
-        
+
                 if menu_options_flags != 0 {
                     const OPTION_W: unscaled::W = unscaled::W::new(120);
                     const OPTION_H: unscaled::H = unscaled::H::new(25);
-            
+
                     let selectrum_xy = board_to_unscaled(specs, self.world.selectrum_at);
-            
+
                     commands.nine_slice(
                         gfx::nine_slice::CONTEXT_MENU,
                         unscaled::Rect {
@@ -499,42 +544,42 @@ impl State {
                             h: OPTION_H * menu_options_flags.count_ones() as _,
                         },
                     );
-            
+
                     let mut at = selectrum_xy;
-        
+
                     let mut flags = menu_options_flags;
                     let mut index = 0;
-        
+
                     while flags != 0 && index < ContextOption::ALL.len() {
                         let current_flag = 1 << index;
-        
+
                         if flags & current_flag != 0 {
                             let option = ContextOption::ALL[index];
-        
+
                             commands.print_line(
                                 option.label(),
                                 at + unscaled::WH{ w: unscaled::W::new(6), h: unscaled::H::new(9) },
                                 4
                             );
-                
-                            
-                                    if option == selection {
-                                        commands.nine_slice(
-                                            gfx::nine_slice::SELECTRUM,
-                                            unscaled::Rect {
-                                                x: at.x,
-                                                y: at.y,
-                                                w: OPTION_W,
-                                                h: OPTION_H,
-                                            },
-                                        );
-                                    }
-                
+
+
+                            if option == selection {
+                                commands.nine_slice(
+                                    gfx::nine_slice::SELECTRUM,
+                                    unscaled::Rect {
+                                        x: at.x,
+                                        y: at.y,
+                                        w: OPTION_W,
+                                        h: OPTION_H,
+                                    },
+                                );
+                            }
+
                             at += OPTION_H;
-        
+
                             flags = flags &!current_flag;
                         }
-        
+
                         index += 1;
                     }
                 }
