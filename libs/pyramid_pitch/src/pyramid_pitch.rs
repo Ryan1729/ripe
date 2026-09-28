@@ -5,43 +5,11 @@ use gfx_sizes::{ARGB, PALETTE};
 use platform_types::{command, sprite, unscaled, Button, Dir, Input, Speaker, TileSprite};
 use xs::{Seed, Xs};
 
-use std::collections::BTreeMap;
-
 const MOVE_HIGHLIGHT_COLOUR: ARGB = (0x00FF_FFFF & PALETTE[6]) | 0xAA00_0000;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-enum Colour {
-    #[default]
-    Blue,
-    Green,
-    Red,
-    //Yellow,
-}
-
-impl Colour {
-    const ALL: [Colour; 3] = [
-        Colour::Blue,
-        Colour::Green,
-        Colour::Red,
-        //Colour::Yellow,
-    ];
-
-    fn index(self) -> usize {
-        match self {
-            Colour::Blue => 0,
-            Colour::Green => 1,
-            Colour::Red => 2,
-            //Colour::Yellow => 3,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-struct Pyramid {
-    colour: Colour,
-}
-
 mod board {
+    use std::collections::BTreeMap;
+
     pub type Inner = i16;
 
     pub type Distance = u8;
@@ -56,6 +24,13 @@ mod board {
         pub x: X,
         pub y: Y,
     }
+
+    macro_rules! _xy {
+        ($x: literal $y: literal) => {
+            XY { x: X($x), y: Y($y) }
+        }
+    }
+    pub(crate) use _xy as xy;
 
     pub fn xy_iter(base: XY) -> impl Iterator<Item = XY> {
         // TODO take as params probably.
@@ -90,26 +65,119 @@ mod board {
         })
     }
 
+    pub type CellHeight = u8;
+    
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum Colour {
+        Blue,
+        Green,
+        Red,
+        //Yellow,
+    }
+    
+    impl Colour {
+        pub const ALL: [Colour; 3] = [
+            Colour::Blue,
+            Colour::Green,
+            Colour::Red,
+            //Colour::Yellow,
+        ];
+
+        pub const DEFAULT: Colour = Colour::ALL[0];
+    
+        pub fn index(self) -> usize {
+            match self {
+                Colour::Blue => 0,
+                Colour::Green => 1,
+                Colour::Red => 2,
+                //Colour::Yellow => 3,
+            }
+        }
+    }
+
+    impl Default for Colour {
+        fn default() -> Self {
+            Self::DEFAULT
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct Pyramid {
+        pub colour: Colour,
+    }
+
+    // TODO add exit tile
+    pub type Contents = Option<Pyramid>;
+    
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct Cell {
+        pub height: CellHeight,
+        pub top_colour: Colour,
+        pub contents: Contents,
+    }
+
+    pub type Board = BTreeMap<XY, Cell>;
+
     #[allow(unused)]
     pub fn manhattan_distance(a: XY, b: XY) -> Distance {
         ((a.x.0 as i8 - b.x.0 as i8).abs()
         + (a.y.0 as i8 - b.y.0 as i8).abs()) as Distance
     }
+
+    pub fn path_from(_board: &Board, _source: XY, _target: XY) -> Option<Vec<XY>> {
+        // TODO floodfill
+        None
+    }
+
+    #[cfg(test)]
+    mod path_from_works_on {
+        use super::*;
+
+        const BLANK_CELL: Cell = Cell {
+            height: 0,
+            top_colour: Colour::DEFAULT,
+            contents: None,
+        };
+        const WALL_CELL: Cell = Cell {
+            height: 0,
+            top_colour: Colour::DEFAULT,
+            contents: Some(Pyramid { colour: Colour::DEFAULT }),
+        };
+
+        fn split_board() -> Board {
+            let mut output = Board::default();
+
+            output.insert(xy!(0 0), BLANK_CELL);
+            output.insert(xy!(1 0), BLANK_CELL);
+            output.insert(xy!(2 0), BLANK_CELL);
+
+            output.insert(xy!(0 1), WALL_CELL);
+            output.insert(xy!(1 1), WALL_CELL);
+            output.insert(xy!(2 1), WALL_CELL);
+
+            output.insert(xy!(0 2), BLANK_CELL);
+            output.insert(xy!(1 2), BLANK_CELL);
+            output.insert(xy!(2 2), BLANK_CELL);
+
+            output
+        }
+
+        #[test]
+        fn this_case_with_no_path() {
+            assert_eq!(path_from(&split_board(), xy!(0 0), xy!(2 2)), None);
+        }
+
+        #[test]
+        fn this_case_with_a_path() {
+            assert_eq!(
+                path_from(&split_board(), xy!(0 0), xy!(2 0)),
+                Some(vec![xy!(0 0), xy!(1 0), xy!(2 0)])
+            );
+        }
+    }
+    
 }
-
-type CellHeight = u8;
-
-// TODO add exit tile
-type Contents = Option<Pyramid>;
-
-#[derive(Clone, Copy, Debug, Default)]
-struct Cell {
-    height: CellHeight,
-    top_colour: Colour,
-    contents: Contents,
-}
-
-type Board = BTreeMap<board::XY, Cell>;
+use board::{Board, Cell, Colour, Pyramid};
 
 #[derive(Clone, Debug)]
 pub struct World {
@@ -121,8 +189,9 @@ pub struct World {
 // TODO? Worth caching this and/or precomputing it for each cell?
 fn can_move_to(world: &World, xy: board::XY) -> bool {
     xy != world.player_at
-    // TODO do a proper floodfill that takes the cell contents into account, instead
-    && board::manhattan_distance(xy, world.player_at) < 3
+    && board::path_from(&world.board, xy, world.player_at)
+        .map(|path| path.len() < 3)
+        .unwrap_or_default()
     && world.board.get(&xy)
         .map(|cell| cell.contents.is_none())
         .unwrap_or_default()
