@@ -8,14 +8,47 @@ use xs::{Seed, Xs};
 const MOVE_HIGHLIGHT_COLOUR: ARGB = (0x00FF_FFFF & PALETTE[6]) | 0xAA00_0000;
 
 mod board {
+    use platform_types::{Dir::{self, *}};
+
     use std::collections::BTreeMap;
 
     pub type Inner = i16;
+
+    pub type Diff = i32;
 
     pub type Distance = u8;
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct X(pub Inner);
+
+    impl X {
+        fn diff(self) -> Diff {
+            self.0.into()
+        }
+
+        fn dec(self) -> Self {
+            Self(self.0.saturating_sub(1))
+        }
+
+        fn inc(self) -> Self {
+            Self(self.0.saturating_add(1))
+        }
+    }
+
+    impl Y {
+        fn diff(self) -> Diff {
+            self.0.into()
+        }
+
+        fn dec(self) -> Self {
+            Self(self.0.saturating_sub(1))
+        }
+
+        fn inc(self) -> Self {
+            Self(self.0.saturating_add(1))
+        }
+    }
+
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct Y(pub Inner);
 
@@ -124,13 +157,82 @@ mod board {
         + (a.y.0 as i8 - b.y.0 as i8).abs()) as Distance
     }
 
-    pub fn path_from(_board: &Board, _source: XY, _target: XY) -> Option<Vec<XY>> {
-        // TODO floodfill
-        None
+    #[derive(Debug)]
+    enum EdgeHitKind {
+        Neither,
+        X,
+        Y,
+        Both
+    }
+
+    fn xy_in_dir(xy: XY, dir: Dir) -> (XY, EdgeHitKind) {    
+        let x = xy.x;
+        let y = xy.y;
+    
+        let (new_x, new_y) = match dir {
+            Up => (x, y.dec()),
+            Right => (x.inc(), y),
+            Down => (x, y.inc()),
+            Left => (x.dec(), y),
+        };
+    
+        (
+            XY { x: new_x, y: new_y },
+            // This can happen due to saturation
+            if new_x == x
+            && new_y == y {
+                EdgeHitKind::Both
+            } else if new_x == x && dir.moves_in_x() {
+                EdgeHitKind::X
+            } else if new_y == y && dir.moves_in_y() {
+                EdgeHitKind::Y
+            } else {
+                EdgeHitKind::Neither
+            }
+        )
+    }
+
+    struct IndexCtx<'board>(&'board Board);
+
+    impl pathfinding::XYTrait<IndexCtx<'_>, Dir> for XY {
+        fn to_i(self, ctx: &IndexCtx) -> usize {
+            for (i, key) in ctx.0.keys().enumerate() {
+                if self == *key {
+                    return i
+                }
+            }
+    
+            ctx.0.len()
+        }
+        fn apply_dir(self, dir: Dir) -> Option<Self> {
+            if let (xy, EdgeHitKind::Neither) = xy_in_dir(self, dir) {
+                Some(xy)
+            } else {
+                None
+            }
+        }
+        fn chebyshev_distance_to(self, other: Self) -> usize {
+            core::cmp::max((other.x.diff() - self.x.diff()).abs(), (other.y.diff() - self.y.diff()).abs())
+                .try_into().unwrap_or(usize::MAX)
+        }
+
+    }
+
+    pub fn path_len_from(board: &Board, source: XY, target: XY) -> Option<usize> {
+        pathfinding::shortest_path_start_and_len::<IndexCtx<'_>, Cell, Dir, XY>(
+            &IndexCtx(board),
+            board.len(),
+            &Dir::ALL,
+            source,
+            &[target],
+            &|xy| { board.get(&xy).map(|cell| cell.contents.is_none()).unwrap_or_default() }
+        )
+            .ok()
+            .map(|(_, len)| len)
     }
 
     #[cfg(test)]
-    mod path_from_works_on {
+    mod path_len_from_works_on {
         use super::*;
 
         const BLANK_CELL: Cell = Cell {
@@ -150,28 +252,31 @@ mod board {
             output.insert(xy!(0 0), BLANK_CELL);
             output.insert(xy!(1 0), BLANK_CELL);
             output.insert(xy!(2 0), BLANK_CELL);
+            output.insert(xy!(3 0), BLANK_CELL);
 
             output.insert(xy!(0 1), WALL_CELL);
             output.insert(xy!(1 1), WALL_CELL);
             output.insert(xy!(2 1), WALL_CELL);
+            output.insert(xy!(3 1), WALL_CELL);
 
             output.insert(xy!(0 2), BLANK_CELL);
             output.insert(xy!(1 2), BLANK_CELL);
             output.insert(xy!(2 2), BLANK_CELL);
+            output.insert(xy!(3 2), BLANK_CELL);
 
             output
         }
 
         #[test]
         fn this_case_with_no_path() {
-            assert_eq!(path_from(&split_board(), xy!(0 0), xy!(2 2)), None);
+            assert_eq!(path_len_from(&split_board(), xy!(0 0), xy!(3 2)), None);
         }
 
         #[test]
         fn this_case_with_a_path() {
             assert_eq!(
-                path_from(&split_board(), xy!(0 0), xy!(2 0)),
-                Some(vec![xy!(0 0), xy!(1 0), xy!(2 0)])
+                path_len_from(&split_board(), xy!(0 0), xy!(3 0)),
+                Some(2) // Excludes the start and end
             );
         }
     }
@@ -189,8 +294,8 @@ pub struct World {
 // TODO? Worth caching this and/or precomputing it for each cell?
 fn can_move_to(world: &World, xy: board::XY) -> bool {
     xy != world.player_at
-    && board::path_from(&world.board, xy, world.player_at)
-        .map(|path| path.len() < 3)
+    && board::path_len_from(&world.board, xy, world.player_at)
+        .map(|len| len < 3)
         .unwrap_or_default()
     && world.board.get(&xy)
         .map(|cell| cell.contents.is_none())
@@ -284,7 +389,7 @@ impl State {
                     y: board::Y(y),
                 };
 
-                let contents = if xs::range(rng, 0..2) == 0 {
+                let contents = if xs::range(rng, 0..8) == 0 {
                     Some(Pyramid {
                         colour: Colour::ALL[top_i]
                     })
@@ -378,6 +483,8 @@ impl State {
                 }
                 Menu::Move => {
                     if can_move_to(&self.world, self.world.selectrum_at) {
+                        // TODO Trigger animation instead. Will likely want 
+                        // the full path to be available for that.
                         self.world.player_at = self.world.selectrum_at;
                         self.menu = Menu::Closed;
                     }

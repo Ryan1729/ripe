@@ -108,17 +108,16 @@ fn find_xy_and_count<IndexContext, Direction, XY>(
     (current, count)
 }
 
-
-
-// Returns next xy to go to, to move along the shortest path from `from` to a .
-pub fn next_xy_to_nearest_of_given_xys<IndexContext, Tile, Direction, XY>(
+// Returns the length *excluding* the from and target. So if there are two tiles
+// between the from and the closest target, this would return 2, not 4 or 3.
+pub fn shortest_path_start_and_len<IndexContext, Tile, Direction, XY>(
     index_context: &IndexContext,
     tile_count: TileCount,
     all_dirs: &[Direction],
     from: XY,
     targets: &[XY],
     can_pass_through: &dyn Fn(XY) -> bool
-) -> Result<XY, Error> 
+) -> Result<(XY, usize), Error> 
     where XY: XYTrait<IndexContext, Direction> + std::fmt::Debug,
         Direction: Clone + Copy
 {
@@ -150,17 +149,38 @@ pub fn next_xy_to_nearest_of_given_xys<IndexContext, Tile, Direction, XY>(
         }
     }
 
-    if let Some((xy, _)) = shortest_path_start_and_len {
-        Ok(xy)
-    } else {
-        Err(Error::Unreachable)
-    }
-
     
+    shortest_path_start_and_len
+        .map(||)
+        .ok_or(Error::Unreachable)
+}
+
+
+// Returns next xy to go to, to move along the shortest path from `from` to any of the given targets.
+pub fn next_xy_to_nearest_of_given_xys<IndexContext, Tile, Direction, XY>(
+    index_context: &IndexContext,
+    tile_count: TileCount,
+    all_dirs: &[Direction],
+    from: XY,
+    targets: &[XY],
+    can_pass_through: &dyn Fn(XY) -> bool
+) -> Result<XY, Error> 
+    where XY: XYTrait<IndexContext, Direction> + std::fmt::Debug,
+        Direction: Clone + Copy
+{
+    shortest_path_start_and_len::<IndexContext, Tile, Direction, XY>(
+        index_context,
+        tile_count,
+        all_dirs,
+        from,
+        targets,
+        can_pass_through
+    ).map(|(xy, _)| xy)
 }
 
 #[cfg(false)]
 // Returns path in order from `to` to `from`, likely reverse of what you'd expect.
+// CURRENTLY DOES NOT COMPILE; NEEDS CONVERSION TO IndexContex, etc.
 pub fn shortest_path<const TILES_LENGTH: usize, Tile, Direction, XY>(
     tiles: &[Tile],
     tile_count: TileCount,
