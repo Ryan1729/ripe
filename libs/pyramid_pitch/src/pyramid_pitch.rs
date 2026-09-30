@@ -58,6 +58,25 @@ mod board {
         pub y: Y,
     }
 
+    impl XY {
+        pub fn is_adjacent_to(self, other: XY) -> bool {
+            (
+                self.x == other.x
+                && (
+                    self.y.0 == other.y.0 + 1
+                    || self.y.0 == other.y.0 - 1
+                )
+            )
+            || (
+                self.y == other.y
+                && (
+                    self.x.0 == other.x.0 + 1
+                    || self.x.0 == other.x.0 - 1
+                )
+            )
+        }
+    }
+
     macro_rules! _xy {
         ($x: literal $y: literal) => {
             XY { x: X($x), y: Y($y) }
@@ -98,8 +117,14 @@ mod board {
         })
     }
 
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct Targeting {
+        pub source: XY,
+        pub target: XY,
+    }
+
     pub type CellHeight = u8;
-    
+
     #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
     pub enum Colour {
         Blue,
@@ -107,7 +132,7 @@ mod board {
         Red,
         //Yellow,
     }
-    
+
     impl Colour {
         pub const ALL: [Colour; 3] = [
             Colour::Blue,
@@ -117,7 +142,7 @@ mod board {
         ];
 
         pub const DEFAULT: Colour = Colour::ALL[0];
-    
+
         pub fn index(self) -> usize {
             match self {
                 Colour::Blue => 0,
@@ -141,7 +166,7 @@ mod board {
 
     // TODO add exit tile
     pub type Contents = Option<Pyramid>;
-    
+
     #[derive(Clone, Copy, Debug, Default)]
     pub struct Cell {
         pub height: CellHeight,
@@ -165,17 +190,17 @@ mod board {
         Both
     }
 
-    fn xy_in_dir(xy: XY, dir: Dir) -> (XY, EdgeHitKind) {    
+    fn xy_in_dir(xy: XY, dir: Dir) -> (XY, EdgeHitKind) {
         let x = xy.x;
         let y = xy.y;
-    
+
         let (new_x, new_y) = match dir {
             Up => (x, y.dec()),
             Right => (x.inc(), y),
             Down => (x, y.inc()),
             Left => (x.dec(), y),
         };
-    
+
         (
             XY { x: new_x, y: new_y },
             // This can happen due to saturation
@@ -201,7 +226,7 @@ mod board {
                     return i
                 }
             }
-    
+
             ctx.0.len()
         }
         fn apply_dir(self, dir: Dir) -> Option<Self> {
@@ -280,7 +305,7 @@ mod board {
             );
         }
     }
-    
+
 }
 use board::{Board, Cell, Colour, Pyramid};
 
@@ -307,13 +332,15 @@ type PlayerFrame = u16;
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum ContextOption {
     Move,
+    Pitch,
 }
 
 type ContextOptionFlags = u8;
 
 impl ContextOption {
-    const ALL: [ContextOption; 1] = [
+    const ALL: [ContextOption; 2] = [
         ContextOption::Move,
+        ContextOption::Pitch,
     ];
 
     fn flag(self) -> ContextOptionFlags {
@@ -333,6 +360,35 @@ impl ContextOption {
     fn label(self) -> &'static [u8] {
         match self {
             ContextOption::Move => b"move",
+            ContextOption::Pitch => b"pitch",
+        }
+    }
+
+    fn next_in_flags(self, flags: ContextOptionFlags) -> Self {
+        if flags == 0 { return self }
+
+        let mut current = self.flag();
+
+        loop {
+            current = current.rotate_left(1);
+
+            if current & flags != 0 {
+                return Self::ALL[current.ilog2() as usize]
+            }
+        }
+    }
+
+    fn previous_in_flags(self, flags: ContextOptionFlags) -> Self {
+        if flags == 0 { return self }
+
+        let mut current = self.flag();
+
+        loop {
+            current = current.rotate_right(1);
+
+            if current & flags != 0 {
+                return Self::ALL[current.ilog2() as usize]
+            }
         }
     }
 }
@@ -345,6 +401,15 @@ fn available_options(
     if world.selectrum_at == world.player_at {
         output |= ContextOption::Move.flag();
     }
+
+    if world.selectrum_at.is_adjacent_to(world.player_at)
+    && let Some(cell) = world.board.get(&world.selectrum_at)
+    && matches!(cell.contents, Some(Pyramid{..}))
+    // TODO No-Lifting checking
+    {
+        output |= ContextOption::Pitch.flag();
+    }
+
 
     output
 }
@@ -359,12 +424,34 @@ fn first_set_context_option(flags: ContextOptionFlags) -> Option<ContextOption> 
     None
 }
 
+
+fn can_pitch(
+    world: &World,
+    board::Targeting { source, target }: board::Targeting,
+) -> bool {
+    // TODO No-throwing state checking
+    // Source is on a straight line away from target
+    // TODO? Distance restrictions?
+    (
+        source.x == target.x
+        || source.y == target.y
+    )
+    && source != target
+    &&
+    // Target is free
+    world.board.get(&target)
+            .map(|cell| cell.contents.is_none())
+            .unwrap_or_default()
+    && target != world.player_at
+}
+
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 enum Menu {
     #[default]
     Closed,
     Context(ContextOption),
     Move,
+    Pitch(board::XY),
 }
 
 #[derive(Clone, Debug)]
@@ -449,7 +536,7 @@ impl State {
 
         if let Some(dir) = input.dir_pressed_this_frame() {
             match self.menu {
-                Menu::Closed | Menu::Move => {
+                Menu::Closed | Menu::Move | Menu::Pitch(_) => {
                     match dir {
                         Dir::Up => {
                             self.world.selectrum_at.y.0 = self.world.selectrum_at.y.0.saturating_sub(1);
@@ -465,7 +552,20 @@ impl State {
                         },
                     }
                 }
-                Menu::Context(ContextOption::Move) => {}
+                Menu::Context(ref mut option) => {
+                    let flags = available_options(
+                        &self.world,
+                    );
+
+                    *option = match dir {
+                        Dir::Up | Dir::Left => {
+                            option.previous_in_flags(flags)
+                        },
+                        Dir::Down | Dir::Right => {
+                            option.next_in_flags(flags)
+                        },
+                    };
+                }
             }
         } else if input.pressed_this_frame(Button::A) {
             match self.menu {
@@ -481,11 +581,35 @@ impl State {
                 Menu::Context(ContextOption::Move) => {
                     self.menu = Menu::Move;
                 }
+                Menu::Context(ContextOption::Pitch) => {
+                    self.menu = Menu::Pitch(self.world.selectrum_at);
+                }
                 Menu::Move => {
                     if can_move_to(&self.world, self.world.selectrum_at) {
-                        // TODO Trigger animation instead. Will likely want 
+                        // TODO Trigger animation instead. Will likely want
                         // the full path to be available for that.
                         self.world.player_at = self.world.selectrum_at;
+                        self.menu = Menu::Closed;
+                    }
+                }
+                Menu::Pitch(pitch_from) => {
+                    let targeting = board::Targeting{
+                        source: self.world.player_at,
+                        target: self.world.selectrum_at
+                    };
+
+                    if can_pitch(
+                        &self.world,
+                        targeting
+                    ) {
+                        if let Some(source_cell) = self.world.board.get_mut(&pitch_from) {
+                            let pitched = source_cell.contents.take();
+                            // TODO Trigger animation instead.
+                            if let Some(target_cell) = self.world.board.get_mut(&targeting.target) {
+                                target_cell.contents = pitched;
+                            }
+                        }
+
                         self.menu = Menu::Closed;
                     }
                 }
@@ -557,10 +681,10 @@ impl State {
         fn draw_player(
             cmds: &mut impl AddDrawCommands,
             specs: &sprite::Specs,
-            board_xy: board::XY,
+            base_xy: unscaled::XY,
             player_frame: u16,
         ) {
-            let xy = board_to_unscaled(specs, board_xy)
+            let xy = base_xy
                 + unscaled::W::new(10)
                 - unscaled::H::new(25);
 
@@ -573,6 +697,8 @@ impl State {
         struct CellSpec {
             at: board::XY,
             selectrum_at: board::XY,
+            player_at: board::XY,
+            player_frame: PlayerFrame,
             show_move_highlight: bool,
         }
 
@@ -583,6 +709,8 @@ impl State {
             CellSpec {
                 at,
                 selectrum_at,
+                player_at,
+                player_frame,
                 show_move_highlight,
             }: CellSpec
         ) {
@@ -656,6 +784,15 @@ impl State {
                 },
                 None => {}
             }
+
+            if at == player_at {
+                draw_player(
+                    cmds,
+                    specs,
+                    xy,
+                    player_frame,
+                );
+            }
         }
 
         fn colour_to_argb(colour: Colour) -> ARGB {
@@ -663,6 +800,7 @@ impl State {
         }
 
         let show_move_options = self.menu == Menu::Move;
+        let show_pitch_options = matches!(self.menu, Menu::Pitch(_));
 
         for xy in board::xy_iter(
             board::XY {
@@ -678,19 +816,18 @@ impl State {
                     CellSpec {
                         at: xy,
                         selectrum_at: self.world.selectrum_at,
+                        player_at: self.world.player_at,
+                        player_frame: self.player_frame,
                         show_move_highlight:
-                            show_move_options
-                            && can_move_to(&self.world, xy)
+                            (
+                                show_move_options
+                                && can_move_to(&self.world, xy)
+                            )
+                            || (
+                                show_pitch_options
+                                && can_pitch(&self.world, board::Targeting { source: self.world.player_at, target: xy })
+                            )
                     }
-                );
-            }
-
-            if self.world.player_at == xy {
-                draw_player(
-                    commands,
-                    specs,
-                    xy,
-                    self.player_frame,
                 );
             }
         }
@@ -698,8 +835,7 @@ impl State {
         // Render menu
 
         match self.menu {
-            // TODO highlight plces that can be moved to in move mode
-            Menu::Closed | Menu::Move => {}
+            Menu::Closed | Menu::Move | Menu::Pitch(_) => {}
             Menu::Context(selection) => {
                 let menu_options_flags = available_options(
                     &self.world,
