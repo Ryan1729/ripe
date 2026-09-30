@@ -151,7 +151,6 @@ pub fn shortest_path_start_and_len<IndexContext, Tile, Direction, XY>(
 
     
     shortest_path_start_and_len
-        .map(||)
         .ok_or(Error::Unreachable)
 }
 
