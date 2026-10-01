@@ -457,7 +457,6 @@ enum Menu {
 #[derive(Clone, Debug)]
 pub struct State {
     world: World,
-    player_frame: PlayerFrame,
     menu: Menu,
 }
 
@@ -503,7 +502,6 @@ impl State {
                 selectrum_at,
                 player_at: <_>::default(),
             },
-            player_frame: <_>::default(),
             menu: Menu::default(),
         }
     }
@@ -682,7 +680,7 @@ impl State {
             cmds: &mut impl AddDrawCommands,
             specs: &sprite::Specs,
             base_xy: unscaled::XY,
-            player_frame: u16,
+            player_frame: PlayerFrame,
         ) {
             let xy = base_xy
                 + unscaled::W::new(10)
@@ -809,6 +807,12 @@ impl State {
             }
         ) {
             if let Some(cell) = self.world.board.get(&xy) {
+                let player_frame = match self.menu {
+                    // TODO 2 while pyramid arc animation is say in the first half
+                    Menu::Pitch(_) | Menu::Context(ContextOption::Pitch) => 1,
+                    _ => 0,
+                };
+
                 draw_cell(
                     commands,
                     specs,
@@ -817,7 +821,7 @@ impl State {
                         at: xy,
                         selectrum_at: self.world.selectrum_at,
                         player_at: self.world.player_at,
-                        player_frame: self.player_frame,
+                        player_frame,
                         show_move_highlight:
                             (
                                 show_move_options
