@@ -123,6 +123,25 @@ mod board {
         pub target: XY,
     }
 
+    pub fn approach(Targeting { source, target }: Targeting) -> XY {
+        let x_diff: Diff = Diff::from(source.x.0) - Diff::from(target.x.0);
+        let y_diff: Diff = Diff::from(source.y.0) - Diff::from(target.y.0);
+
+        use std::cmp::Ordering::*;
+
+        match (x_diff.cmp(&0), y_diff.cmp(&0)) {
+            (Less, Less) => XY { x: source.x.inc(), y: source.y.inc() },
+            (Less, Equal) => XY { x: source.x.inc(), y: source.y },
+            (Less, Greater) => XY { x: source.x.inc(), y: source.y.dec() },
+            (Equal, Less) => XY { x: source.x, y: source.y.inc() },
+            (Equal, Equal) => source,
+            (Equal, Greater) => XY { x: source.x, y: source.y.dec() },
+            (Greater, Less) => XY { x: source.x.dec(), y: source.y.inc() },
+            (Greater, Equal) => XY { x: source.x.dec(), y: source.y },
+            (Greater, Greater) => XY { x: source.x.dec(), y: source.y.dec() },
+        }
+    }
+
     pub type CellHeight = u8;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -445,6 +464,37 @@ fn can_pitch(
     && target != world.player_at
 }
 
+// 64k animation frames ought to be enough for anybody!
+type Frames = u16;
+
+#[derive(Clone, Debug)]
+struct PyramidAnimation {
+    board_xy: board::XY,
+    target_xy: board::XY,
+    cell_offset: unscaled::XYD,
+    cell_duration: Frames,
+    pyramid: Pyramid,
+}
+
+#[derive(Clone, Debug, Default)]
+struct Animations {
+    pyramid: Option<PyramidAnimation>,
+}
+
+const PYRAMID_CELL_DURATION: Frames = 30;
+
+impl Animations {
+    fn start_pyramid(&mut self, pyramid: Pyramid, targeting: board::Targeting) {
+        self.pyramid = Some(PyramidAnimation {
+            board_xy: targeting.source,
+            target_xy: targeting.target,
+            cell_offset: unscaled::XYD::default(),
+            cell_duration: PYRAMID_CELL_DURATION,
+            pyramid,
+        });
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 enum Menu {
     #[default]
@@ -457,6 +507,7 @@ enum Menu {
 #[derive(Clone, Debug)]
 pub struct State {
     world: World,
+    animations: Animations,
     menu: Menu,
 }
 
@@ -502,6 +553,7 @@ impl State {
                 selectrum_at,
                 player_at: <_>::default(),
             },
+            animations: Animations::default(),
             menu: Menu::default(),
         }
     }
@@ -519,6 +571,30 @@ impl State {
 
         // TODO actual checking
         false
+    }
+
+    fn tick(&mut self) {
+        if let Some(pyramid_animation) = &mut self.animations.pyramid {
+            // FIXME calculate cell_offset change
+            pyramid_animation.cell_duration = pyramid_animation.cell_duration.saturating_sub(1);
+
+            if pyramid_animation.cell_duration == 0 {
+                pyramid_animation.board_xy = board::approach(board::Targeting {
+                    source: pyramid_animation.board_xy,
+                    target: pyramid_animation.target_xy,
+                });
+
+                if pyramid_animation.board_xy == pyramid_animation.target_xy {
+                    if let Some(target_cell) = self.world.board.get_mut(&pyramid_animation.target_xy) {
+                        target_cell.contents = Some(pyramid_animation.pyramid);
+                    }
+
+                    self.animations.pyramid = None;
+                } else {
+                    pyramid_animation.cell_duration = PYRAMID_CELL_DURATION;
+                }
+            }
+        }
     }
 
     pub fn update_and_render(
@@ -601,10 +677,8 @@ impl State {
                         targeting
                     ) {
                         if let Some(source_cell) = self.world.board.get_mut(&pitch_from) {
-                            let pitched = source_cell.contents.take();
-                            // TODO Trigger animation instead.
-                            if let Some(target_cell) = self.world.board.get_mut(&targeting.target) {
-                                target_cell.contents = pitched;
+                            if let Some(pitched) = source_cell.contents.take() {
+                                self.animations.start_pyramid(pitched, targeting);
                             }
                         }
 
@@ -615,6 +689,8 @@ impl State {
         } else if input.pressed_this_frame(Button::B) {
             self.menu = Menu::Closed;
         }
+
+        self.tick();
 
         //
         // Render
@@ -692,6 +768,27 @@ impl State {
             );
         }
 
+        fn draw_pyramid(
+            cmds: &mut impl AddDrawCommands,
+            specs: &sprite::Specs,
+            xy: unscaled::XY,
+            pyramid: Pyramid,
+        ) {
+            let pyramid_xy = xy + unscaled::W::new(6) - unscaled::H::new(9);
+
+            cmds.sspr_override(
+                specs.pyramid_pitch_pyramids.xy_from_tile_sprite(0u16),
+                specs.pyramid_pitch_pyramids.rect(pyramid_xy),
+                PALETTE[OUTLINE_INDEX]
+            );
+
+            cmds.sspr_override(
+                specs.pyramid_pitch_pyramids.xy_from_tile_sprite(1u16),
+                specs.pyramid_pitch_pyramids.rect(pyramid_xy),
+                colour_to_argb(pyramid.colour)
+            );
+        }
+
         struct CellSpec {
             at: board::XY,
             selectrum_at: board::XY,
@@ -766,19 +863,7 @@ impl State {
 
             match cell.contents {
                 Some(pyramid) => {
-                    let pyramid_xy = xy + unscaled::W::new(6) - unscaled::H::new(9);
-
-                    cmds.sspr_override(
-                        specs.pyramid_pitch_pyramids.xy_from_tile_sprite(0u16),
-                        specs.pyramid_pitch_pyramids.rect(pyramid_xy),
-                        PALETTE[OUTLINE_INDEX]
-                    );
-
-                    cmds.sspr_override(
-                        specs.pyramid_pitch_pyramids.xy_from_tile_sprite(1u16),
-                        specs.pyramid_pitch_pyramids.rect(pyramid_xy),
-                        colour_to_argb(pyramid.colour)
-                    );
+                    draw_pyramid(cmds, specs, xy, pyramid);
                 },
                 None => {}
             }
@@ -833,6 +918,12 @@ impl State {
                             )
                     }
                 );
+            }
+
+            if let Some(pyramid_animation) = &self.animations.pyramid {
+                let base_xy = board_to_unscaled(specs, pyramid_animation.board_xy);
+
+                draw_pyramid(commands, specs, base_xy + pyramid_animation.cell_offset, pyramid_animation.pyramid);
             }
         }
 
