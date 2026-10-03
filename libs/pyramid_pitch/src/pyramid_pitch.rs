@@ -467,13 +467,43 @@ fn can_pitch(
 // 64k animation frames ought to be enough for anybody!
 type Frames = u16;
 
+// Accleration due to gravity, per frame
+const G: unscaled::XYD = unscaled::XYD {
+    xd: unscaled::XD::ZERO,
+    yd: unscaled::YD(1),
+};
+
 #[derive(Clone, Debug)]
 struct PyramidAnimation {
     board_xy: board::XY,
     target_xy: board::XY,
     cell_offset: unscaled::XYD,
+    cell_velocity: unscaled::XYD,
+    cell_acceleration: unscaled::XYD,
     cell_duration: Frames,
     pyramid: Pyramid,
+}
+
+fn board_to_unscaled(
+    _specs: &sprite::Specs,
+    xy: board::XY,
+) -> unscaled::XY {
+    //let board_wh = specs.pyramid_pitch_tiles.tile();
+
+    unscaled::XY {
+        x: unscaled::X(
+            //(xy.x.0 * board_wh.w.get() / 4)
+            //- (xy.y.0 * board_wh.h.get() / 2)
+            (xy.x.0 * 32)
+            + (xy.y.0 * -32)
+        )
+        + unscaled::W::new((command::WIDTH_SIGNED / 8) * 3),
+        y: unscaled::Y(
+            xy.x.0 * 16
+            + xy.y.0 * 16
+        )
+        + unscaled::H::new((command::HEIGHT_SIGNED / 8) * 3),
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -484,11 +514,49 @@ struct Animations {
 const PYRAMID_CELL_DURATION: Frames = 30;
 
 impl Animations {
-    fn start_pyramid(&mut self, pyramid: Pyramid, targeting: board::Targeting) {
+    fn start_pyramid(&mut self, _specs: &sprite::Specs, pyramid: Pyramid, targeting: board::Targeting) {
+        macro_rules! early_out {
+            () => ({
+                debug_assert!(false);
+                self.pyramid = Some(PyramidAnimation {
+                    board_xy: targeting.source,
+                    target_xy: targeting.target,
+                    cell_offset: <_>::default(),
+                    cell_velocity: <_>::default(),
+                    cell_acceleration: <_>::default(),
+                    cell_duration: 0,
+                    pyramid,
+                });
+                return;
+            })
+        }
+
+        let x_diff: board::Diff = board::Diff::from(targeting.source.x.0) - board::Diff::from(targeting.target.x.0);
+        let y_diff: board::Diff = board::Diff::from(targeting.source.y.0) - board::Diff::from(targeting.target.y.0);
+
+        use std::cmp::Ordering::*;
+
+        // Scale based on diffs, so the arc taking the same time each time is reasonable
+        let velocity = match (x_diff.cmp(&0), y_diff.cmp(&0)) {
+            (Less, Less) => early_out!(),
+            (Less, Equal) => unscaled::XYD { xd: unscaled::XD((x_diff.abs()) as _), yd: unscaled::YD(-18) },
+            (Less, Greater) => early_out!(),
+            (Equal, Less) => unscaled::XYD { xd: unscaled::XD(-(y_diff.abs()) as _), yd: unscaled::YD(-18) },
+            (Equal, Equal) => early_out!(),
+            (Equal, Greater) => unscaled::XYD { xd: unscaled::XD((y_diff.abs()) as _), yd: unscaled::YD(-18) },
+            (Greater, Less) => early_out!(),
+            (Greater, Equal) => unscaled::XYD { xd: unscaled::XD(-(x_diff.abs()) as _), yd: unscaled::YD(-18) },
+            (Greater, Greater) => early_out!(),
+        };
+        
+        let xyd = unscaled::XYD::default();
+
         self.pyramid = Some(PyramidAnimation {
             board_xy: targeting.source,
             target_xy: targeting.target,
-            cell_offset: unscaled::XYD::default(),
+            cell_offset: xyd,
+            cell_velocity: velocity,
+            cell_acceleration: G,
             cell_duration: PYRAMID_CELL_DURATION,
             pyramid,
         });
@@ -575,24 +643,27 @@ impl State {
 
     fn tick(&mut self) {
         if let Some(pyramid_animation) = &mut self.animations.pyramid {
-            // FIXME calculate cell_offset change
-            pyramid_animation.cell_duration = pyramid_animation.cell_duration.saturating_sub(1);
-
-            if pyramid_animation.cell_duration == 0 {
-                pyramid_animation.board_xy = board::approach(board::Targeting {
-                    source: pyramid_animation.board_xy,
-                    target: pyramid_animation.target_xy,
-                });
-
-                if pyramid_animation.board_xy == pyramid_animation.target_xy {
+            macro_rules! done {
+                () => {
                     if let Some(target_cell) = self.world.board.get_mut(&pyramid_animation.target_xy) {
                         target_cell.contents = Some(pyramid_animation.pyramid);
                     }
 
                     self.animations.pyramid = None;
-                } else {
-                    pyramid_animation.cell_duration = PYRAMID_CELL_DURATION;
                 }
+            }
+
+            if pyramid_animation.cell_duration == 0 {
+                dbg!("cell_duration == 0");
+                done!();
+            } else {
+                pyramid_animation.cell_duration = pyramid_animation.cell_duration.saturating_sub(1);
+
+                if false && pyramid_animation.cell_duration % 5 == 0 {
+                    dbg!("integration step", pyramid_animation.cell_velocity);
+                }
+                pyramid_animation.cell_offset += pyramid_animation.cell_velocity;
+                pyramid_animation.cell_velocity += pyramid_animation.cell_acceleration;
             }
         }
     }
@@ -678,7 +749,7 @@ impl State {
                     ) {
                         if let Some(source_cell) = self.world.board.get_mut(&pitch_from) {
                             if let Some(pitched) = source_cell.contents.take() {
-                                self.animations.start_pyramid(pitched, targeting);
+                                self.animations.start_pyramid(specs, pitched, targeting);
                             }
                         }
 
@@ -695,28 +766,6 @@ impl State {
         //
         // Render
         //
-
-        fn board_to_unscaled(
-            _specs: &sprite::Specs,
-            xy: board::XY,
-        ) -> unscaled::XY {
-            //let board_wh = specs.pyramid_pitch_tiles.tile();
-
-            unscaled::XY {
-                x: unscaled::X(
-                    //(xy.x.0 * board_wh.w.get() / 4)
-                    //- (xy.y.0 * board_wh.h.get() / 2)
-                    (xy.x.0 * 32)
-                    + (xy.y.0 * -32)
-                )
-                + unscaled::W::new((command::WIDTH_SIGNED / 8) * 3),
-                y: unscaled::Y(
-                    xy.x.0 * 16
-                    + xy.y.0 * 16
-                )
-                + unscaled::H::new((command::HEIGHT_SIGNED / 8) * 3),
-            }
-        }
 
         const TOP_FILL: TileSprite = 0;
         const BASE_FILL: TileSprite = 1;

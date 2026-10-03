@@ -441,6 +441,7 @@ pub mod unscaled {
                     pub const MIN: Self = Self($inner_name::MIN);
                     pub const MAX: Self = Self($inner_name::MAX);
 
+                    pub const MINUS_ONE: Self = Self(-1);
                     pub const ZERO: Self = Self(0);
                     pub const ONE: Self = Self(1);
                     pub const TWO: Self = Self(2);
@@ -451,6 +452,14 @@ pub mod unscaled {
 
                     pub const fn inc(self) -> Self {
                         Self(self.0.saturating_add(1))
+                    }
+
+                    pub const fn unit(self) -> Self {
+                        if self.0 >= 0 {
+                            Self::ONE
+                        } else {
+                            Self::MINUS_ONE
+                        }
                     }
                 }
 
@@ -539,6 +548,15 @@ pub mod unscaled {
             XYD {
                 xd: wh.w.into(),
                 yd: wh.h.into(),
+            }
+        }
+    }
+
+    impl XYD {
+        pub fn unit(self) -> XYD {
+            XYD {
+                xd: self.xd.unit(),
+                yd: self.yd.unit(),
             }
         }
     }
