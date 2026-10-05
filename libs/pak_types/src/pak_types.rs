@@ -1417,7 +1417,7 @@ pub mod sprite {
             tiles_per_row: 1,
         },
         pub pyramid_pitch_player: Spec<PyramidPitchPlayer> {
-            offset: (52, 430),
+            offset: (154, 256),
             tile: (34, 46),
             tiles_per_row: 3,
         },

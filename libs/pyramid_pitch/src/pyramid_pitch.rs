@@ -142,6 +142,42 @@ mod board {
         }
     }
 
+    /// Makes an ultimately arbitrary decision about cases where there's no clear answer
+    /// like diagonally adjacent XYs, but does so consistently.
+    pub fn dir_towards(Targeting { source, target }: Targeting) -> Dir {
+        if source.x == target.x {
+            if source.y < target.y {
+                Dir::Down
+            } else {
+                Dir::Up
+            }
+        } else if source.y == target.y {
+            if source.x < target.x {
+                Dir::Right
+            } else {
+                Dir::Left
+            }
+        } else {
+            if source.x < target.x {
+                if source.y < target.y {
+                    // Right of source and down from source
+                    Dir::Down
+                } else {
+                    // Right of source and up from source
+                    Dir::Right
+                }
+            } else /* source.x > target.x */ {
+                if source.y < target.y {
+                    // Left of source and down from source
+                    Dir::Left
+                } else {
+                    // Left of source and up from source
+                    Dir::Up
+                }
+            }
+        }
+    }
+
     pub type CellHeight = u8;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -333,6 +369,7 @@ pub struct World {
     board: Board,
     selectrum_at: board::XY,
     player_at: board::XY,
+    player_dir: Dir,
 }
 
 // TODO? Worth caching this and/or precomputing it for each cell?
@@ -620,6 +657,7 @@ impl State {
                 board,
                 selectrum_at,
                 player_at: <_>::default(),
+                player_dir: <_>::default(),
             },
             animations: Animations::default(),
             menu: Menu::default(),
@@ -696,6 +734,13 @@ impl State {
                             self.world.selectrum_at.x.0 = self.world.selectrum_at.x.0.saturating_add(1);
                         },
                     }
+
+                    self.world.player_dir = board::dir_towards(
+                        board::Targeting {
+                            source: self.world.player_at,
+                            target: self.world.selectrum_at
+                        }
+                    );
                 }
                 Menu::Context(ref mut option) => {
                     let flags = available_options(
@@ -731,6 +776,12 @@ impl State {
                 }
                 Menu::Move => {
                     if can_move_to(&self.world, self.world.selectrum_at) {
+                        self.world.player_dir = board::dir_towards(
+                            board::Targeting {
+                                source: self.world.player_at,
+                                target: self.world.selectrum_at
+                            }
+                        );
                         // TODO Trigger animation instead. Will likely want
                         // the full path to be available for that.
                         self.world.player_at = self.world.selectrum_at;
@@ -806,13 +857,17 @@ impl State {
             specs: &sprite::Specs,
             base_xy: unscaled::XY,
             player_frame: PlayerFrame,
+            player_facing: Dir,
         ) {
             let xy = base_xy
                 + unscaled::W::new(10)
                 - unscaled::H::new(25);
 
             cmds.sspr(
-                specs.pyramid_pitch_player.xy_from_tile_sprite(player_frame),
+                specs.pyramid_pitch_player.xy_from_tile_sprite(
+                    player_frame
+                    + PlayerFrame::from(player_facing.u8() * specs.pyramid_pitch_player.tiles_per_row())
+                ),
                 specs.pyramid_pitch_player.rect(xy),
             );
         }
@@ -843,6 +898,7 @@ impl State {
             selectrum_at: board::XY,
             player_at: board::XY,
             player_frame: PlayerFrame,
+            player_dir: Dir,
             show_move_highlight: bool,
         }
 
@@ -855,6 +911,7 @@ impl State {
                 selectrum_at,
                 player_at,
                 player_frame,
+                player_dir,
                 show_move_highlight,
             }: CellSpec
         ) {
@@ -923,6 +980,7 @@ impl State {
                     specs,
                     xy,
                     player_frame,
+                    player_dir,
                 );
             }
         }
@@ -956,6 +1014,7 @@ impl State {
                         selectrum_at: self.world.selectrum_at,
                         player_at: self.world.player_at,
                         player_frame,
+                        player_dir: self.world.player_dir,
                         show_move_highlight:
                             (
                                 show_move_options
