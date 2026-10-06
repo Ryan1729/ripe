@@ -543,9 +543,15 @@ fn board_to_unscaled(
     }
 }
 
+#[derive(Clone, Debug)]
+struct PlayerAnimation {
+    targeting: board::Targeting,
+}
+
 #[derive(Clone, Debug, Default)]
 struct Animations {
     pyramid: Option<PyramidAnimation>,
+    player: Option<PlayerAnimation>,
 }
 
 const PYRAMID_CELL_DURATION: Frames = 30;
@@ -596,6 +602,12 @@ impl Animations {
             cell_acceleration: G,
             cell_duration: PYRAMID_CELL_DURATION,
             pyramid,
+        });
+    }
+
+    fn start_player(&mut self, targeting: board::Targeting) {
+        self.player = Some(PlayerAnimation {
+            targeting,
         });
     }
 }
@@ -681,28 +693,33 @@ impl State {
 
     fn tick(&mut self) {
         if let Some(pyramid_animation) = &mut self.animations.pyramid {
-            macro_rules! done {
-                () => {
-                    if let Some(target_cell) = self.world.board.get_mut(&pyramid_animation.target_xy) {
-                        target_cell.contents = Some(pyramid_animation.pyramid);
-                    }
-
-                    self.animations.pyramid = None;
-                }
-            }
-
             if pyramid_animation.cell_duration == 0 {
-                dbg!("cell_duration == 0");
-                done!();
+                if let Some(target_cell) = self.world.board.get_mut(&pyramid_animation.target_xy) {
+                    target_cell.contents = Some(pyramid_animation.pyramid);
+                }
+
+                self.animations.pyramid = None;
+                self.menu = Menu::Closed;
             } else {
                 pyramid_animation.cell_duration = pyramid_animation.cell_duration.saturating_sub(1);
 
-                if false && pyramid_animation.cell_duration % 5 == 0 {
-                    dbg!("integration step", pyramid_animation.cell_velocity);
-                }
                 pyramid_animation.cell_offset += pyramid_animation.cell_velocity;
                 pyramid_animation.cell_velocity += pyramid_animation.cell_acceleration;
             }
+        }
+
+        if let Some(player_animation) = &mut self.animations.player {
+            // TODO Add full path to animation and animate going through
+            //      each tile.
+
+            self.world.player_dir = board::dir_towards(
+                player_animation.targeting
+            );
+            
+            self.world.player_at = player_animation.targeting.target;
+
+            self.animations.player = None;
+            self.menu = Menu::Closed;
         }
     }
 
@@ -776,16 +793,12 @@ impl State {
                 }
                 Menu::Move => {
                     if can_move_to(&self.world, self.world.selectrum_at) {
-                        self.world.player_dir = board::dir_towards(
-                            board::Targeting {
-                                source: self.world.player_at,
-                                target: self.world.selectrum_at
-                            }
-                        );
-                        // TODO Trigger animation instead. Will likely want
-                        // the full path to be available for that.
-                        self.world.player_at = self.world.selectrum_at;
-                        self.menu = Menu::Closed;
+                        let targeting = board::Targeting{
+                            source: self.world.player_at,
+                            target: self.world.selectrum_at
+                        };
+
+                        self.animations.start_player(targeting);
                     }
                 }
                 Menu::Pitch(pitch_from) => {
@@ -803,8 +816,6 @@ impl State {
                                 self.animations.start_pyramid(specs, pitched, targeting);
                             }
                         }
-
-                        self.menu = Menu::Closed;
                     }
                 }
             }
@@ -1000,7 +1011,6 @@ impl State {
         ) {
             if let Some(cell) = self.world.board.get(&xy) {
                 let player_frame = match self.menu {
-                    // TODO 2 while pyramid arc animation is say in the first half
                     Menu::Pitch(_) | Menu::Context(ContextOption::Pitch) => 1,
                     _ => 0,
                 };
