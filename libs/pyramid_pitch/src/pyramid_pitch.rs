@@ -883,13 +883,19 @@ impl State {
             );
         }
 
+        // TODO? Make this part of the sprite::Specs?
+        const PYRAMID_OFFSET: unscaled::XYD = unscaled::XYD {
+            xd: unscaled::XD(-6),
+            yd: unscaled::YD(9),
+        };
+
         fn draw_pyramid(
             cmds: &mut impl AddDrawCommands,
             specs: &sprite::Specs,
             xy: unscaled::XY,
             pyramid: Pyramid,
         ) {
-            let pyramid_xy = xy + unscaled::W::new(6) - unscaled::H::new(9);
+            let pyramid_xy = xy - PYRAMID_OFFSET;
 
             cmds.sspr_override(
                 specs.pyramid_pitch_pyramids.xy_from_tile_sprite(0u16),
@@ -902,6 +908,70 @@ impl State {
                 specs.pyramid_pitch_pyramids.rect(pyramid_xy),
                 colour_to_argb(pyramid.colour)
             );
+        }
+
+        struct CellTopSpec {
+            xy: unscaled::XY,
+            show_selectrum: bool,
+            show_move_highlight: bool,
+        }
+
+        fn draw_cell_top(
+            cmds: &mut impl AddDrawCommands,
+            specs: &sprite::Specs,
+            cell: &Cell,
+            CellTopSpec {
+                xy,
+                show_selectrum,
+                show_move_highlight,
+            }: CellTopSpec,
+        ) {
+            cmds.sspr_override(
+                specs.pyramid_pitch_tiles.xy_from_tile_sprite(BASE_FILL),
+                specs.pyramid_pitch_tiles.rect(xy),
+                PALETTE[5]
+            );
+
+            cmds.sspr_override(
+                specs.pyramid_pitch_tiles.xy_from_tile_sprite(BASE_OUTLINE),
+                specs.pyramid_pitch_tiles.rect(xy),
+                PALETTE[OUTLINE_INDEX]
+            );
+
+            let top = colour_to_argb(cell.top_colour);
+
+            cmds.sspr_override(
+                specs.pyramid_pitch_tiles.xy_from_tile_sprite(TOP_FILL),
+                specs.pyramid_pitch_tiles.rect(xy),
+                top
+            );
+
+            draw_top_outline(
+                cmds,
+                specs,
+                xy,
+                if show_selectrum {
+                    PALETTE[SELCTRUM_INDEX]
+                } else {
+                    PALETTE[OUTLINE_INDEX]
+                },
+            );
+
+            if show_move_highlight {
+                draw_top_fill(
+                    cmds,
+                    specs,
+                    xy,
+                    MOVE_HIGHLIGHT_COLOUR,
+                );
+            }
+
+            match cell.contents {
+                Some(pyramid) => {
+                    draw_pyramid(cmds, specs, xy, pyramid);
+                },
+                None => {}
+            }
         }
 
         struct CellSpec {
@@ -926,15 +996,13 @@ impl State {
                 show_move_highlight,
             }: CellSpec
         ) {
-            let top = colour_to_argb(cell.top_colour);
-
             let board_wh = specs.pyramid_pitch_tiles.tile();
 
             let base_xy = board_to_unscaled(specs, at);
 
             let mut xy = base_xy;
 
-            for i in 0..=cell.height {
+            for i in 0..cell.height {
                 if i > 0 {
                     xy.y -= board_wh.h / 4;
                 }
@@ -952,38 +1020,18 @@ impl State {
                 );
             }
 
-            cmds.sspr_override(
-                specs.pyramid_pitch_tiles.xy_from_tile_sprite(TOP_FILL),
-                specs.pyramid_pitch_tiles.rect(xy),
-                top
-            );
+            xy.y -= board_wh.h / 4;
 
-            draw_top_outline(
+            draw_cell_top(
                 cmds,
                 specs,
-                xy,
-                if selectrum_at == at {
-                    PALETTE[SELCTRUM_INDEX]
-                } else {
-                    PALETTE[OUTLINE_INDEX]
-                },
-            );
-
-            if show_move_highlight {
-                draw_top_fill(
-                    cmds,
-                    specs,
+                cell,
+                CellTopSpec {
                     xy,
-                    MOVE_HIGHLIGHT_COLOUR,
-                );
-            }
-
-            match cell.contents {
-                Some(pyramid) => {
-                    draw_pyramid(cmds, specs, xy, pyramid);
-                },
-                None => {}
-            }
+                    show_selectrum: selectrum_at == at,
+                    show_move_highlight,
+                }
+            );
 
             if at == player_at {
                 draw_player(
@@ -1045,6 +1093,56 @@ impl State {
             }
         }
 
+        // Render HUD
+
+        let selectrum_xy = board_to_unscaled(specs, self.world.selectrum_at);
+
+        if let Some(cell) = self.world.board.get(&self.world.selectrum_at) {
+            let pyramid_wh = specs.pyramid_pitch_pyramids.tile();
+            let tile_wh = specs.pyramid_pitch_tiles.tile();
+
+            let edge_wh = commands.ui_edge_wh();
+
+            let selected_hud_rect: unscaled::Rect = unscaled::Rect {
+                x: unscaled::X(0),
+                y: unscaled::Y(0),
+                w: unscaled::W::new(command::WIDTH_SIGNED / 2),
+                h: pyramid_wh.h + tile_wh.h,
+            };
+
+            let mut selected_hud_outline_rect: unscaled::Rect = gfx::nine_slice::inner_rect(
+                edge_wh,
+                selected_hud_rect
+            );
+            selected_hud_outline_rect.w = tile_wh.w + edge_wh.w.double();
+
+            commands.nine_slice(
+                gfx::nine_slice::INVENTORY,
+                selected_hud_rect,
+            );
+
+            commands.nine_slice(
+                gfx::nine_slice::INVENTORY,
+                selected_hud_outline_rect,
+            );
+
+            let image_xy = unscaled::XY {
+                x: selected_hud_outline_rect.x,
+                y: selected_hud_outline_rect.y,
+            } + edge_wh;
+
+            draw_cell_top(
+                commands,
+                specs,
+                cell,
+                CellTopSpec {
+                    xy: image_xy + pyramid_wh.h.halve() - edge_wh.h,
+                    show_selectrum: false,
+                    show_move_highlight: false,
+                }
+            );
+        }
+
         // Render menu
 
         match self.menu {
@@ -1057,8 +1155,6 @@ impl State {
                 if menu_options_flags != 0 {
                     const OPTION_W: unscaled::W = unscaled::W::new(120);
                     const OPTION_H: unscaled::H = unscaled::H::new(25);
-
-                    let selectrum_xy = board_to_unscaled(specs, self.world.selectrum_at);
 
                     commands.nine_slice(
                         gfx::nine_slice::CONTEXT_MENU,
