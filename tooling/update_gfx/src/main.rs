@@ -41,23 +41,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .or_else(|e| {
             if skip_flags_str.starts_with("0b") {
                 SkipFlags::from_str_radix(&skip_flags_str[2..], 2)
-                    .or_else(|e| {
-                        if skip_flags_str.starts_with("0x") {
-                            SkipFlags::from_str_radix(&skip_flags_str[2..], 16)
-                        } else {
-                            Err(e)
-                        }            
-                    })
+            } else if skip_flags_str.starts_with("0x") {
+                SkipFlags::from_str_radix(&skip_flags_str[2..], 16)
             } else {
                 Err(e)
-            }            
+            }
         })?
     } else {
         0
     };
 
     let frame = pak::read_png_frame(BufReader::new(File::open(IMAGE_FILENAME)?))?;
-    
+
     println!(
         "{} : {:?}",
         IMAGE_FILENAME,
@@ -74,11 +69,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     if skip_flags & 1 == 0 {
         let inline_output_filename = INLINE_OUTPUT_FILENAME;
-    
+
         let mut file = File::create(inline_output_filename)?;
 
         let spritesheet = pak::spritesheet_from_png_frame(&frame);
-    
+
         assert_eq!(spritesheet.width, gfx_sizes::GFX_WIDTH, "Input PNG was not the right width");
         assert_eq!(spritesheet.cells.len(), gfx_sizes::GFX_LENGTH, "Input PNG was not the right length");
 
@@ -97,9 +92,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output.push('\n');
         }
         output.push_str("]\n");
-    
+
         file.write_all(output.as_bytes())?;
-    
+
         println!("overwrote {}", inline_output_filename);
     }
     skip_flags >>= 1;
@@ -108,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     if skip_flags & 1 == 0 {
         let output_filename = IDENTITY_FILENAME;
-    
+
         let file = File::create(output_filename)?;
 
         let ref mut writer = BufWriter::new(file);
@@ -118,7 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut writer = encoder.write_header()?;
 
         writer.write_image_data(&frame.buffer)?;
-    
+
         println!("overwrote {}", output_filename);
     }
     skip_flags >>= 1;
@@ -127,11 +122,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     if skip_flags & 1 == 0 {
         let transformed_output_filename = DOUBLE_HEIGHT_OUTPUT_FILENAME;
-    
+
         let file = File::create(transformed_output_filename)?;
 
         let ref mut writer = BufWriter::new(file);
-        
+
         let mut new_info = frame.info.clone();
 
         new_info.height *= 2;
@@ -170,11 +165,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        
+
         assert_eq!(data.len(), expected_length);
 
         writer.write_image_data(&data)?;
-    
+
         println!("overwrote {}", transformed_output_filename);
     }
     skip_flags >>= 1;
@@ -183,11 +178,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     if skip_flags & 1 == 0 {
         let transformed_output_filename = SHIFTED_OUTPUT_FILENAME;
-    
+
         let file = File::create(transformed_output_filename)?;
 
         let ref mut writer = BufWriter::new(file);
-        
+
         let mut new_info = frame.info.clone();
 
         const SHIFT: u32 = 256;
@@ -228,11 +223,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        
+
         assert_eq!(data.len(), expected_length);
 
         writer.write_image_data(&data)?;
-    
+
         println!("overwrote {}", transformed_output_filename);
     }
     //skip_flags >>= 1;
